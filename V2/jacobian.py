@@ -1,19 +1,13 @@
 """
-jacobian.py – Jacobiano numérico sparse con actualización transitoria diagonal.
+jacobian.py - Sparse Jacobian builders and transient diagonal update.
 
-Con el layout por-punto entrelazado (state.py), la actualización transitoria
-reproduce exactamente MultiJac::updateTransient de Cantera:
-
-  J_transient[n, n] = J_steady[n, n] - mask[n] * rdt
-
-donde mask[n] = 1 si la variable n es diferencial (T interior, Y interior),
-y 0 en caso contrario (U, fronteras, punto de anclaje).
-
-El ancho de banda del sistema con n_sp especies y n_pts puntos es:
-  bw = 2 * n_vars   (n_vars = 2 + n_sp)
-igual que OneDim::m_bw en Cantera.
+Default assembly follows the Cantera OneDim::evalJacobian pattern:
+- perturb one state variable at a time
+- evaluate residual only on local rows (j-1, j, j+1)
+- fill a sparse Jacobian column from local finite differences
 """
 from __future__ import annotations
+
 import numpy as np
 from scipy import sparse
 from scipy.sparse.linalg import splu
@@ -22,26 +16,92 @@ from state import build_transient_mask
 
 
 # ---------------------------------------------------------------------------
-#  Jacobiano numérico sparse (3-coloring por puntos)
+#  Cantera-style local finite-difference Jacobian
 # ---------------------------------------------------------------------------
-def banded_jacobian(fun, x: np.ndarray, problem, eps: float = 1e-8) -> sparse.csr_matrix:
+def _banded_jacobian_cantera_local(fun, x: np.ndarray, problem, eps: float = 1e-5) -> sparse.csr_matrix:
     """
-    Jacobiano numérico banded usando 3-coloring por puntos.
+    Build steady Jacobian with Cantera-like local perturbations.
 
-    Dado que cada ecuación en el punto j sólo depende del estado en
-    los puntos j-1, j, j+1, se pueden perturbar todos los puntos del
-    mismo "color" (j % 3 == c) simultáneamente.
-
-    Coste: 3 evaluaciones del residual para construir el Jacobiano completo
-    (en lugar de n_vars * n_pts evaluaciones del método denso).
+    This mirrors OneDim::evalJacobian:
+    - base residual at x
+    - perturb one variable x[col]
+    - evaluate residual only for point neighborhood of col's grid point
+    - write local rows into Jacobian column
     """
+    from residual import residual_local_rows, build_local_jacobian_cache
+
     x = np.asarray(x, dtype=float)
     n_pts = int(problem.n_points)
     n_sp = int(problem.n_species)
     nv = 2 + n_sp
     n_total = n_pts * nv
 
-    F0 = fun(x, problem)
+    f0 = fun(x, problem)
+
+    rel_perturb = float(getattr(problem, "jacobian_rel_perturb", eps))
+    abs_perturb = float(getattr(problem, "jacobian_abs_perturb", 1e-10))
+    threshold = float(getattr(problem, "jacobian_threshold", 0.0))
+
+    rows_list: list[int] = []
+    cols_list: list[int] = []
+    vals_list: list[float] = []
+
+    xp = x.copy()
+    local_cache = build_local_jacobian_cache(x, problem)
+
+    for j in range(n_pts):
+        base = j * nv
+        for n in range(nv):
+            col = base + n
+            xsave = float(x[col])
+
+            dx = abs(xsave) * rel_perturb + abs_perturb
+            if dx <= 0.0:
+                dx = max(abs(rel_perturb), abs(eps), 1e-10)
+            if xsave < 0.0:
+                dx = -dx
+
+            xp[col] = xsave + dx
+            rdx = 1.0 / (xp[col] - xsave)
+
+            rows, f_local = residual_local_rows(xp, problem, j, cache=local_cache)
+            delta = f_local - f0[rows]
+
+            if threshold > 0.0:
+                keep = np.abs(delta) > threshold
+            else:
+                keep = np.ones(delta.size, dtype=bool)
+
+            # Keep diagonal entry even if tiny (as in Cantera condition).
+            kdiag = np.where(rows == col)[0]
+            if kdiag.size > 0:
+                keep[int(kdiag[0])] = True
+
+            if np.any(keep):
+                rows_nz = rows[keep]
+                vals_nz = delta[keep] * rdx
+                nnz = int(rows_nz.size)
+                rows_list.extend(rows_nz.tolist())
+                cols_list.extend([col] * nnz)
+                vals_list.extend(vals_nz.tolist())
+
+            xp[col] = xsave
+
+    jmat = sparse.coo_matrix((vals_list, (rows_list, cols_list)), shape=(n_total, n_total)).tocsr()
+    return jmat
+
+
+# ---------------------------------------------------------------------------
+#  Legacy 3-coloring Jacobian (fallback / debug)
+# ---------------------------------------------------------------------------
+def _banded_jacobian_coloring(fun, x: np.ndarray, problem, eps: float = 1e-8) -> sparse.csr_matrix:
+    x = np.asarray(x, dtype=float)
+    n_pts = int(problem.n_points)
+    n_sp = int(problem.n_species)
+    nv = 2 + n_sp
+    n_total = n_pts * nv
+
+    f0 = fun(x, problem)
     point_rows = [
         np.arange(max(0, j - 1) * nv, (min(n_pts - 1, j + 1) + 1) * nv, dtype=np.int32)
         for j in range(n_pts)
@@ -52,10 +112,6 @@ def banded_jacobian(fun, x: np.ndarray, problem, eps: float = 1e-8) -> sparse.cs
     vals_list: list[float] = []
     xp = x.copy()
 
-    # Loop: variable first, then 3-color over points.
-    # Within a point, all variables affect the same equations, so they CANNOT
-    # be perturbed simultaneously. Instead we fix the variable index and
-    # exploit that non-adjacent points don't interact (stencil j±1).
     for v_idx in range(nv):
         for color in range(3):
             pts = list(range(color, n_pts, 3))
@@ -73,110 +129,86 @@ def banded_jacobian(fun, x: np.ndarray, problem, eps: float = 1e-8) -> sparse.cs
                 dx_vals.append(dx)
                 cols.append(col_idx)
 
-            Fp = fun(xp, problem)
-            dF = Fp - F0
+            fp = fun(xp, problem)
+            df = fp - f0
 
             for idx, j in enumerate(pts):
                 rows = point_rows[j]
-                vals = dF[rows] / dx_vals[idx]
+                vals = df[rows] / dx_vals[idx]
                 nz = np.abs(vals) > 1e-30
                 if not np.any(nz):
                     continue
                 rows_nz = rows[nz]
                 vals_nz = vals[nz]
-                n_nz = int(rows_nz.size)
+                nnz = int(rows_nz.size)
                 rows_list.extend(rows_nz.tolist())
-                cols_list.extend([cols[idx]] * n_nz)
+                cols_list.extend([cols[idx]] * nnz)
                 vals_list.extend(vals_nz.tolist())
 
-    J = sparse.coo_matrix(
-        (vals_list, (rows_list, cols_list)),
-        shape=(n_total, n_total),
-    ).tocsr()
-    return J
+    jmat = sparse.coo_matrix((vals_list, (rows_list, cols_list)), shape=(n_total, n_total)).tocsr()
+    return jmat
 
 
 # ---------------------------------------------------------------------------
-#  Actualización transitoria (MultiJac::updateTransient)
+#  Public Jacobian API
 # ---------------------------------------------------------------------------
-def update_transient(J_ss: sparse.csr_matrix, mask: np.ndarray,
-                     rdt: float, inplace: bool = False) -> sparse.csr_matrix:
+def banded_jacobian(fun, x: np.ndarray, problem, eps: float = 1e-5) -> sparse.csr_matrix:
     """
-    Aplica el término transitorio al Jacobiano estacionario.
+    Build steady Jacobian.
 
-    Equivale a MultiJac::updateTransient(rdt, mask):
-      J_transient[n, n] = J_ss[n, n] - mask[n] * rdt
+    Modes (problem.jacobian_mode):
+    - "cantera_local" (default)
+    - "coloring"
+    """
+    mode = str(getattr(problem, "jacobian_mode", "cantera_local")).strip().lower()
+    if mode in ("coloring", "3color", "legacy"):
+        return _banded_jacobian_coloring(fun, x, problem, eps=eps)
+    return _banded_jacobian_cantera_local(fun, x, problem, eps=eps)
 
-    La operación es puramente diagonal porque estado y residual comparten
-    el mismo layout por-punto (estado.py).
 
-    Parámetros
-    ----------
-    J_ss : Jacobiano estacionario (sparse CSR)
-    mask : máscara transitoria (output de build_transient_mask)
-    rdt  : 1/dt
+def update_transient(j_ss: sparse.csr_matrix, mask: np.ndarray, rdt: float,
+                     inplace: bool = False) -> sparse.csr_matrix:
+    """
+    Apply MultiJac::updateTransient equivalent:
+        J_t[n,n] = J_ss[n,n] - mask[n] * rdt
     """
     if rdt <= 0.0:
-        return J_ss
+        return j_ss
 
-    # Actualizacion diagonal vectorizada (evita bucle Python por indice).
-    J_t = J_ss if inplace else J_ss.copy()
-    d = J_t.diagonal()
+    j_t = j_ss if inplace else j_ss.copy()
+    d = j_t.diagonal()
     d -= np.asarray(mask, dtype=float) * float(rdt)
-    J_t.setdiag(d)
-    return J_t
+    j_t.setdiag(d)
+    return j_t
 
 
 def build_jacobian_steady(fun, x: np.ndarray, problem,
-                          eps: float = 1e-8) -> tuple[sparse.csr_matrix, np.ndarray]:
-    """
-    Construye el Jacobiano estacionario y devuelve también su diagonal
-    (equivalente a m_ssdiag en MultiJac).
-
-    Retorna
-    -------
-    J  : Jacobiano estacionario (CSR)
-    ss_diag : diagonal de J (para updateTransient posterior)
-    """
-    J = banded_jacobian(fun, x, problem, eps=eps)
-    ss_diag = J.diagonal().copy()
-    return J, ss_diag
+                          eps: float = 1e-5) -> tuple[sparse.csr_matrix, np.ndarray]:
+    j_ss = banded_jacobian(fun, x, problem, eps=eps)
+    ss_diag = j_ss.diagonal().copy()
+    return j_ss, ss_diag
 
 
 def build_jacobian_transient(fun, x: np.ndarray, problem, rdt: float,
-                              eps: float = 1e-8) -> sparse.csr_matrix:
-    """
-    Construye el Jacobiano transitorio completo en un paso.
-
-    Equivale a la secuencia Cantera:
-      1. evalJacobian(x)           → Jacobiano estacionario
-      2. jac->updateTransient(rdt, transientMask())
-    """
-    J_ss, _ = build_jacobian_steady(fun, x, problem, eps=eps)
+                             eps: float = 1e-5) -> sparse.csr_matrix:
+    j_ss, _ = build_jacobian_steady(fun, x, problem, eps=eps)
     mask = build_transient_mask(problem.n_points, problem.n_species,
                                 solve_energy=bool(problem.solve_energy))
-    return update_transient(J_ss, mask, rdt)
+    return update_transient(j_ss, mask, rdt)
 
 
 # ---------------------------------------------------------------------------
-#  Solver sparse (wrapper conveniente)
+#  Sparse linear solver wrappers
 # ---------------------------------------------------------------------------
-def factorize(J: sparse.csr_matrix) -> dict:
-    """
-    Construye el resolvedor LU directo para el Jacobiano.
-    """
-    Jcsc = J.tocsc()
+def factorize(jmat: sparse.csr_matrix) -> dict:
+    j_csc = jmat.tocsc()
     return {
         "method": "direct",
-        "solver": splu(Jcsc, permc_spec="COLAMD"),
+        "solver": splu(j_csc, permc_spec="COLAMD"),
     }
 
 
 def solve_linear(linear_state, rhs: np.ndarray) -> np.ndarray:
-    """Resuelve sistema lineal usando LU directo."""
-    # Compatibilidad hacia atrás (si llega un objeto LU directo).
     if hasattr(linear_state, "solve") and not isinstance(linear_state, dict):
         return linear_state.solve(rhs)
     return linear_state["solver"].solve(rhs)
-
-

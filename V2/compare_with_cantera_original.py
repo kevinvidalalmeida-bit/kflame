@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import time
 import warnings
+from dataclasses import replace
 
 import numpy as np
 import cantera as ct
@@ -174,16 +175,17 @@ def main():
     if args.run_ours:
         from solver_cantera_auto import solve_free_flame, SolveOptions
         print("\n=== Nuestro solver (malla propia) ===")
-        p2 = FreeFlameProblem(case, n_points=8)
+        case_ours = replace(case, width=float(z[-1] - z[0]))
+        p2 = FreeFlameProblem(case_ours, n_points=8)
         p2.backend = SpeciesBackend(p2)
         # Usar los mismos criterios de refinamiento definidos en `case`
         # para comparar Cantera vs solver propio en condiciones equivalentes.
         opts = SolveOptions(
             verbose=True,
-            refine_ratio=case.ratio,
-            refine_slope=case.slope,
-            refine_curve=case.curve,
-            refine_prune=case.prune,
+            refine_ratio=case_ours.ratio,
+            refine_slope=case_ours.slope,
+            refine_curve=case_ours.curve,
+            refine_prune=case_ours.prune,
         )
         t0 = time.perf_counter()
         x_sol, ok, rpt = solve_free_flame(p2, options=opts)
@@ -191,6 +193,7 @@ def main():
         u_s, T_s, _ = unpack_state(x_sol, p2.n_points, p2.n_species)
         print(f"\n  converged    = {ok}")
         print(f"  n_points     = {p2.n_points}")
+        print(f"  width [m]    = {p2.width:.6f}")
         print(f"  Su (~u[0])   = {u_s[0]:.6f} m/s")
         print(f"  ||F||inf       = {rpt['Finf_final']:.6e}")
         print(f"  tiempo [s]   = {t_total:.1f}")
@@ -203,6 +206,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
 
 
 

@@ -301,3 +301,289 @@ def residual_block_report(x: np.ndarray, problem) -> dict:
     }
 
 
+
+
+# ---------------------------------------------------------------------------
+#  Evaluacion local tipo Cantera (OneDim::eval(j, ...))
+# ---------------------------------------------------------------------------
+def _to_numpy(arr):
+    return arr.get() if hasattr(arr, "get") else arr
+
+
+def build_local_jacobian_cache(x: np.ndarray, problem) -> dict:
+    """
+    Build cache used by local Jacobian evaluations.
+
+    Fidelity note:
+    - Thermodynamic/kinetic nodal properties are available and may be updated
+      locally per perturbed point.
+    - Transport properties are frozen from the base state, matching Cantera's
+      Jacobian path where transport is not updated by default during eval(j,...).
+    """
+    x = np.asarray(x, dtype=float)
+    n_pts = int(problem.n_points)
+    n_sp = int(problem.n_species)
+
+    backend = problem.backend
+    z = problem.z
+    W = np.asarray(backend.W, dtype=float)
+    invW = np.asarray(backend.invW, dtype=float)
+    basis = str(getattr(problem, "flux_gradient_basis", "molar")).lower()
+
+    u, T, Y = unpack_state(x, n_pts, n_sp)
+
+    # Nodal thermo/kinetics at base state
+    rho = np.empty(n_pts, dtype=float)
+    cp_n = np.empty(n_pts, dtype=float)
+    lam_n = np.empty(n_pts, dtype=float)
+    omega = np.empty((n_sp, n_pts), dtype=float)
+    hk_n = np.empty((n_sp, n_pts), dtype=float)
+
+    if hasattr(backend, "eval_grid_into"):
+        rho_g, _, cp_g, lam_g = backend.eval_grid_into(T, Y, omega, hk_n)
+        rho[:] = _to_numpy(rho_g)
+        cp_n[:] = _to_numpy(cp_g)
+        lam_n[:] = _to_numpy(lam_g)
+        omega[:] = _to_numpy(omega)
+        hk_n[:] = _to_numpy(hk_n)
+    else:
+        eval_node_into = backend.eval_node_into
+        for j in range(n_pts):
+            rho[j], _, cp_n[j], lam_n[j] = eval_node_into(T[j], Y[:, j], omega[:, j], hk_n[:, j])
+
+    # Face transport at base state (frozen during local Jacobian eval)
+    n_faces = max(0, n_pts - 1)
+    lam_face = np.empty(n_faces, dtype=float)
+    face_coeff = np.empty((n_sp, n_faces), dtype=float)
+    dz_face = z[1:] - z[:-1]
+
+    if n_faces > 0:
+        if hasattr(backend, "eval_faces"):
+            T_face = 0.5 * (T[:-1] + T[1:])
+            Y_face = 0.5 * (Y[:, :-1] + Y[:, 1:])
+            rho_f, D_f, lam_f, W_mix_f = backend.eval_faces(T_face, Y_face)
+            rho_f = _to_numpy(rho_f)
+            D_f = _to_numpy(D_f)
+            lam_f = _to_numpy(lam_f)
+            W_mix_f = _to_numpy(W_mix_f)
+            lam_face[:] = lam_f
+            if basis in ("molar", "mole"):
+                face_coeff[:] = rho_f[None, :] * (W[:, None] / W_mix_f[None, :]) * D_f
+            else:
+                face_coeff[:] = rho_f[None, :] * D_f
+        else:
+            eval_face = backend.eval_midpoint_full_transport
+            for jf in range(n_faces):
+                rho_f, D_f, lam_f, W_mix_f = eval_face(T[jf], T[jf + 1], Y[:, jf], Y[:, jf + 1])
+                lam_face[jf] = lam_f
+                if basis in ("molar", "mole"):
+                    face_coeff[:, jf] = rho_f * (W / W_mix_f) * D_f
+                else:
+                    face_coeff[:, jf] = rho_f * D_f
+
+    return {
+        "n_pts": n_pts,
+        "n_sp": n_sp,
+        "nv": 2 + n_sp,
+        "z": np.asarray(z, dtype=float),
+        "W": W,
+        "invW": invW,
+        "basis": basis,
+        "rho": rho,
+        "cp_n": cp_n,
+        "lam_n": lam_n,
+        "omega": omega,
+        "hk_n": hk_n,
+        "lam_face": lam_face,
+        "face_coeff": face_coeff,
+        "dz_face": dz_face,
+    }
+
+
+def _corrected_flux_frozen(Y_L: np.ndarray, Y_R: np.ndarray,
+                           face_coeff: np.ndarray, dz: np.ndarray,
+                           W: np.ndarray, basis: str) -> np.ndarray:
+    """
+    Corrected diffusive flux with frozen transport coefficients.
+    """
+    if basis in ("molar", "mole"):
+        W_mix_L = 1.0 / np.sum(Y_L / W[:, None], axis=0)
+        W_mix_R = 1.0 / np.sum(Y_R / W[:, None], axis=0)
+        X_L = Y_L * (W_mix_L[None, :] / W[:, None])
+        X_R = Y_R * (W_mix_R[None, :] / W[:, None])
+        dphi = (X_R - X_L) / dz[None, :]
+    else:
+        dphi = (Y_R - Y_L) / dz[None, :]
+
+    J_star = -face_coeff * dphi
+    return J_star - Y_L * np.sum(J_star, axis=0, keepdims=True)
+
+
+def residual_local_rows(x: np.ndarray, problem, center_j: int,
+                        cache: dict | None = None):
+    """
+    Evaluate only residual rows affected by perturbation at point center_j.
+
+    Returns
+    -------
+    rows : ndarray[int]
+    vals : ndarray[float]
+    """
+    x = np.asarray(x, dtype=float)
+
+    if cache is None:
+        cache = build_local_jacobian_cache(x, problem)
+
+    n_pts = int(cache["n_pts"])
+    n_sp = int(cache["n_sp"])
+    nv = int(cache["nv"])
+
+    if n_pts < 2:
+        raise ValueError("Se requieren al menos 2 puntos de malla.")
+
+    z = cache["z"]
+    W = cache["W"]
+    invW = cache["invW"]
+    basis = cache["basis"]
+    solve_energy = bool(problem.solve_energy)
+    j_fixed = problem.j_fixed
+    T_prof = getattr(problem, "T_profile_fixed", None)
+    T_in = float(problem.T_in)
+    Y_in = problem.Y_in
+
+    u, T, Y = unpack_state(x, n_pts, n_sp)
+
+    j_center = int(np.clip(center_j, 0, n_pts - 1))
+    p0 = max(0, j_center - 1)
+    p1 = min(n_pts - 1, j_center + 1)
+
+    # Needed node range for equations p0..p1
+    n0 = max(0, p0 - 1)
+    n1 = min(n_pts - 1, p1 + 1)
+
+    # Start from cached base nodal properties
+    rho_local = cache["rho"][n0:n1 + 1].copy()
+    cp_local = cache["cp_n"][n0:n1 + 1].copy()
+    omega_local = cache["omega"][:, n0:n1 + 1].copy()
+    hk_local = cache["hk_n"][:, n0:n1 + 1].copy()
+
+    # Recompute only perturbed node thermo/kinetics (strictly enough + faster)
+    eval_node_into = problem.backend.eval_node_into
+    j = j_center
+    if n0 <= j <= n1:
+        jl = j - n0
+        om = np.empty(n_sp, dtype=float)
+        hk = np.empty(n_sp, dtype=float)
+        rhoj, _, cpj, _ = eval_node_into(T[j], Y[:, j], om, hk)
+        rho_local[jl] = rhoj
+        cp_local[jl] = cpj
+        omega_local[:, jl] = om
+        hk_local[:, jl] = hk
+
+    off = -n0
+
+    # Needed face range
+    f0 = max(0, p0 - 1)
+    f1 = min(n_pts - 2, p1)
+    n_faces = f1 - f0 + 1
+
+    flux_local = np.empty((n_sp, n_faces), dtype=float)
+    if n_faces > 0:
+        YL = Y[:, f0:f1 + 1]
+        YR = Y[:, f0 + 1:f1 + 2]
+        dz = cache["dz_face"][f0:f1 + 1]
+        coeff = cache["face_coeff"][:, f0:f1 + 1]
+        flux_local[:] = _corrected_flux_frozen(YL, YR, coeff, dz, W, basis)
+
+    lam_face = cache["lam_face"]
+
+    n_blocks = p1 - p0 + 1
+    rows_out = np.empty(n_blocks * nv, dtype=np.int32)
+    vals_out = np.empty(n_blocks * nv, dtype=float)
+    row_block = np.arange(nv, dtype=np.int32)
+    out_i = 0
+
+    for j in range(p0, p1 + 1):
+        b = j * nv
+        sl = slice(out_i, out_i + nv)
+        rows_out[sl] = b + row_block
+        block = vals_out[sl]
+
+        if j == 0:
+            dz0 = z[1] - z[0]
+            rho0 = rho_local[0 + off]
+            rho1 = rho_local[1 + off]
+            block[C_U] = -(rho1 * u[1] - rho0 * u[0]) / dz0
+
+            if solve_energy:
+                block[C_T] = T[0] - T_in
+            else:
+                block[C_T] = T[0] - (float(T_prof[0]) if T_prof is not None else T_in)
+
+            mdot_in = rho0 * u[0]
+            flux0 = flux_local[:, 0 - f0]
+            block[C_Y:C_Y + n_sp] = (-(flux0 + mdot_in * Y[:, 0]) + mdot_in * Y_in)
+            k_exc = int(np.argmax(Y[:, 0]))
+            block[C_Y + k_exc] = 1.0 - float(Y[:, 0].sum())
+
+        elif j == n_pts - 1:
+            rho_n = rho_local[(n_pts - 1) + off]
+            rho_nm1 = rho_local[(n_pts - 2) + off]
+            block[C_U] = rho_n * u[-1] - rho_nm1 * u[-2]
+
+            if solve_energy:
+                block[C_T] = T[-1] - T[-2]
+            else:
+                block[C_T] = T[-1] - (float(T_prof[-1]) if T_prof is not None else T[-2])
+
+            k_exc = int(np.argmax(Y[:, -1]))
+            block[C_Y:C_Y + n_sp] = Y[:, -1] - Y[:, -2]
+            block[C_Y + k_exc] = 1.0 - float(Y[:, -1].sum())
+
+        else:
+            dzm = z[j] - z[j - 1]
+            dzp = z[j + 1] - z[j]
+            dz2 = z[j + 1] - z[j - 1]
+            fm = flux_local[:, (j - 1) - f0]
+            fp = flux_local[:, j - f0]
+            jo = j + off
+
+            if j_fixed is not None and j == j_fixed:
+                block[C_U] = T[j] - float(problem.T_fixed_point)
+            elif j_fixed is not None and j > j_fixed:
+                block[C_U] = -(rho_local[jo] * u[j] - rho_local[jo - 1] * u[j - 1]) / dzm
+            else:
+                block[C_U] = -(rho_local[jo + 1] * u[j + 1] - rho_local[jo] * u[j]) / dzp
+
+            rho_j = rho_local[jo]
+            rho_u_j = rho_j * u[j]
+            jloc = j if u[j] > 0.0 else j + 1
+            dz_up = z[jloc] - z[jloc - 1]
+
+            if solve_energy:
+                dTdz = (T[jloc] - T[jloc - 1]) / dz_up
+
+                lam_m = lam_face[j - 1]
+                lam_p = lam_face[j]
+                cond = -2.0 * (lam_p * (T[j + 1] - T[j]) / dzp - lam_m * (T[j] - T[j - 1]) / dzm) / dz2
+
+                jloc_o = jloc + off
+                hk_j = hk_local[:, jo]
+                om_j = omega_local[:, jo]
+                dhk_dz = (hk_local[:, jloc_o] - hk_local[:, jloc_o - 1]) / dz_up
+                flx = 0.5 * (fm + fp)
+                en_sum = float(np.dot(hk_j * om_j, invW) + np.dot(flx * dhk_dz, invW))
+                cp_j = cp_local[jo]
+                block[C_T] = (-cp_j * rho_u_j * dTdz - cond - en_sum) / (rho_j * cp_j)
+            else:
+                block[C_T] = T[j] - (T_prof[j] if T_prof is not None else T_in)
+
+            om_j = omega_local[:, jo]
+            dYdz = (Y[:, jloc] - Y[:, jloc - 1]) / dz_up
+            conv = rho_u_j * dYdz
+            diff = 2.0 * (fp - fm) / dz2
+            block[C_Y:C_Y + n_sp] = (om_j - conv - diff) / rho_j
+
+        out_i += nv
+
+    return rows_out, vals_out

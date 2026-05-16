@@ -50,7 +50,10 @@ class SolveOptions:
     max_jac_age: int = 5
     max_damp_iter: int = 7
     tol: float = 1.0          # norma ponderada del paso (igual que Cantera)
-    jac_eps: float = 1e-8
+    jac_eps: float = 1e-5
+    jac_abs_perturb: float = 1e-10
+    jac_threshold: float = 0.0
+    jacobian_mode: str = "cantera_local"
     alpha_min: float = 1e-10
 
     # Time-stepping (híbrido)
@@ -100,6 +103,12 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
     """
     x = np.asarray(x0, dtype=float)
     history: list[dict] = []
+    # Jacobian finite-difference settings (Cantera-like).
+    problem.jacobian_rel_perturb = float(getattr(opts, "jac_eps", 1e-5))
+    problem.jacobian_abs_perturb = float(getattr(opts, "jac_abs_perturb", 1e-10))
+    problem.jacobian_threshold = float(getattr(opts, "jac_threshold", 0.0))
+    problem.jacobian_mode = str(getattr(opts, "jacobian_mode", "cantera_local"))
+
     steady_fun = _make_steady_fun(problem)
     jac: JacobianState | None = None
     dt = opts.time_step
