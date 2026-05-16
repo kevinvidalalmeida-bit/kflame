@@ -16,10 +16,21 @@ from __future__ import annotations
 import math
 import numpy as np
 from mechanism_data import MechanismData, R_UNIV, BOLTZMANN, AVOGADRO
+import json
+from pathlib import Path
 
 # Physical constants
 PI = math.pi
 EPSILON_0 = 8.854187817e-12  # vacuum permittivity [F/m]
+
+# Load pre-exported Cantera transport polynomials (ln(T) basis)
+_TRANSPORT_POLY_FILE = Path(__file__).parent / "cantera_transport_poly_coeffs.json"
+try:
+    with open(_TRANSPORT_POLY_FILE, "r", encoding="utf-8") as f:
+        _CANTERA_TRANSPORT_POLY = json.load(f)
+except FileNotFoundError:
+    _CANTERA_TRANSPORT_POLY = None
+    print(f"Warning: Cantera transport polynomial file not found at {_TRANSPORT_POLY_FILE}")
 
 class NativeTransport:
     """
@@ -31,6 +42,7 @@ class NativeTransport:
         import numpy as np
         self.xp = xp if xp is not None else np
         
+        self.mech = mech  # Store mechanism reference for species names
         n = mech.n_species
         self.n_sp = n
         self.mw = self.xp.asarray(mech.molecular_weights)   # kg/kmol
@@ -110,6 +122,40 @@ class NativeTransport:
         self._wratjk = self.xp.asarray(_wratjk)
 
         self._tiny = 1e-300
+        self._has_transport_poly = _CANTERA_TRANSPORT_POLY is not None
+        self._init_cantera_transport_poly()
+
+    def _init_cantera_transport_poly(self):
+        """Load Cantera transport polynomial coefficients (ln(T) basis) if available."""
+        n = self.n_sp
+        visc_cpu = np.zeros((n, 5), dtype=float)
+        cond_cpu = np.zeros((n, 5), dtype=float)
+        has_visc = np.zeros(n, dtype=bool)
+        has_cond = np.zeros(n, dtype=bool)
+
+        if self._has_transport_poly:
+            species_data = _CANTERA_TRANSPORT_POLY.get("species", {})
+            for i, name in enumerate(self.mech.species_names):
+                entry = species_data.get(name, None)
+                if entry is None:
+                    continue
+
+                vc = entry.get("visc_coeffs", None)
+                cc = entry.get("cond_coeffs", None)
+
+                if vc is not None and len(vc) >= 5:
+                    visc_cpu[i, :] = np.asarray(vc[:5], dtype=float)
+                    has_visc[i] = True
+                if cc is not None and len(cc) >= 5:
+                    cond_cpu[i, :] = np.asarray(cc[:5], dtype=float)
+                    has_cond[i] = True
+
+        self._visc_poly = self.xp.asarray(visc_cpu)
+        self._cond_poly = self.xp.asarray(cond_cpu)
+        self._has_visc_poly_cpu = has_visc
+        self._has_cond_poly_cpu = has_cond
+        self._has_visc_poly = self.xp.asarray(has_visc)
+        self._has_cond_poly = self.xp.asarray(has_cond)
 
     def _omega_22(self, Tstar):
         return (1.16145 * self.xp.power(Tstar, -0.14874)
@@ -133,38 +179,92 @@ class NativeTransport:
     # ------------------------------------------------------------------
     #  Pure-species viscosity  (Chapman-Enskog)
     # ------------------------------------------------------------------
-    def species_viscosities(self, T) -> np.ndarray:
-        """Pure-species viscosities [Pa·s]. Shape (n_sp,) or (n_sp, N)."""
+    def _species_viscosities_chapman(self, T):
+        """Fallback Chapman-Enskog pure-species viscosities [Pa?s]."""
         T_arr = self.xp.asarray(T, dtype=float)
         is_grid = self._is_grid(T)
         if not is_grid:
             T_arr = T_arr[None]
-            
+
         eps_safe = self.xp.maximum(self.eps, 1e-100)
         Tstar = T_arr[None, :] / eps_safe[:, None]
         om22 = self._omega_22(Tstar)
-        
+
         mk = self.mw_kg[:, None]
         visc = (5.0 / 16.0 * self.xp.sqrt(PI * mk * BOLTZMANN * T_arr[None, :])
                 / (PI * self.sigma[:, None]**2 * om22))
-        
+
         res = self.xp.where(self.eps[:, None] < 1e-100, 1e-10, visc)
         return res if is_grid else res[:, 0]
+
+    def species_viscosities(self, T) -> np.ndarray:
+        """
+        Pure-species viscosities [Pa?s]. Shape (n_sp,) or (n_sp, N).
+        Uses Cantera's ln(T)-basis polynomial form when coefficients are available.
+        """
+        T_arr = self.xp.asarray(T, dtype=float)
+        is_grid = self._is_grid(T)
+        if not is_grid:
+            T_arr = T_arr[None]
+
+        if bool(self._has_visc_poly_cpu.all()):
+            logT = self.xp.log(T_arr)
+            poly = (
+                self._visc_poly[:, 0, None]
+                + logT[None, :] * (
+                    self._visc_poly[:, 1, None]
+                    + logT[None, :] * (
+                        self._visc_poly[:, 2, None]
+                        + logT[None, :] * (
+                            self._visc_poly[:, 3, None]
+                            + logT[None, :] * self._visc_poly[:, 4, None]
+                        )
+                    )
+                )
+            )
+            sqvisc = self.xp.power(T_arr[None, :], 0.25) * poly
+            visc = sqvisc * sqvisc
+            return visc if is_grid else visc[:, 0]
+
+        # Partial fallback for missing entries
+        visc = self._species_viscosities_chapman(T_arr if is_grid else T_arr[0])
+        if bool(self._has_visc_poly_cpu.any()):
+            logT = self.xp.log(T_arr)
+            poly = (
+                self._visc_poly[:, 0, None]
+                + logT[None, :] * (
+                    self._visc_poly[:, 1, None]
+                    + logT[None, :] * (
+                        self._visc_poly[:, 2, None]
+                        + logT[None, :] * (
+                            self._visc_poly[:, 3, None]
+                            + logT[None, :] * self._visc_poly[:, 4, None]
+                        )
+                    )
+                )
+            )
+            sqvisc = self.xp.power(T_arr[None, :], 0.25) * poly
+            visc_poly = sqvisc * sqvisc
+            mask = self._has_visc_poly[:, None]
+            visc = self.xp.where(mask, visc_poly, visc)
+
+        return visc if is_grid else visc[:, 0]
 
     # ------------------------------------------------------------------
     #  Mixture viscosity (Wilke)
     # ------------------------------------------------------------------
     def viscosity(self, T, X: np.ndarray):
-        """Mixture viscosity [Pa·s] using Wilke mixing rule."""
+        """Mixture viscosity [Pa·s] using Wilke mixing rule (Chapman-Enskog)."""
         visc_k = self.species_viscosities(T)
         is_grid = self._is_grid(T)
         
-        mw_ratio = self.mw[None, :] / self.mw[:, None]  # [j, k] = W_k / W_j
+        mw_ratio = self.mw[None, :] / self.mw[:, None]  # [j, k] = W_j / W_k
         
         if is_grid:
             ratio_v = visc_k[:, None, :] / self.xp.maximum(visc_k[None, :, :], 1e-300)
             mw_r_3d = mw_ratio[:, :, None]
-            factor1 = 1.0 + self.xp.sqrt(ratio_v) * (mw_r_3d ** 0.25)
+            # Wilke: Φ[k,j] = (1 + sqrt(μ_k/μ_j) * (W_j/W_k)^(1/4))² / sqrt(8(1 + W_k/W_j))
+            factor1 = 1.0 + self.xp.sqrt(ratio_v) * self.xp.power(mw_r_3d, 0.25)
             Phi = factor1**2 / self.xp.sqrt(8.0 * (1.0 + 1.0 / mw_r_3d))
             denom = self.xp.sum(X[None, :, :] * Phi, axis=1)
             Xsafe = self.xp.maximum(X, self._tiny)
@@ -172,65 +272,119 @@ class NativeTransport:
             return mix_visc
         else:
             ratio_v = visc_k[:, None] / self.xp.maximum(visc_k[None, :], 1e-300)
-            factor1 = 1.0 + self.xp.sqrt(ratio_v) * (mw_ratio ** 0.25)
+            factor1 = 1.0 + self.xp.sqrt(ratio_v) * self.xp.power(mw_ratio, 0.25)
             Phi = factor1**2 / self.xp.sqrt(8.0 * (1.0 + 1.0 / mw_ratio))
             denom = Phi @ X
             Xsafe = self.xp.maximum(X, self._tiny)
             return float(self.xp.sum((Xsafe * visc_k) / self.xp.maximum(denom, self._tiny)))
 
     # ------------------------------------------------------------------
-    #  Pure-species thermal conductivity (Eucken / Mathur)
+    #  Pure-species thermal conductivity (Empirical Cantera polynomials)
     # ------------------------------------------------------------------
-    def species_conductivities(self, T, cp_R: np.ndarray) -> np.ndarray:
-        """Pure-species thermal conductivities [W/(m·K)]."""
+    def _species_conductivities_eucken(self, T, cp_R: np.ndarray) -> np.ndarray:
+        """Fallback Eucken/Mathur pure-species conductivity model [W/(m?K)]."""
         T_arr = self.xp.asarray(T, dtype=float)
         is_grid = self._is_grid(T)
+        cp_R_arr = self.xp.asarray(cp_R, dtype=float)
+
         if not is_grid:
             T_arr = T_arr[None]
-            cp_R = cp_R[:, None]
-            
+            cp_R_arr = cp_R_arr[:, None]
+
         eps_safe = self.xp.maximum(self.eps, 1e-100)
         Tstar = T_arr[None, :] / eps_safe[:, None]
         om11 = self._omega_11(Tstar)
-        
-        visc_k = self.species_viscosities(T)
+
+        visc_k = self._species_viscosities_chapman(T)
         if not is_grid:
             visc_k = visc_k[:, None]
-            
+
         red_mass_self = self.xp.diag(self._reduced_mass)[:, None]
         diff_self = (3.0 / 16.0 * self.xp.sqrt(2.0 * PI / self.xp.maximum(red_mass_self, 1e-100))
                      * (BOLTZMANN * T_arr[None, :]) ** 1.5
                      / (PI * self.sigma[:, None]**2 * om11))
-                     
+
         f_int = self.mw[:, None] / (R_UNIV * T_arr[None, :]) * diff_self / self.xp.maximum(visc_k, 1e-300)
-        
+
         cv_rot = self.crot[:, None]
         A_factor = 2.5 - f_int
-        
+
         Tstar_298 = 298.0 / eps_safe[:, None]
-        fz_298 = (1.0 + PI**1.5 / self.xp.sqrt(Tstar_298) * (0.5 + 1.0 / Tstar_298) 
+        fz_298 = (1.0 + PI**1.5 / self.xp.sqrt(Tstar_298) * (0.5 + 1.0 / Tstar_298)
                   + (0.25 * PI**2 + 2) / Tstar_298)
-                  
-        fz_T = (1.0 + PI**1.5 / self.xp.sqrt(Tstar) * (0.5 + 1.0 / Tstar) 
+
+        fz_T = (1.0 + PI**1.5 / self.xp.sqrt(Tstar) * (0.5 + 1.0 / Tstar)
                 + (0.25 * PI**2 + 2) / Tstar)
-                
-        B_factor = (self.zrot[:, None] * fz_298 / self.xp.maximum(fz_T, 1e-30) 
+
+        B_factor = (self.zrot[:, None] * fz_298 / self.xp.maximum(fz_T, 1e-30)
                     + 2.0 / PI * (5.0 / 3.0 * cv_rot + f_int))
-                    
+
         c1 = 2.0 / PI * A_factor / self.xp.maximum(B_factor, 1e-30)
-        cv_int = cp_R - 2.5 - cv_rot
+        cv_int = cp_R_arr - 2.5 - cv_rot
         f_rot = f_int * (1.0 + c1)
         f_trans = 2.5 * (1.0 - c1 * cv_rot / 1.5)
-        
+
         cond = (visc_k / self.mw[:, None]) * R_UNIV * (f_trans * 1.5 + f_rot * cv_rot + f_int * cv_int)
-        res = self.xp.where(self.eps[:, None] < 1e-100, 1e-10, cond)
-        
-        return res if is_grid else res[:, 0]
+        cond = self.xp.where(self.eps[:, None] < 1e-100, 1e-10, cond)
+        return cond if is_grid else cond[:, 0]
+
+    def species_conductivities(self, T, cp_R: np.ndarray = None) -> np.ndarray:
+        """
+        Pure-species thermal conductivities [W/(m?K)].
+        Uses Cantera's ln(T)-basis polynomial form when coefficients are available.
+        """
+        T_arr = self.xp.asarray(T, dtype=float)
+        is_grid = self._is_grid(T)
+        if not is_grid:
+            T_arr = T_arr[None]
+
+        if bool(self._has_cond_poly_cpu.all()):
+            logT = self.xp.log(T_arr)
+            poly = (
+                self._cond_poly[:, 0, None]
+                + logT[None, :] * (
+                    self._cond_poly[:, 1, None]
+                    + logT[None, :] * (
+                        self._cond_poly[:, 2, None]
+                        + logT[None, :] * (
+                            self._cond_poly[:, 3, None]
+                            + logT[None, :] * self._cond_poly[:, 4, None]
+                        )
+                    )
+                )
+            )
+            cond = self.xp.sqrt(T_arr[None, :]) * poly
+            return cond if is_grid else cond[:, 0]
+
+        if cp_R is None:
+            raise ValueError('cp_R is required when Cantera conductivity polynomials are unavailable.')
+
+        cond = self._species_conductivities_eucken(T, cp_R)
+        if bool(self._has_cond_poly_cpu.any()):
+            logT = self.xp.log(T_arr)
+            poly = (
+                self._cond_poly[:, 0, None]
+                + logT[None, :] * (
+                    self._cond_poly[:, 1, None]
+                    + logT[None, :] * (
+                        self._cond_poly[:, 2, None]
+                        + logT[None, :] * (
+                            self._cond_poly[:, 3, None]
+                            + logT[None, :] * self._cond_poly[:, 4, None]
+                        )
+                    )
+                )
+            )
+            cond_poly = self.xp.sqrt(T_arr[None, :]) * poly
+            mask = self._has_cond_poly[:, None]
+            cond = self.xp.where(mask, cond_poly, cond if is_grid else cond[:, None])
+
+        return cond if is_grid else cond[:, 0]
 
     # ------------------------------------------------------------------
     #  Mixture thermal conductivity
     # ------------------------------------------------------------------
-    def thermal_conductivity(self, T, X: np.ndarray, cp_R: np.ndarray):
+    def thermal_conductivity(self, T, X: np.ndarray, cp_R: np.ndarray = None):
         """Mixture thermal conductivity [W/(m·K)]."""
         cond_k = self.species_conductivities(T, cp_R)
         Xsafe = self.xp.maximum(X, self._tiny)
@@ -318,3 +472,5 @@ class NativeTransport:
         lam = self.thermal_conductivity(T, X, cp_R)
         Dm  = self.mix_diff_coeffs(T, P, X)
         return mu, lam, Dm, X
+
+

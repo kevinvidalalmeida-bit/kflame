@@ -116,6 +116,20 @@ def main():
             Dm_c  = np.asarray(gas.mix_diff_coeffs)
             wdot_c = np.asarray(gas.net_production_rates)  # kmol/(m³·s)
 
+            # Pure-species viscosities and conductivities (debug)
+            visc_pure_c = []
+            cond_pure_c = []
+            for i in range(gas.n_species):
+                gas_i = ct.Solution("gri30.yaml")
+                gas_i.TP = T, 101325.0
+                gas_i.X = [1.0 if j == i else 0.0 for j in range(gas.n_species)]
+                visc_pure_c.append(gas_i.viscosity)
+                cond_pure_c.append(gas_i.thermal_conductivity)
+            visc_pure_c = np.array(visc_pure_c)
+            cond_pure_c = np.array(cond_pure_c)
+            visc_pure_n = np.asarray(transport.species_viscosities(T))
+            cond_pure_n = np.asarray(transport.species_conductivities(T))
+
             print(f"\n  Cantera: ρ = {rho_c:.6f}")
             print(f"  Cantera: cp = {cp_c:.4f}")
             print(f"  Cantera: μ = {mu_c:.6e}")
@@ -123,6 +137,17 @@ def main():
             print(f"  Cantera: D_CH4 = {Dm_c[sp['CH4']]:.6e}")
             print(f"  Cantera: ẇ_CH4 = {wdot_c[sp['CH4']]:.6e}")
             print(f"  Cantera: ẇ_OH  = {wdot_c[sp['OH']]:.6e}")
+            
+            # Compare pure-species transport
+            print(f"\n  Pure-species transport (Native vs Cantera):")
+            print(f"    Viscosity [Pa·s]:")
+            print(f"      CH4: {visc_pure_n[sp['CH4']]:.6e} vs {visc_pure_c[sp['CH4']]:.6e}")
+            print(f"      O2:  {visc_pure_n[sp['O2']]:.6e} vs {visc_pure_c[sp['O2']]:.6e}")
+            print(f"      N2:  {visc_pure_n[sp['N2']]:.6e} vs {visc_pure_c[sp['N2']]:.6e}")
+            print(f"    Conductivity [W/(m·K)]:")
+            print(f"      CH4: {cond_pure_n[sp['CH4']]:.6e} vs {cond_pure_c[sp['CH4']]:.6e}")
+            print(f"      O2:  {cond_pure_n[sp['O2']]:.6e} vs {cond_pure_c[sp['O2']]:.6e}")
+            print(f"      N2:  {cond_pure_n[sp['N2']]:.6e} vs {cond_pure_c[sp['N2']]:.6e}")
 
             # Errors
             err_rho = abs(rho_n - rho_c) / max(abs(rho_c), 1e-30)
@@ -155,28 +180,30 @@ def main():
 
     # ── Speed benchmark ────────────────────────────────────────────────
     print(f"\n{'=' * 60}")
-    print("  Speed benchmark (1000 evaluations)")
+    print("  Speed benchmark (1000 evaluations – vectorized)")
     print(f"{'=' * 60}")
 
     T_bench, Y_bench = 1500.0, Y2
+    n_evals = 1000
+
+    # ── VECTORIZED benchmark (1000 states at once) ─────────────────────
+    T_vec = np.full(n_evals, T_bench, dtype=float)           # (1000,)
+    Y_vec = np.repeat(Y_bench[:, np.newaxis], n_evals, axis=1)  # (n_sp, 1000)
 
     t0 = time.perf_counter()
-    for _ in range(1000):
-        rho = thermo.density(T_bench, P, Y_bench)
-        cp = thermo.cp_mass(T_bench, Y_bench)
-        hk = thermo.partial_molar_enthalpies(T_bench)
-        cp_R = thermo.cp_R(T_bench)
-        X = thermo.Y_to_X(Y_bench)
-        mu, lam, Dm, _ = transport.eval_all(T_bench, P, Y_bench, cp_R, thermo.invW)
-        C = rho * Y_bench * thermo.invW
-        g_RT = thermo.g_RT(T_bench)
-        wdot = kinetics.net_production_rates(T_bench, C, g_RT)
-    t_native = time.perf_counter() - t0
-    print(f"  Native: {t_native:.3f} s  ({t_native/1000*1000:.2f} ms/eval)")
+    cp_R_vec = thermo.cp_R(T_vec)        # (n_sp, 1000)
+    rho_vec = thermo.density(T_vec, P, Y_vec)  # (1000,)
+    hk_vec = thermo.partial_molar_enthalpies(T_vec)  # (n_sp, 1000)
+    mu_vec, lam_vec, Dm_vec, X_vec = transport.eval_all(T_vec, P, Y_vec, cp_R_vec, thermo.invW)
+    C_vec = rho_vec[np.newaxis, :] * Y_vec * thermo.invW[:, np.newaxis]  # (n_sp, 1000)
+    g_RT_vec = thermo.g_RT(T_vec)        # (n_sp, 1000)
+    wdot_vec = kinetics.net_production_rates(T_vec, C_vec, g_RT_vec)  # (n_sp, 1000)
+    t_native_vec = time.perf_counter() - t0
+    print(f"  Native: {t_native_vec:.3f} s  ({t_native_vec/n_evals*1000:.3f} ms/eval)")
 
     if has_cantera:
         t0 = time.perf_counter()
-        for _ in range(1000):
+        for _ in range(n_evals):
             gas.TPY = T_bench, P, Y_bench
             _ = gas.density
             _ = gas.cp_mass
@@ -186,9 +213,10 @@ def main():
             _ = gas.mix_diff_coeffs
             _ = gas.net_production_rates
         t_cantera = time.perf_counter() - t0
-        print(f"  Cantera: {t_cantera:.3f} s  ({t_cantera/1000*1000:.2f} ms/eval)")
-        print(f"  Speedup: {t_cantera/t_native:.1f}x")
+        print(f"  Cantera: {t_cantera:.3f} s  ({t_cantera/n_evals*1000:.3f} ms/eval)")
+        print(f"  Native/Cantera time ratio: {t_native_vec/t_cantera:.1f}x")
 
 
 if __name__ == "__main__":
     main()
+
