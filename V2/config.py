@@ -20,6 +20,7 @@ class FlameCase:
     soret_enabled: bool = False
 
     # Malla inicial
+    cantera_seed_grid: bool = True
     adaptive_grid: bool = True
     cluster_strength: float = 8.0
     cluster_sigma: float = 0.0           # <= 0 → automático

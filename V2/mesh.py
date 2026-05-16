@@ -49,6 +49,7 @@ def initial_grid(
     width: float,
     n_points: int = 8,
     locs=(0.0, 0.3, 0.5, 1.0),
+    cantera_seed_grid: bool = False,
     adaptive: bool = True,
     cluster_strength: float = 8.0,
     cluster_sigma: float | None = None,
@@ -57,6 +58,9 @@ def initial_grid(
         raise ValueError("n_points debe ser >= 2")
     if width <= 0.0:
         raise ValueError("width debe ser > 0")
+    if cantera_seed_grid and n_points == 8:
+        # Match FreeFlame(width=...) default seed used by Cantera.
+        return width * np.array([0.0, 0.2, 0.3, 0.4, 0.5, 0.6, 0.8, 1.0], dtype=float)
     if not adaptive:
         return np.linspace(0.0, width, n_points, dtype=float)
     xi = _adaptive_xi(

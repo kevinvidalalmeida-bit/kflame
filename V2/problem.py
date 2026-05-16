@@ -62,6 +62,7 @@ class FreeFlameProblem:
             cluster_sigma = float(case.cluster_sigma)
         self.z = initial_grid(
             case.width, n_points=n_points, locs=locs,
+            cantera_seed_grid=bool(getattr(case, "cantera_seed_grid", True)),
             adaptive=bool(getattr(case, "adaptive_grid", True)),
             cluster_strength=float(getattr(case, "cluster_strength", 8.0)),
             cluster_sigma=cluster_sigma,

@@ -115,7 +115,8 @@ class JacobianState:
     last_rdt: float | None = None
 
     def is_stale(self, max_age: int) -> bool:
-        return self.J is None or self.lu is None or self.age >= max_age
+        # Cantera refreshes when age() > maxAge
+        return self.J is None or self.lu is None or self.age > max_age
 
 
 def _transient_alpha(transient_order: int, x_older: np.ndarray | None) -> float:
@@ -302,6 +303,10 @@ def newton_solve(
                 )
 
             if converged:
+                # Cantera resets Jacobian age after steady convergence
+                # (keeps it fresh for follow-up operations).
+                if rdt == 0.0:
+                    jac_state.age = 0
                 status = 1
                 break
             status = 0
@@ -318,19 +323,20 @@ def newton_solve(
             # MultiNewton: try fresh Jacobian if previous one was aged (>1)
             if jac_state.age > 1:
                 force_new_jac = True
-                n_jac_reeval += 1
                 if verbose:
                     print(f"  Newton it={it:3d} no damping -> force new Jacobian")
                 if n_jac_reeval > 3:
                     status = -2
                     break
+                n_jac_reeval += 1
                 continue
 
             status = -2
             break
 
     if status != 1:
-        # Cantera semantics: return unchanged input state on failure
-        x = np.asarray(x0, dtype=float).copy()
+        # Match MultiNewton.cpp: on failure, return the last accepted iterate
+        # (which is x0 only if no successful damped step was taken).
+        x = np.asarray(x, dtype=float).copy()
 
     return x, bool(status == 1), history, jac_state
