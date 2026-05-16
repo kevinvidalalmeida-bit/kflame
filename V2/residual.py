@@ -39,7 +39,8 @@ def _corrected_flux(Y_L: np.ndarray, Y_R: np.ndarray,
     else:
         dphi = (Y_R - Y_L) / dz
         J_star = -rho_f * D_f * dphi
-    return J_star - Y_L * J_star.sum()
+    Y_center = 0.5 * (Y_L + Y_R)
+    return J_star - Y_center * J_star.sum()
 
 
 # ---------------------------------------------------------------------------
@@ -95,6 +96,7 @@ def residual(
                 T[j], Y[:, j], omega[:, j], hk_n[:, j]
             )
     except Exception as exc:
+        print(f"EXCEPTION IN RESIDUAL PROP: {exc}")
         problem.last_residual_error = str(exc)
         return np.full(x.size, 1.0e20)
 
@@ -117,6 +119,7 @@ def residual(
             flux[:, jf] = _corrected_flux(
                 Y[:, jf], Y[:, jf + 1], rho_f, D_f, dz_f, W, W_mix_f, basis)
     except Exception as exc:
+        print(f"EXCEPTION IN RESIDUAL FACE: {exc}")
         problem.last_residual_error = str(exc)
         return np.full(x.size, 1.0e20)
 
@@ -280,8 +283,6 @@ def _energy_residual(u, T, Y, rho, cp_n, lam_n, hk_n, omega, lam_face,
 
 
 # ---------------------------------------------------------------------------
-#  Reporte de normas por bloque
-# ---------------------------------------------------------------------------
 def residual_block_report(x: np.ndarray, problem) -> dict:
     F = residual(x, problem)
     nv = 2 + problem.n_species
@@ -416,7 +417,8 @@ def _corrected_flux_frozen(Y_L: np.ndarray, Y_R: np.ndarray,
         dphi = (Y_R - Y_L) / dz[None, :]
 
     J_star = -face_coeff * dphi
-    return J_star - Y_L * np.sum(J_star, axis=0, keepdims=True)
+    Y_center = 0.5 * (Y_L + Y_R)
+    return J_star - Y_center * np.sum(J_star, axis=0, keepdims=True)
 
 
 def residual_local_rows(x: np.ndarray, problem, center_j: int,

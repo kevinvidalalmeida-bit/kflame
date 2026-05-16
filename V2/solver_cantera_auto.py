@@ -85,7 +85,6 @@ class SolveOptions:
     max_domain_expansions: int = 12
     domain_expand_factor: float = 2.0
     domain_edge_slope_tol: float = 0.02
-    restart_after_expand_failure: bool = False
 
     # Auto bootstrap on fixed grids (mirrors Cantera _onedim auto path)
     auto_bootstrap_grids: bool = True
@@ -119,9 +118,11 @@ def _make_steady_fun(problem):
 #  Hybrid Newton (SteadyStateSystem::solve)
 # ---------------------------------------------------------------------------
 def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
-                   label: str = "") -> tuple[np.ndarray, bool, list[dict]]:
+                   label: str = "", steady_callback=None) -> tuple[np.ndarray, bool, list[dict]]:
     """
     Ciclos steady-Newton / time-step hasta convergencia.
+    Si `steady_callback` existe, se ejecuta inmediatamente despues de cada
+    Newton estacionario convergido (como el callback steady en Cantera).
     Devuelve (x, converged, history).
     """
     x = np.asarray(x0, dtype=float).copy()
@@ -188,6 +189,8 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
         )
 
         if ok_ss:
+            if steady_callback is not None:
+                steady_callback(x_ss)
             if opts.verbose:
                 Finf = float(np.linalg.norm(residual(x_ss, problem), ord=np.inf))
                 print(f"  [ciclo {attempt}] Estacionario OK  ||F||inf={Finf:.4e}")
@@ -400,7 +403,12 @@ def _refine_and_solve(
         problem.setup_fixed_temperature(T_profile=T_new)
 
         x_try, ok, hist_ref = _hybrid_newton(
-            problem, x_new, opts, label=f"Post-refine pass {pass_idx}")
+            problem,
+            x_new,
+            opts,
+            label=f"Post-refine pass {pass_idx}",
+            steady_callback=width_check,
+        )
         info["solve_ok"] = ok
         info["Finf_after"] = float(np.linalg.norm(
             residual(x_try, problem), ord=np.inf))
@@ -408,8 +416,6 @@ def _refine_and_solve(
 
         if ok:
             x_ss = x_try
-            if width_check is not None:
-                width_check(x_ss)
         else:
             # Restaurar último steady (como Sim1D hace con m_xlast_ss)
             if opts.verbose:
@@ -451,13 +457,11 @@ def _solve_auto_stages(
     # ---- Stage A: energía ON ----
     problem.solve_energy = True
     x_a, ok_a, hist_a = _hybrid_newton(
-        problem, x, opts, label="Stage A: energia ON")
+        problem, x, opts, label="Stage A: energia ON", steady_callback=width_check)
     report["stage_A"] = {"ok": ok_a, "steps": len(hist_a)}
 
     if ok_a:
         x = x_a
-        if width_check is not None:
-            width_check(x)
         solved = True
     else:
         # ---- Stage B: energía OFF ----
@@ -467,24 +471,20 @@ def _solve_auto_stages(
         problem.setup_fixed_temperature(T_profile=T_frz)
 
         x_b, ok_b, hist_b = _hybrid_newton(
-            problem, x, opts, label="Stage B: energia OFF")
+            problem, x, opts, label="Stage B: energia OFF", steady_callback=width_check)
         report["stage_B"] = {"ok": ok_b, "steps": len(hist_b)}
 
         if ok_b:
             x = x_b
-            if width_check is not None:
-                width_check(x)
             # ---- Stage C: reactivar energía ----
             problem.solve_energy = True
             _, T_re, _ = unpack_state(x, problem.n_points, problem.n_species)
             problem.setup_fixed_temperature(T_profile=T_re)
 
             x_c, ok_c, hist_c = _hybrid_newton(
-                problem, x, opts, label="Stage C: energia RE-ON")
+                problem, x, opts, label="Stage C: energia RE-ON", steady_callback=width_check)
             report["stage_C"] = {"ok": ok_c, "steps": len(hist_c)}
             x = x_c
-            if ok_c and width_check is not None:
-                width_check(x)
             solved = ok_c
         else:
             solved = False
@@ -525,14 +525,11 @@ def _solve_refine_energy_on(
     problem.setup_fixed_temperature(T_profile=T0)
 
     x_ss, ok_ss, hist_ss = _hybrid_newton(
-        problem, x, opts, label="Refine Stage: energia ON")
+        problem, x, opts, label="Refine Stage: energia ON", steady_callback=width_check)
     report["refine_stage_steady"] = {"ok": ok_ss, "steps": len(hist_ss)}
 
     if not ok_ss:
         return x_ss, False, report
-
-    if width_check is not None:
-        width_check(x_ss)
 
     if not bool(opts.refine_grid):
         return x_ss, True, report
@@ -597,8 +594,7 @@ def _expand_domain_and_reseed(problem, x: np.ndarray, factor: float = 2.0) -> np
         return np.asarray(x, dtype=float).copy()
 
     z_old = np.asarray(problem.z, dtype=float).copy()
-    z0 = float(z_old[0])
-    z_new = z0 + (z_old - z0) * factor
+    z_new = z_old * factor
 
     x_new = interpolate_state(x, z_old, z_new, problem.n_species)
     _assign_grid(problem, z_new)
@@ -845,7 +841,9 @@ def solve_free_flame(
                     report["timeout_before_solve"] = True
                     break
 
-                use_initial_guess = not restart_mode
+                # Keep and propagate the latest state unless there is no seed yet.
+                # This preserves the post-expansion solution path like Cantera.
+                use_initial_guess = (x_work is None)
                 x_work = _seed_state_on_fixed_grid(
                     problem, x_work, n_grid, opts, use_initial_guess=use_initial_guess)
                 report.setdefault("grid_attempts", []).append(
@@ -924,10 +922,6 @@ def solve_free_flame(
             if restart_mode:
                 break
 
-            # Mirror Cantera auto path: each pass starts from a fresh
-            # default-profile initial guess when not using restart data.
-            x = None
-
         except DomainTooNarrowError as exc:
             x = exc.x
             report.setdefault("expansion_events", []).append(
@@ -950,9 +944,6 @@ def solve_free_flame(
                 ref_info["expand_pass"] = int(expand_pass)
                 ref_info["stage_mode"] = str(exc.metrics.get("stage_mode", "unknown"))
                 report.setdefault("post_expand_refine", []).append(ref_info)
-
-            if not restart_mode:
-                x = None
 
             if expand_pass >= max_exp:
                 report["domain_expansion_limit_reached"] = True
