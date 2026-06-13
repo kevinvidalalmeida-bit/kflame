@@ -137,8 +137,10 @@ class NativeTransport:
         n = self.n_sp
         visc_cpu = np.zeros((n, 5), dtype=float)
         cond_cpu = np.zeros((n, 5), dtype=float)
+        diff_cpu = np.zeros((n, n, 5), dtype=float)
         has_visc = np.zeros(n, dtype=bool)
         has_cond = np.zeros(n, dtype=bool)
+        has_diff = np.zeros((n, n), dtype=bool)
 
         if self._has_transport_poly:
             species_data = _CANTERA_TRANSPORT_POLY.get("species", {})
@@ -157,12 +159,25 @@ class NativeTransport:
                     cond_cpu[i, :] = np.asarray(cc[:5], dtype=float)
                     has_cond[i] = True
 
+            diff_data = _CANTERA_TRANSPORT_POLY.get("binary_diff_coeffs", None)
+            if diff_data is not None:
+                try:
+                    diff_arr = np.asarray(diff_data, dtype=float)
+                    if diff_arr.shape[0] >= n and diff_arr.shape[1] >= n and diff_arr.shape[2] >= 5:
+                        diff_cpu[:, :, :] = diff_arr[:n, :n, :5]
+                        has_diff[:, :] = True
+                except (TypeError, ValueError, IndexError):
+                    has_diff[:, :] = False
+
         self._visc_poly = self.xp.asarray(visc_cpu)
         self._cond_poly = self.xp.asarray(cond_cpu)
+        self._diff_poly = self.xp.asarray(diff_cpu)
         self._has_visc_poly_cpu = has_visc
         self._has_cond_poly_cpu = has_cond
+        self._has_diff_poly_cpu = has_diff
         self._has_visc_poly = self.xp.asarray(has_visc)
         self._has_cond_poly = self.xp.asarray(has_cond)
+        self._has_diff_poly = self.xp.asarray(has_diff)
 
     def _omega_22(self, Tstar):
         return (1.16145 * self.xp.power(Tstar, -0.14874)
@@ -415,7 +430,25 @@ class NativeTransport:
         is_grid = self._is_grid(T)
         if not is_grid:
             T_arr = T_arr[None]
-            
+
+        if bool(self._has_diff_poly_cpu.all()):
+            logT = self.xp.log(T_arr)
+            poly = (
+                self._diff_poly[:, :, 0, None]
+                + logT[None, None, :] * (
+                    self._diff_poly[:, :, 1, None]
+                    + logT[None, None, :] * (
+                        self._diff_poly[:, :, 2, None]
+                        + logT[None, None, :] * (
+                            self._diff_poly[:, :, 3, None]
+                            + logT[None, None, :] * self._diff_poly[:, :, 4, None]
+                        )
+                    )
+                )
+            )
+            bdiff = T_arr[None, None, :] * self.xp.sqrt(T_arr)[None, None, :] * poly
+            return bdiff if is_grid else bdiff[:, :, 0]
+
         eps_pair_safe = self.xp.maximum(self._eps_pair, 1e-100)
         Tstar_pair = T_arr[None, None, :] / eps_pair_safe[:, :, None]
         om11_val = self._omega_11(Tstar_pair)
@@ -479,5 +512,3 @@ class NativeTransport:
         lam = self.thermal_conductivity(T, X, cp_R)
         Dm  = self.mix_diff_coeffs(T, P, X)
         return mu, lam, Dm, X
-
-

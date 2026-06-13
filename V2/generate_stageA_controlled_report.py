@@ -64,6 +64,23 @@ def build_parser() -> argparse.ArgumentParser:
         default=500,
         help="Máximo de pasos transitorios acumulados del híbrido.",
     )
+    p.add_argument(
+        "--jacobian-mode",
+        type=str,
+        default="cantera_local",
+        choices=["cantera_local", "gpu_local", "gpu_batch", "coloring"],
+        help="Modo de armado del Jacobiano usado por SolveOptions.",
+    )
+    p.add_argument(
+        "--experimental-gpu-jacobian",
+        action="store_true",
+        help="Habilita jacobian_mode=gpu_batch, que sigue siendo experimental.",
+    )
+    p.add_argument(
+        "--profile",
+        action="store_true",
+        help="Guardar tiempos internos del solver en summary.json.",
+    )
     return p
 
 
@@ -229,10 +246,15 @@ def main() -> None:
     )
 
     problem = _build_problem(case_fix, z_ct, args.backend, use_gpu=bool(args.use_gpu))
+    if bool(args.profile):
+        problem._profile = {}
     opts = SolveOptions(
         verbose=False,
         steady_max_iter=int(args.steady_max_iter),
         max_time_step_count=int(args.max_time_step_count),
+        jacobian_mode=str(args.jacobian_mode),
+        experimental_gpu_jacobian=bool(args.experimental_gpu_jacobian),
+        profile=bool(args.profile),
     )
 
     x_ct = pack_state(u_ct, T_ct, Y_ct)
@@ -264,6 +286,7 @@ def main() -> None:
             "transport_model": case.transport_model,
             "backend": args.backend,
             "use_gpu": bool(args.use_gpu),
+            "jacobian_mode": str(args.jacobian_mode),
             "n_points_cantera_mesh": int(z_ct.size),
             "width_m": float(z_ct[-1] - z_ct[0]),
         },
@@ -294,6 +317,15 @@ def main() -> None:
             "T_linf_vs_ct": float(res_b["T_linf_vs_ct"]),
             "u_linf_vs_ct": float(res_b["u_linf_vs_ct"]),
             "Y_linf_vs_ct": float(res_b["Y_linf_vs_ct"]),
+        }
+
+    if bool(args.profile):
+        summary["profile"] = {
+            key: {
+                "time_s": float(value.get("time_s", 0.0)),
+                "count": int(value.get("count", 0)),
+            }
+            for key, value in sorted(getattr(problem, "_profile", {}).items())
         }
 
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")

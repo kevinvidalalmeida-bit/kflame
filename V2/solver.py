@@ -780,6 +780,7 @@ class SolveOptions:
     jac_abs_perturb: float = 1e-10
     jac_threshold: float = 0.0
     jacobian_mode: str = "cantera_local"
+    experimental_gpu_jacobian: bool = False
     alpha_min: float = 1e-10
 
     # Time-stepping (híbrido)
@@ -860,6 +861,9 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
     problem.jacobian_abs_perturb = float(getattr(opts, "jac_abs_perturb", 1e-10))
     problem.jacobian_threshold = float(getattr(opts, "jac_threshold", 0.0))
     problem.jacobian_mode = str(getattr(opts, "jacobian_mode", "coloring"))
+    problem.allow_experimental_gpu_jacobian = bool(
+        getattr(opts, "experimental_gpu_jacobian", False)
+    )
 
     steady_fun = _make_steady_fun(problem)
     jac: JacobianState | None = None
@@ -1709,4 +1713,3 @@ def solve_free_flame(
         print(f"{'='*60}")
 
     return x, bool(solved), report
-

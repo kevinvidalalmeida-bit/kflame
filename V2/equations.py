@@ -243,10 +243,12 @@ def residual(
     t_profile = _profile_start(problem)
     if _device_residual_enabled(problem):
         try:
+            t_device = _profile_start(problem)
             F_dev = _residual_device(
                 x, problem, rdt=rdt, x_old=x_old,
                 x_older=x_older, transient_order=transient_order,
             )
+            _profile_record(problem, "residual_device", t_device)
             if not np.all(np.isfinite(F_dev)):
                 F_dev = np.full(np.asarray(x, dtype=float).size, 1.0e20)
             return _profile_return(problem, "residual_full", t_profile, F_dev)
@@ -792,6 +794,224 @@ def residual_local_rows(x: np.ndarray, problem, center_j: int,
     return _profile_return(problem, "residual_local", t_profile, (rows_out, vals_out))
 
 
+def _corrected_flux_frozen_batch(Y_L: np.ndarray, Y_R: np.ndarray,
+                                 face_coeff: np.ndarray, dz: np.ndarray,
+                                 W: np.ndarray, basis: str) -> np.ndarray:
+    if basis in ("molar", "mole"):
+        Wb = W[None, :, None]
+        W_mix_L = 1.0 / np.sum(Y_L / Wb, axis=1)
+        W_mix_R = 1.0 / np.sum(Y_R / Wb, axis=1)
+        X_L = Y_L * (W_mix_L[:, None, :] / Wb)
+        X_R = Y_R * (W_mix_R[:, None, :] / Wb)
+        dphi = (X_R - X_L) / dz[None, None, :]
+    else:
+        dphi = (Y_R - Y_L) / dz[None, None, :]
+
+    J_star = -face_coeff[None, :, :] * dphi
+    return J_star - Y_L * np.sum(J_star, axis=1, keepdims=True)
+
+
+def _take_point_values(arr: np.ndarray, idx: np.ndarray) -> np.ndarray:
+    batch = np.arange(arr.shape[0])
+    return arr[batch, :, idx]
+
+
+def residual_local_rows_batch(x_batch: np.ndarray, problem, center_j: int,
+                              cache: dict | None = None):
+    """
+    Batched version of residual_local_rows for perturbations at one grid point.
+
+    Transport is frozen from the base cache, matching the Cantera-style local
+    Jacobian path. Only nodal thermo/kinetics at center_j are recomputed.
+    """
+    t_profile = _profile_start(problem)
+    x_batch = np.asarray(x_batch, dtype=float)
+    if x_batch.ndim != 2:
+        raise ValueError("x_batch debe tener shape (n_batch, n_state).")
+
+    if cache is None:
+        cache = build_local_jacobian_cache(x_batch[0], problem)
+
+    n_batch = int(x_batch.shape[0])
+    n_pts = int(cache["n_pts"])
+    n_sp = int(cache["n_sp"])
+    nv = int(cache["nv"])
+    if n_pts < 2:
+        raise ValueError("Se requieren al menos 2 puntos de malla.")
+
+    z = cache["z"]
+    W = cache["W"]
+    invW = cache["invW"]
+    basis = cache["basis"]
+    solve_energy = bool(problem.solve_energy)
+    j_fixed = problem.j_fixed
+    T_prof = getattr(problem, "T_profile_fixed", None)
+    T_in = float(problem.T_in)
+    Y_in = np.asarray(problem.Y_in, dtype=float)
+
+    x_r = x_batch.reshape(n_batch, n_pts, nv)
+    u = x_r[:, :, C_U]
+    T = x_r[:, :, C_T]
+    Y = x_r[:, :, C_Y:].transpose(0, 2, 1)
+
+    j_center = int(np.clip(center_j, 0, n_pts - 1))
+    p0 = max(0, j_center - 1)
+    p1 = min(n_pts - 1, j_center + 1)
+    n0 = max(0, p0 - 1)
+    n1 = min(n_pts - 1, p1 + 1)
+    local_len = n1 - n0 + 1
+
+    rho_local = np.broadcast_to(cache["rho"][n0:n1 + 1], (n_batch, local_len)).copy()
+    cp_local = np.broadcast_to(cache["cp_n"][n0:n1 + 1], (n_batch, local_len)).copy()
+    omega_local = np.broadcast_to(
+        cache["omega"][:, n0:n1 + 1][None, :, :],
+        (n_batch, n_sp, local_len),
+    ).copy()
+    hk_local = np.broadcast_to(
+        cache["hk_n"][:, n0:n1 + 1][None, :, :],
+        (n_batch, n_sp, local_len),
+    ).copy()
+
+    if n0 <= j_center <= n1:
+        jl = j_center - n0
+        omega_j = np.empty((n_sp, n_batch), dtype=float)
+        hk_j = np.empty((n_sp, n_batch), dtype=float)
+        if hasattr(problem.backend, "eval_grid_into"):
+            rho_j, _, cp_j, _ = problem.backend.eval_grid_into(
+                T[:, j_center],
+                Y[:, :, j_center].T,
+                omega_j,
+                hk_j,
+            )
+            rho_local[:, jl] = np.asarray(_to_numpy(rho_j), dtype=float)
+            cp_local[:, jl] = np.asarray(_to_numpy(cp_j), dtype=float)
+            omega_local[:, :, jl] = np.asarray(_to_numpy(omega_j), dtype=float).T
+            hk_local[:, :, jl] = np.asarray(_to_numpy(hk_j), dtype=float).T
+        else:
+            for ib in range(n_batch):
+                om = np.empty(n_sp, dtype=float)
+                hk = np.empty(n_sp, dtype=float)
+                rhoj, _, cpj, _ = problem.backend.eval_node_into(T[ib, j_center], Y[ib, :, j_center], om, hk)
+                rho_local[ib, jl] = rhoj
+                cp_local[ib, jl] = cpj
+                omega_local[ib, :, jl] = om
+                hk_local[ib, :, jl] = hk
+
+    off = -n0
+    f0 = max(0, p0 - 1)
+    f1 = min(n_pts - 2, p1)
+    n_faces = f1 - f0 + 1
+
+    flux_local = np.empty((n_batch, n_sp, n_faces), dtype=float)
+    if n_faces > 0:
+        YL = Y[:, :, f0:f1 + 1]
+        YR = Y[:, :, f0 + 1:f1 + 2]
+        dz = cache["dz_face"][f0:f1 + 1]
+        coeff = cache["face_coeff"][:, f0:f1 + 1]
+        flux_local[:] = _corrected_flux_frozen_batch(YL, YR, coeff, dz, W, basis)
+
+    lam_face = cache["lam_face"]
+    rows_out = cache["local_rows"][j_center]
+    vals_out = np.empty((n_batch, rows_out.size), dtype=float)
+    out_i = 0
+    batch_idx = np.arange(n_batch)
+
+    for j in range(p0, p1 + 1):
+        sl = slice(out_i, out_i + nv)
+        block = vals_out[:, sl]
+
+        if j == 0:
+            dz0 = z[1] - z[0]
+            rho0 = rho_local[:, 0 + off]
+            rho1 = rho_local[:, 1 + off]
+            block[:, C_U] = -(rho1 * u[:, 1] - rho0 * u[:, 0]) / dz0
+
+            if solve_energy:
+                block[:, C_T] = T[:, 0] - T_in
+            else:
+                block[:, C_T] = T[:, 0] - (float(T_prof[0]) if T_prof is not None else T_in)
+
+            mdot_in = rho0 * u[:, 0]
+            flux0 = flux_local[:, :, 0 - f0]
+            left_species = (-(flux0 + mdot_in[:, None] * Y[:, :, 0]) + mdot_in[:, None] * Y_in[None, :])
+            block[:, C_Y:C_Y + n_sp] = left_species
+            k_exc = np.argmax(Y[:, :, 0], axis=1)
+            block[batch_idx, C_Y + k_exc] = 1.0 - np.sum(Y[:, :, 0], axis=1)
+
+        elif j == n_pts - 1:
+            rho_n = rho_local[:, (n_pts - 1) + off]
+            rho_nm1 = rho_local[:, (n_pts - 2) + off]
+            block[:, C_U] = rho_n * u[:, -1] - rho_nm1 * u[:, -2]
+
+            if solve_energy:
+                block[:, C_T] = T[:, -1] - T[:, -2]
+            else:
+                block[:, C_T] = T[:, -1] - (float(T_prof[-1]) if T_prof is not None else T[:, -2])
+
+            block[:, C_Y:C_Y + n_sp] = Y[:, :, -1] - Y[:, :, -2]
+            k_exc = np.argmax(Y[:, :, -1], axis=1)
+            block[batch_idx, C_Y + k_exc] = 1.0 - np.sum(Y[:, :, -1], axis=1)
+
+        else:
+            dzm = z[j] - z[j - 1]
+            dzp = z[j + 1] - z[j]
+            dz2 = z[j + 1] - z[j - 1]
+            fm = flux_local[:, :, (j - 1) - f0]
+            fp = flux_local[:, :, j - f0]
+            jo = j + off
+
+            if j_fixed is not None and j == j_fixed:
+                if solve_energy:
+                    block[:, C_U] = T[:, j] - float(problem.T_fixed_point)
+                else:
+                    block[:, C_U] = rho_local[:, jo] * u[:, j] - cache["rho"][0] * 0.3
+            elif j_fixed is not None and j > j_fixed:
+                block[:, C_U] = -(rho_local[:, jo] * u[:, j] - rho_local[:, jo - 1] * u[:, j - 1]) / dzm
+            else:
+                block[:, C_U] = -(rho_local[:, jo + 1] * u[:, j + 1] - rho_local[:, jo] * u[:, j]) / dzp
+
+            rho_j = rho_local[:, jo]
+            rho_u_j = rho_j * u[:, j]
+            jloc = np.where(u[:, j] > 0.0, j, j + 1)
+            jloc_m = jloc - 1
+            dz_up = z[jloc] - z[jloc_m]
+            jloc_o = jloc + off
+            jloc_m_o = jloc_m + off
+
+            if solve_energy:
+                dTdz = (T[batch_idx, jloc] - T[batch_idx, jloc_m]) / dz_up
+                cond = -2.0 * (
+                    lam_face[j] * (T[:, j + 1] - T[:, j]) / dzp
+                    - lam_face[j - 1] * (T[:, j] - T[:, j - 1]) / dzm
+                ) / dz2
+                hk_j = hk_local[:, :, jo]
+                om_j = omega_local[:, :, jo]
+                hk_jloc = _take_point_values(hk_local, jloc_o)
+                hk_jloc_m = _take_point_values(hk_local, jloc_m_o)
+                dhk_dz = (hk_jloc - hk_jloc_m) / dz_up[:, None]
+                flx = 0.5 * (fm + fp)
+                en_sum = (
+                    np.sum(hk_j * om_j * invW[None, :], axis=1)
+                    + np.sum(flx * dhk_dz * invW[None, :], axis=1)
+                )
+                cp_j = cp_local[:, jo]
+                block[:, C_T] = (-cp_j * rho_u_j * dTdz - cond - en_sum) / (rho_j * cp_j)
+            else:
+                block[:, C_T] = T[:, j] - (T_prof[j] if T_prof is not None else T_in)
+
+            om_j = omega_local[:, :, jo]
+            Y_jloc = _take_point_values(Y, jloc)
+            Y_jloc_m = _take_point_values(Y, jloc_m)
+            dYdz = (Y_jloc - Y_jloc_m) / dz_up[:, None]
+            conv = rho_u_j[:, None] * dYdz
+            diff = 2.0 * (fp - fm) / dz2
+            block[:, C_Y:C_Y + n_sp] = (om_j - conv - diff) / rho_j[:, None]
+
+        out_i += nv
+
+    return _profile_return(problem, "residual_local_batch", t_profile, (rows_out, vals_out))
+
+
 # --- FIN DE RESIDUAL.PY, INICIO DE JACOBIAN.PY ---
 
 """
@@ -908,6 +1128,93 @@ def _banded_jacobian_cantera_local(fun, x: np.ndarray, problem, eps: float = 1e-
     return _profile_return(problem, "jacobian_build", t_profile, jmat)
 
 
+def _banded_jacobian_gpu_local(fun, x: np.ndarray, problem, eps: float = 1e-5) -> sparse.csr_matrix:
+    """
+    Cantera-style local Jacobian with batched perturbations per grid point.
+
+    This keeps transport frozen like _banded_jacobian_cantera_local, but reduces
+    per-column GPU launch/copy overhead by evaluating all variables at a point
+    in one backend batch.
+    """
+    t_profile = _profile_start(problem)
+    x = np.asarray(x, dtype=float)
+    n_pts = int(problem.n_points)
+    n_sp = int(problem.n_species)
+    nv = 2 + n_sp
+    n_total = n_pts * nv
+
+    cache = build_local_jacobian_cache(x, problem)
+    f0 = fun(x, problem)
+
+    rel_perturb = float(getattr(problem, "jacobian_rel_perturb", eps))
+    abs_perturb = float(getattr(problem, "jacobian_abs_perturb", 1e-10))
+    threshold = float(getattr(problem, "jacobian_threshold", 0.0))
+
+    max_rows_per_col = min(n_total, 3 * nv)
+    capacity = max(1, n_total * max_rows_per_col)
+    rows_arr = np.empty(capacity, dtype=np.int32)
+    cols_arr = np.empty(capacity, dtype=np.int32)
+    vals_arr = np.empty(capacity, dtype=float)
+    nnz_total = 0
+
+    def ensure_capacity(extra: int) -> None:
+        nonlocal rows_arr, cols_arr, vals_arr
+        required = nnz_total + int(extra)
+        if required <= rows_arr.size:
+            return
+        new_size = max(required, rows_arr.size * 2)
+        rows_new = np.empty(new_size, dtype=np.int32)
+        cols_new = np.empty(new_size, dtype=np.int32)
+        vals_new = np.empty(new_size, dtype=float)
+        rows_new[:nnz_total] = rows_arr[:nnz_total]
+        cols_new[:nnz_total] = cols_arr[:nnz_total]
+        vals_new[:nnz_total] = vals_arr[:nnz_total]
+        rows_arr = rows_new
+        cols_arr = cols_new
+        vals_arr = vals_new
+
+    for j in range(n_pts):
+        base = j * nv
+        cols = np.arange(base, base + nv, dtype=np.int32)
+        xsave = x[cols]
+        dx = np.abs(xsave) * rel_perturb + abs_perturb
+        dx[dx <= 0.0] = max(abs(rel_perturb), abs(eps), 1e-10)
+        dx = np.where(xsave < 0.0, -dx, dx)
+
+        x_batch = np.broadcast_to(x, (nv, n_total)).copy()
+        x_batch[np.arange(nv), cols] = xsave + dx
+        rows, f_batch = residual_local_rows_batch(x_batch, problem, j, cache=cache)
+        delta = f_batch - f0[rows][None, :]
+        vals = delta / dx[:, None]
+
+        for i, col in enumerate(cols):
+            col_rows = rows
+            col_vals = vals[i]
+            if threshold > 0.0:
+                keep = np.abs(col_vals) > threshold
+                kdiag = np.where(col_rows == int(col))[0]
+                if kdiag.size > 0:
+                    keep[int(kdiag[0])] = True
+                col_rows = col_rows[keep]
+                col_vals = col_vals[keep]
+            nnz = int(col_rows.size)
+            if nnz:
+                ensure_capacity(nnz)
+                end = nnz_total + nnz
+                rows_arr[nnz_total:end] = col_rows
+                cols_arr[nnz_total:end] = int(col)
+                vals_arr[nnz_total:end] = col_vals
+                nnz_total = end
+
+    t_sparse = _profile_start(problem)
+    jmat = sparse.coo_matrix(
+        (vals_arr[:nnz_total], (rows_arr[:nnz_total], cols_arr[:nnz_total])),
+        shape=(n_total, n_total),
+    ).tocsr()
+    _profile_record(problem, "jacobian_sparse_assembly", t_sparse)
+    return _profile_return(problem, "jacobian_build", t_profile, jmat)
+
+
 def _residual_device_batch_steady(x_batch: np.ndarray, problem) -> np.ndarray:
     backend = problem.backend
     xp = backend.xp
@@ -1013,8 +1320,7 @@ def _residual_device_batch_steady(x_batch: np.ndarray, problem) -> np.ndarray:
         rho_u_j = rho_j * u[:, 1:-1]
         jloc = xp.where(u[:, 1:-1] > 0.0, j[None, :], j[None, :] + 1)
         jloc_m = jloc - 1
-        dz_up = xp.take_along_axis(z[None, :].repeat(n_batch, axis=0), jloc, axis=1) - xp.take_along_axis(
-            z[None, :].repeat(n_batch, axis=0), jloc_m, axis=1)
+        dz_up = z[jloc] - z[jloc_m]
 
         if solve_energy:
             T_jloc = xp.take_along_axis(T, jloc, axis=1)
@@ -1218,13 +1524,23 @@ def banded_jacobian(fun, x: np.ndarray, problem, eps: float = 1e-5) -> sparse.cs
 
     Modes (problem.jacobian_mode):
     - "cantera_local" (default)
+    - "gpu_local"
     - "gpu_batch"
     - "coloring"
     """
     mode = str(getattr(problem, "jacobian_mode", "cantera_local")).strip().lower()
+    if mode in ("gpu_local", "device_local"):
+        if not _device_residual_enabled(problem):
+            raise RuntimeError("jacobian_mode='gpu_local' requiere backend nativo con CuPy activo.")
+        return _banded_jacobian_gpu_local(fun, x, problem, eps=eps)
     if mode in ("gpu", "gpu_batch", "device_batch"):
         if not _device_residual_enabled(problem):
             raise RuntimeError("jacobian_mode='gpu_batch' requiere backend nativo con CuPy activo.")
+        if not bool(getattr(problem, "allow_experimental_gpu_jacobian", False)):
+            raise RuntimeError(
+                "jacobian_mode='gpu_batch' es experimental; active "
+                "SolveOptions(experimental_gpu_jacobian=True) solo para pruebas."
+            )
         return _banded_jacobian_gpu_batch(fun, x, problem, eps=eps)
     if mode in ("coloring", "3color", "legacy"):
         return _banded_jacobian_coloring(fun, x, problem, eps=eps)
