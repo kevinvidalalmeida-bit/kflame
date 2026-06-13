@@ -21,7 +21,7 @@ import cantera as ct
 from config import FlameCase
 from problem import FreeFlameProblem
 from species_backend import SpeciesBackend
-from residual import residual
+from equations import residual
 from state import pack_state, unpack_state
 
 
@@ -173,7 +173,7 @@ def main():
         print(f"    {sp:8s}  cantera={rc:.3e}   ours={ro:.3e}")
 
     if args.run_ours:
-        from solver_cantera_auto import solve_free_flame, SolveOptions
+        from solver import solve_free_flame, SolveOptions
         print("\n=== Nuestro solver (malla propia) ===")
         case_ours = replace(case, width=float(z[-1] - z[0]))
         p2 = FreeFlameProblem(case_ours, n_points=8)

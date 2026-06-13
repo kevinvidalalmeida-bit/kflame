@@ -1,3 +1,693 @@
+from __future__ import annotations
+
+from equations import (
+    residual,
+    build_jacobian_steady,
+    update_transient,
+    factorize,
+    solve_linear
+)
+from state import build_transient_mask
+from dataclasses import dataclass, field
+from species_backend import SpeciesBackend
+from state import pack_state, unpack_state, interpolate_state
+from typing import Any
+import numpy as np
+import time
+"""
+solver.py - Consolida la lógica algorítmica de resolución (Newton, Mesh, Solver).
+"""
+"""
+mesh.py – Generación de malla y refinamiento adaptativo tipo Cantera.
+"""
+
+
+# ---------------------------------------------------------------------------
+#  Malla inicial (clustering gaussiano)
+# ---------------------------------------------------------------------------
+def _adaptive_xi(
+    n_points: int,
+    locs=(0.0, 0.3, 0.5, 1.0),
+    cluster_strength: float = 8.0,
+    cluster_sigma: float | None = None,
+    n_dense: int = 4001,
+) -> np.ndarray:
+    if n_points < 2:
+        raise ValueError("n_points debe ser >= 2")
+    x1 = float(locs[1])
+    x2 = float(locs[2])
+    if not (0.0 <= x1 < x2 <= 1.0):
+        return np.linspace(0.0, 1.0, n_points, dtype=float)
+
+    center = 0.5 * (x1 + x2)
+    sigma = float(cluster_sigma) if cluster_sigma else 0.5 * (x2 - x1)
+    sigma = max(sigma, 1.0e-3)
+    strength = max(0.0, float(cluster_strength))
+
+    xi_dense = np.linspace(0.0, 1.0, n_dense, dtype=float)
+    monitor = 1.0 + strength * np.exp(-((xi_dense - center) / sigma) ** 2)
+    cdf = np.empty_like(xi_dense)
+    cdf[0] = 0.0
+    dxi = np.diff(xi_dense)
+    cdf[1:] = np.cumsum(0.5 * (monitor[1:] + monitor[:-1]) * dxi)
+    total = cdf[-1]
+    if total <= 0.0 or not np.isfinite(total):
+        return np.linspace(0.0, 1.0, n_points, dtype=float)
+    cdf /= total
+    xi_target = np.linspace(0.0, 1.0, n_points, dtype=float)
+    xi = np.interp(xi_target, cdf, xi_dense)
+    xi[0] = 0.0
+    for j in range(1, xi.size):
+        xi[j] = max(xi[j], xi[j - 1] + 1.0e-14)
+    xi /= xi[-1]
+    return xi
+
+
+def initial_grid(
+    width: float,
+    n_points: int = 8,
+    locs=(0.0, 0.3, 0.5, 1.0),
+    cantera_seed_grid: bool = False,
+    adaptive: bool = True,
+    cluster_strength: float = 8.0,
+    cluster_sigma: float | None = None,
+) -> np.ndarray:
+    if n_points < 2:
+        raise ValueError("n_points debe ser >= 2")
+    if width <= 0.0:
+        raise ValueError("width debe ser > 0")
+    if cantera_seed_grid and n_points == 8:
+        # Match FreeFlame(width=...) default seed used by Cantera.
+        return width * np.array([0.0, 0.2, 0.3, 0.4, 0.5, 0.6, 0.8, 1.0], dtype=float)
+    if not adaptive:
+        return np.linspace(0.0, width, n_points, dtype=float)
+    xi = _adaptive_xi(
+        n_points=n_points,
+        locs=locs,
+        cluster_strength=cluster_strength,
+        cluster_sigma=cluster_sigma,
+    )
+    return width * xi
+
+
+def grid_from_reference(npz_path: str, subsample: int | None = None) -> np.ndarray:
+    data = np.load(npz_path, allow_pickle=True)
+    z_ref = np.asarray(data["z"], dtype=float)
+
+    if subsample is not None and subsample > 1:
+        idx = np.arange(0, len(z_ref), subsample)
+        if idx[-1] != len(z_ref) - 1:
+            idx = np.append(idx, len(z_ref) - 1)
+        z_ref = z_ref[idx]
+
+    return z_ref
+
+
+def build_freeflame_refiner_profiles(problem, u: np.ndarray, T: np.ndarray, Y: np.ndarray) -> dict:
+    """
+    Selección de perfiles para refinamiento en free premixed flame.
+
+    Flow1D activa U, V y T cuando la energía está activa; en este solver
+    reducido (sin V) se toma:
+      * u si refine_with_u
+      * T si solve_energy y refine_with_T
+      * Y_k si refine_with_species
+    """
+    profiles: dict[str, np.ndarray] = {}
+
+    if bool(getattr(problem, "refine_with_u", True)):
+        profiles["u"] = np.asarray(u, dtype=float)
+
+    if bool(getattr(problem, "solve_energy", True)) and bool(
+        getattr(problem, "refine_with_T", True)
+    ):
+        profiles["T"] = np.asarray(T, dtype=float)
+
+    if bool(getattr(problem, "refine_with_species", True)):
+        names = getattr(problem, "species_names", None)
+        for k in range(Y.shape[0]):
+            if names is not None and k < len(names):
+                key = f"Y_{names[k]}"
+            else:
+                key = f"Y_{k}"
+            profiles[key] = np.asarray(Y[k, :], dtype=float)
+
+    return profiles
+
+
+class AdaptiveRefiner:
+    """
+    Refinador de malla adaptativo basado en Cantera refine.cpp.
+
+    Defaults alineados con Refiner::setCriteria:
+      ratio=10.0, slope=0.8, curve=0.8, prune=-0.1
+    """
+
+    def __init__(self, ratio=10.0, slope=0.8, curve=0.8, prune=-0.1,
+                 grid_min=1e-10, max_points=1000):
+        if ratio < 2.0:
+            raise ValueError("ratio debe ser >= 2.0")
+        if not (0.0 <= slope <= 1.0):
+            raise ValueError("slope debe estar entre 0 y 1")
+        if not (0.0 <= curve <= 1.0):
+            raise ValueError("curve debe estar entre 0 y 1")
+        if prune > curve or prune > slope:
+            raise ValueError("prune debe ser menor que curve y slope")
+
+        self.ratio = float(ratio)
+        self.slope = float(slope)
+        self.curve = float(curve)
+        self.prune = float(prune)
+        self.grid_min = float(grid_min)
+        self.max_points = int(max_points)
+        self._thresh = 1e-14
+        self._min_range = 0.01
+        self._UNSET = 0
+        self._KEEP = 1
+        self._REMOVE = -1
+
+    def analyze(self, z: np.ndarray, profiles: dict,
+                j_fixed: int | None = None) -> tuple:
+        z = np.asarray(z, dtype=float)
+        n = int(z.size)
+        if n < 2 or n >= self.max_points:
+            return set(), set()
+
+        dz = np.diff(z)
+        insert_after: set[int] = set()
+        keep = np.full(n, self._UNSET, dtype=int)
+        keep[0] = self._KEEP
+        keep[n - 1] = self._KEEP
+
+        if j_fixed is not None and 0 <= j_fixed < n:
+            keep[j_fixed] = self._KEEP
+
+        pruning_enabled = self.prune > 0.0
+
+        for _name, vals in profiles.items():
+            vals = np.asarray(vals, dtype=float)
+            if vals.shape != (n,):
+                continue
+
+            slope_arr = np.diff(vals) / dz
+
+            val_min = float(np.min(vals))
+            val_max = float(np.max(vals))
+            slp_min = float(np.min(slope_arr))
+            slp_max = float(np.max(slope_arr))
+
+            val_mag = max(abs(val_max), abs(val_min))
+            slp_mag = max(abs(slp_max), abs(slp_min))
+
+            if (val_max - val_min) > self._min_range * max(val_mag, self._thresh):
+                max_change = self.slope * (val_max - val_min)
+                for j in range(n - 1):
+                    ratio = abs(vals[j + 1] - vals[j]) / (max_change + self._thresh)
+                    if ratio > 1.0 and dz[j] >= 2.0 * self.grid_min:
+                        insert_after.add(j)
+                    if pruning_enabled:
+                        if ratio >= self.prune:
+                            keep[j] = self._KEEP
+                            keep[j + 1] = self._KEEP
+                        elif keep[j] == self._UNSET:
+                            keep[j] = self._REMOVE
+
+            if (slp_max - slp_min) > self._min_range * max(slp_mag, self._thresh):
+                max_change = self.curve * (slp_max - slp_min)
+                for j in range(n - 2):
+                    ratio = abs(slope_arr[j + 1] - slope_arr[j]) / (
+                        max_change + self._thresh / dz[j]
+                    )
+                    if (
+                        ratio > 1.0
+                        and dz[j] >= 2.0 * self.grid_min
+                        and dz[j + 1] >= 2.0 * self.grid_min
+                    ):
+                        insert_after.add(j)
+                        insert_after.add(j + 1)
+                    if pruning_enabled:
+                        if ratio >= self.prune:
+                            keep[j + 1] = self._KEEP
+                        elif keep[j + 1] == self._UNSET:
+                            keep[j + 1] = self._REMOVE
+
+        for j in range(1, n - 1):
+            if dz[j] > self.ratio * dz[j - 1]:
+                insert_after.add(j)
+                for jj in (j - 1, j, j + 1, j + 2):
+                    if 0 <= jj < n:
+                        keep[jj] = self._KEEP
+
+            if dz[j - 1] > self.ratio * dz[j]:
+                insert_after.add(j - 1)
+                for jj in (j - 2, j - 1, j, j + 1):
+                    if 0 <= jj < n:
+                        keep[jj] = self._KEEP
+
+            if j > 1 and (z[j + 1] - z[j - 1]) > self.ratio * dz[j - 2]:
+                keep[j] = self._KEEP
+
+            if j < n - 2 and (z[j + 1] - z[j - 1]) > self.ratio * dz[j + 1]:
+                keep[j] = self._KEEP
+
+        if pruning_enabled:
+            for j in range(2, n - 1):
+                if keep[j] == self._REMOVE and keep[j - 1] == self._REMOVE:
+                    keep[j] = self._KEEP
+
+            remove = {
+                int(j) for j in range(1, n - 1)
+                if keep[j] == self._REMOVE
+            }
+        else:
+            remove = set()
+
+        return insert_after, remove
+
+    def refine(self, z: np.ndarray, profiles: dict,
+               all_Y: np.ndarray | None = None,
+               j_fixed: int | None = None) -> tuple:
+        z = np.asarray(z, dtype=float)
+        insert_after, remove = self.analyze(z, profiles, j_fixed)
+
+        if not insert_after and not remove:
+            return z, False, 0, 0
+
+        keep_mask = np.ones(z.size, dtype=bool)
+        for j in remove:
+            if 0 < j < z.size - 1:
+                keep_mask[j] = False
+
+        z_new = []
+        n_inserted = 0
+        for j in range(z.size - 1):
+            if keep_mask[j]:
+                z_new.append(float(z[j]))
+            if j in insert_after and (len(z_new) + 1) < self.max_points:
+                z_new.append(0.5 * (float(z[j]) + float(z[j + 1])))
+                n_inserted += 1
+
+        if keep_mask[-1]:
+            z_new.append(float(z[-1]))
+
+        z_new = np.asarray(z_new, dtype=float)
+        z_new = np.unique(z_new)
+
+        n_removed = int(np.sum(~keep_mask[1:-1]))
+        changed = bool(z_new.size != z.size)
+        return z_new, changed, n_inserted, n_removed
+
+    def interpolate_solution(self, z_old: np.ndarray, z_new: np.ndarray,
+                             *arrays: np.ndarray) -> list:
+        result = []
+        for arr in arrays:
+            arr = np.asarray(arr, dtype=float)
+            if arr.ndim == 1:
+                result.append(np.interp(z_new, z_old, arr))
+            elif arr.ndim == 2:
+                new_arr = np.empty((arr.shape[0], len(z_new)), dtype=float)
+                for k in range(arr.shape[0]):
+                    new_arr[k, :] = np.interp(z_new, z_old, arr[k, :])
+                result.append(new_arr)
+            else:
+                raise ValueError(f"Array con ndim={arr.ndim} no soportado")
+        return result
+
+
+# --- FIN DE MESH.PY, INICIO DE NEWTON.PY ---
+
+"""
+newton.py - Damped Newton solver aligned with Cantera MultiNewton.
+
+Key behaviors mirrored from Cantera:
+- Reuse Jacobian for limited age and rebuild when stale.
+- Compute undamped Newton step with fixed Jacobian.
+- Damped step acceptance based on weighted step norm:
+    accept if s1 < 1.0 or s1 < s0
+- If damping fails with old Jacobian, force Jacobian rebuild (up to 3 retries).
+- On failure, return the original input state unchanged.
+"""
+
+
+
+
+# ---------------------------------------------------------------------------
+#  Weighted norm (OneDim::weightedNorm analogue)
+# ---------------------------------------------------------------------------
+def weighted_norm(step: np.ndarray, x: np.ndarray, problem, rdt: float = 0.0) -> float:
+    """
+    Weighted norm used by Cantera's Newton criterion.
+
+    w = rtol * mean(abs(x_component)) + atol
+    norm = sqrt(sum((step / w)^2) / N)
+
+    Uses steady tolerances when rdt == 0 and transient tolerances when rdt > 0.
+    """
+    n_pts = int(problem.n_points)
+    n_sp = int(problem.n_species)
+    nv = 2 + n_sp
+    n_total = n_pts * nv
+
+    if step.size != n_total or x.size != n_total:
+        return float(np.linalg.norm(step) / max(np.linalg.norm(x), 1e-300))
+
+    if rdt > 0.0:
+        rtol = float(getattr(problem, "transient_rtol", 1e-4))
+        atol = float(getattr(problem, "transient_atol", 1e-11))
+    else:
+        rtol = float(getattr(problem, "steady_rtol", 1e-4))
+        atol = float(getattr(problem, "steady_atol", 1e-9))
+
+    x_r = x.reshape(n_pts, nv)
+    step_r = step.reshape(n_pts, nv)
+    sumsq = 0.0
+    for v in range(nv):
+        esum = float(np.sum(np.abs(x_r[:, v])))
+        ewt = max(rtol * esum / n_pts + atol, 1e-300)
+        fs = step_r[:, v] / ewt
+        sumsq += float(np.dot(fs, fs))
+
+    return float(np.sqrt(sumsq / n_total))
+
+
+# ---------------------------------------------------------------------------
+#  Bound step factor (MultiNewton::boundStep analogue)
+# ---------------------------------------------------------------------------
+
+def bound_step_debug(x0: np.ndarray, step0: np.ndarray, problem) -> tuple[float, str]:
+    n_pts = int(problem.n_points)
+    n_sp = int(problem.n_species)
+    nv = 2 + n_sp
+
+    t_lo = float(getattr(problem, "T_lower_bound", 200.0))
+    t_hi = float(getattr(problem, "T_upper_bound", 2.0 * 3000.0))
+    y_lo = float(getattr(problem, "Y_lower_bound", -1e-5))
+    y_hi = 1.0e5
+
+    lower = np.full((n_pts, nv), -1e20)
+    upper = np.full((n_pts, nv), 1e20)
+    lower[:, 1] = t_lo
+    upper[:, 1] = t_hi
+    lower[:, 2:] = y_lo
+    upper[:, 2:] = y_hi
+
+    fbound = 1.0
+    x_r = x0.reshape(n_pts, nv)
+    s_r = step0.reshape(n_pts, nv)
+    reason = ""
+
+    for v in range(nv):
+        xv = x_r[:, v]
+        sv = s_r[:, v]
+        xnv = xv + sv
+
+        l_v = lower[:, v]
+        u_v = upper[:, v]
+
+        above = (sv > 0.0) & (xnv > u_v)
+        if np.any(above):
+            cand = (u_v[above] - xv[above]) / sv[above]
+            min_cand = float(np.min(cand))
+            if min_cand < fbound:
+                fbound = min_cand
+                reason = f"var={v} above upper xv={np.min(xv[above])} sv={np.max(sv[above])}"
+
+        below = (sv < 0.0) & (xnv < l_v)
+        if np.any(below):
+            cand = (xv[below] - l_v[below]) / (-sv[below])
+            min_cand = float(np.min(cand))
+            if min_cand < fbound:
+                fbound = min_cand
+                reason = f"var={v} below lower xv={np.min(xv[below])} sv={np.min(sv[below])}"
+
+    return max(0.0, fbound), reason
+
+
+# ---------------------------------------------------------------------------
+#  Reusable Jacobian state
+# ---------------------------------------------------------------------------
+@dataclass
+class JacobianState:
+    J: object = None
+    lu: object = None
+    ss_diag: np.ndarray = field(default_factory=lambda: np.empty(0))
+    age: int = 10000
+    n_evals: int = 0
+    last_rdt: float | None = None
+
+    def is_stale(self, max_age: int) -> bool:
+        # Cantera refreshes when age() > maxAge
+        return self.J is None or self.lu is None or self.age > max_age
+
+
+def _transient_alpha(transient_order: int, x_older: np.ndarray | None) -> float:
+    use_bdf2 = int(transient_order) >= 2 and x_older is not None
+    return 1.5 if use_bdf2 else 1.0
+
+
+def _build_linear_model(steady_fun, x: np.ndarray, problem,
+                        jac_eps: float, mask: np.ndarray,
+                        rdt_curr: float) -> tuple[object, object, np.ndarray]:
+    problem._current_rdt = rdt_curr
+    try:
+        j_ss, ss_diag = build_jacobian_steady(steady_fun, x, problem, eps=jac_eps)
+    finally:
+        if hasattr(problem, '_current_rdt'):
+            delattr(problem, '_current_rdt')
+
+    if rdt_curr > 0.0:
+        j_t = update_transient(j_ss, mask, rdt_curr, inplace=True)
+    else:
+        j_t = j_ss
+    lu = factorize(j_t)
+    return j_t, lu, ss_diag
+
+
+# ---------------------------------------------------------------------------
+#  Main Newton solver
+# ---------------------------------------------------------------------------
+def newton_solve(
+    steady_fun,
+    x0: np.ndarray,
+    problem,
+    rdt: float = 0.0,
+    x_old: np.ndarray | None = None,
+    x_older: np.ndarray | None = None,
+    transient_order: int = 1,
+    max_iter: int = 20,
+    max_jac_age: int = 5,
+    max_damp_iter: int = 7,
+    damp_factor: float = float(np.sqrt(2.0)),
+    tol: float = 1.0,
+    jac_eps: float = 1e-5,
+    alpha_min: float = 1e-10,
+    verbose: bool = False,
+    jac_state: JacobianState | None = None,
+) -> tuple[np.ndarray, bool, list[dict], JacobianState]:
+    """
+    Damped Newton aligned with Cantera MultiNewton.
+
+    Returns
+    -------
+    x_out, converged, history, jac_state
+    """
+    x = np.asarray(x0, dtype=float)
+    history: list[dict] = []
+
+    if jac_state is None:
+        jac_state = JacobianState()
+
+    def full_fun(xv: np.ndarray) -> np.ndarray:
+        from equations import residual as _res
+        return _res(
+            xv,
+            problem,
+            rdt=rdt,
+            x_old=x_old,
+            x_older=x_older,
+            transient_order=transient_order,
+        )
+
+    mask = build_transient_mask(problem.n_points, problem.n_species,
+                                solve_energy=bool(problem.solve_energy))
+
+    rdt_curr = float(rdt) * _transient_alpha(transient_order, x_older)
+    rdt_changed = (
+        jac_state.last_rdt is None
+        or not np.isclose(jac_state.last_rdt, rdt_curr, rtol=1e-12, atol=0.0)
+    )
+
+    force_new_jac = bool(rdt_changed)
+    n_jac_reeval = 0
+    status = -1
+
+    for it in range(max_iter):
+        # Jacobian refresh logic
+        if force_new_jac or jac_state.is_stale(max_jac_age):
+            try:
+                j_t, lu, ss_diag = _build_linear_model(
+                    steady_fun, x, problem, jac_eps, mask, rdt_curr
+                )
+                jac_state.J = j_t
+                jac_state.lu = lu
+                jac_state.ss_diag = ss_diag
+                jac_state.age = 0
+                jac_state.n_evals += 1
+                jac_state.last_rdt = rdt_curr
+                force_new_jac = False
+            except Exception as exc:
+                history.append({"iter": it, "status": "jac_fail", "error": str(exc)})
+                status = -4
+                break
+
+        # MultiNewton::step equivalent
+        f = full_fun(x)
+        if not np.all(np.isfinite(f)):
+            history.append({"iter": it, "status": "nonfinite_F"})
+            status = -5
+            break
+
+        try:
+            step0 = solve_linear(jac_state.lu, -f)
+        except Exception as exc:
+            history.append({"iter": it, "status": "linear_solve_fail", "error": str(exc)})
+            force_new_jac = True
+            continue
+
+        if not np.all(np.isfinite(step0)):
+            history.append({"iter": it, "status": "nonfinite_step"})
+            status = -5
+            break
+
+        jac_state.age += 1
+
+        s0 = weighted_norm(step0, x, problem, rdt=rdt)
+        normf = float(np.linalg.norm(f, ord=np.inf))
+
+        # Cantera's MultiNewton::boundStep: compute a scalar factor to keep
+        # x + alpha*step inside bounds.
+        fbound, _fbound_reason = bound_step_debug(x, step0, problem)
+        if fbound < alpha_min:
+            history.append({
+                "iter": it,
+                "status": "bound_fail",
+                "normF": normf,
+                "s0": s0,
+                "fbound": fbound,
+                "reason": _fbound_reason,
+                "jac_age": jac_state.age,
+            })
+
+            # MultiNewton: try fresh Jacobian if previous one was aged (>1)
+            if jac_state.age > 1:
+                force_new_jac = True
+                if verbose:
+                    print(f"  Newton it={it:3d} bound failure -> force new Jacobian")
+                if n_jac_reeval > 3:
+                    status = -3
+                    break
+                n_jac_reeval += 1
+                continue
+
+            status = -3
+            break
+
+        alpha = min(fbound, 1.0)
+
+        # MultiNewton::dampStep equivalent
+        damp_ok = False
+        x1 = x.copy()
+        s1 = float("inf")
+
+        for _ in range(max_damp_iter):
+            if alpha < alpha_min:
+                break
+
+            x_try = x + alpha * step0
+            f_try = full_fun(x_try)
+            if not np.all(np.isfinite(f_try)):
+                alpha /= damp_factor
+                continue
+
+            try:
+                step1 = solve_linear(jac_state.lu, -f_try)
+            except Exception:
+                alpha /= damp_factor
+                continue
+
+            if not np.all(np.isfinite(step1)):
+                alpha /= damp_factor
+                continue
+
+            s1_try = weighted_norm(step1, x_try, problem, rdt=rdt)
+            if s1_try < 1.0 or s1_try < s0:
+                damp_ok = True
+                x1 = x_try
+                s1 = s1_try
+                break
+
+            alpha /= damp_factor
+
+        if damp_ok:
+            x = x1
+            converged = bool(s1 < tol)
+            history.append({
+                "iter": it,
+                "status": "ok" if converged else "step",
+                "normF": normf,
+                "s0": s0,
+                "s1": s1,
+                "alpha": alpha,
+                "jac_age": jac_state.age,
+            })
+
+            if verbose:
+                print(
+                    f"  Newton it={it:3d} ||F||inf={normf:.4e} "
+                    f"s0={s0:.3e} s1={s1:.3e} a={alpha:.3e} age={jac_state.age}"
+                )
+            if converged:
+                # Cantera resets Jacobian age after steady convergence
+                # (keeps it fresh for follow-up operations).
+                if rdt == 0.0:
+                    jac_state.age = 0
+                status = 1
+                break
+            status = 0
+
+        else:
+            history.append({
+                "iter": it,
+                "status": "no_damp",
+                "normF": normf,
+                "s0": s0,
+                "jac_age": jac_state.age,
+            })
+
+            # MultiNewton: try fresh Jacobian if previous one was aged (>1)
+            if jac_state.age > 1:
+                force_new_jac = True
+                if verbose:
+                    print(f"  Newton it={it:3d} no damping -> force new Jacobian")
+                if n_jac_reeval > 3:
+                    status = -2
+                    break
+                n_jac_reeval += 1
+                continue
+
+            status = -2
+            break
+
+    if status != 1:
+        # Match MultiNewton.cpp: on failure, return the last accepted iterate
+        # (which is x0 only if no successful damped step was taken).
+        x = np.asarray(x, dtype=float).copy()
+
+    return x, bool(status == 1), history, jac_state
+
+
+# --- FIN DE NEWTON.PY, INICIO DE SOLVER_CANTERA_AUTO.PY ---
+
 """
 solver_cantera_auto.py – Solver híbrido Newton + time-stepping.
 
@@ -21,20 +711,9 @@ La novedad respecto al código anterior:
     solución del intento en curso.
   * Se guarda m_xlast_ss (último steady) para restaurar si refine falla.
 """
-from __future__ import annotations
 
-import time
-from dataclasses import dataclass, field
-from typing import Any
 
-import numpy as np
 
-from newton import JacobianState
-from mesh import AdaptiveRefiner, build_freeflame_refiner_profiles
-from newton import newton_solve
-from residual import residual
-from species_backend import SpeciesBackend
-from state import pack_state, unpack_state, interpolate_state
 
 
 # ---------------------------------------------------------------------------
@@ -46,8 +725,8 @@ class SolveOptions:
     u_left_guess: float = 1.00
 
     # Newton estacionario
-    steady_max_iter: int = 20
-    max_jac_age: int = 20
+    steady_max_iter: int = 50
+    max_jac_age: int = 5
     steady_max_jac_age: int | None = None
     transient_max_jac_age: int | None = None
     max_damp_iter: int = 7
@@ -67,8 +746,10 @@ class SolveOptions:
     max_time_step: float = 1e8
     transient_steps_per_cycle: int = 10 # compatibilidad
     time_step_sequence: tuple[int, ...] = (10,)
-    transient_max_iter: int = 20
+    transient_max_iter: int = 50
     max_time_step_count: int = 500
+    transient_scheme: str = "be"
+    reset_bad_after_failures: int = 3
 
     # Refinamiento (defaults de Refiner::setCriteria)
     refine_grid: bool = True
@@ -132,7 +813,7 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
     problem.jacobian_rel_perturb = float(getattr(opts, "jac_eps", 1e-5))
     problem.jacobian_abs_perturb = float(getattr(opts, "jac_abs_perturb", 1e-10))
     problem.jacobian_threshold = float(getattr(opts, "jac_threshold", 0.0))
-    problem.jacobian_mode = str(getattr(opts, "jacobian_mode", "cantera_local"))
+    problem.jacobian_mode = str(getattr(opts, "jacobian_mode", "coloring"))
 
     steady_fun = _make_steady_fun(problem)
     jac: JacobianState | None = None
@@ -212,7 +893,8 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                 break
 
             rdt = 1.0 / dt_try
-            use_bdf2 = x_older is not None
+            scheme_mode = str(getattr(opts, "transient_scheme", "be")).strip().lower()
+            use_bdf2 = scheme_mode in ("bdf2", "be-bdf2", "mixed") and x_older is not None
             transient_order = 2 if use_bdf2 else 1
             scheme = "BDF2" if use_bdf2 else "BE"
             jac_evals_before = int(jac.n_evals) if jac is not None else 0
@@ -227,7 +909,7 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                 tol=opts.tol,
                 jac_eps=opts.jac_eps,
                 alpha_min=opts.alpha_min,
-                verbose=False,
+                verbose=opts.verbose,
                 jac_state=jac,
             )
             jac_evals_after = int(jac.n_evals) if jac is not None else jac_evals_before
@@ -250,15 +932,11 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                 x_prev = x_old
                 x = x_ts
                 x_old = x_ts
-                x_older = x_prev
+                x_older = x_prev if scheme_mode in ("bdf2", "be-bdf2", "mixed") else None
                 n_done += 1
                 nsteps_total += 1
 
-                # Increase dt only when no Jacobian re-evaluation occurred.
-                if jac_evals_after == jac_evals_before:
-                    dt = min(opts.max_time_step, dt_try * opts.time_step_grow)
-                else:
-                    dt = min(opts.max_time_step, dt_try)
+                dt = min(opts.max_time_step, dt_try * opts.time_step_grow)
 
                 if opts.verbose:
                     Finf = float(np.linalg.norm(residual(x, problem), ord=np.inf))
@@ -282,13 +960,16 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                     return x, False, history
             else:
                 successive_failures += 1
+                x_older = None  # Fall back to Backward Euler on failure
                 reset_bad = False
-                if successive_failures > 2:
+                reset_after = int(max(1, getattr(opts, "reset_bad_after_failures", 3)))
+                if successive_failures >= reset_after:
                     x_old = problem.reset_bad_values(x_old)
-                    if x_older is not None:
-                        x_older = problem.reset_bad_values(x_older)
-                    successive_failures = 0
+                    x = x_old.copy()
                     reset_bad = True
+                    successive_failures = 0
+                    if jac is not None:
+                        jac.age = 10000
                 else:
                     dt = dt_try * tfactor
 
@@ -296,7 +977,8 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                     if reset_bad:
                         print(f"    ts {scheme} FAIL  reset_bad_values")
                     else:
-                        print(f"    ts {scheme} FAIL  dt->{dt:.2e}")
+                        fail_reason = hist_ts[-1] if hist_ts else "Unknown"
+                        print(f"    ts {scheme} FAIL  dt->{dt:.2e}  reason={fail_reason}")
 
                 if dt < opts.min_time_step and not reset_bad:
                     history.append(
@@ -573,11 +1255,11 @@ def _domain_too_narrow(problem, x: np.ndarray, slope_tol: float = 0.02) -> tuple
 
     m_ref = float((T[-1] - T[0]) / span)
     metrics["m_ref"] = m_ref
-    if abs(m_ref) < 1e-300:
+    if abs(m_ref) < 1.0:
         return False, metrics
 
-    m_left = float((T[1] - T[0]) / (z[1] - z[0]) / m_ref)
-    m_right = float((T[-3] - T[-1]) / (z[-3] - z[-1]) / m_ref)
+    m_left = float(abs((T[1] - T[0]) / (z[1] - z[0]) / m_ref))
+    m_right = float(abs((T[-3] - T[-1]) / (z[-3] - z[-1]) / m_ref))
     metrics["m_left"] = m_left
     metrics["m_right"] = m_right
 
@@ -596,7 +1278,9 @@ def _expand_domain_and_reseed(problem, x: np.ndarray, factor: float = 2.0) -> np
     z_old = np.asarray(problem.z, dtype=float).copy()
     z_new = z_old * factor
 
-    x_new = interpolate_state(x, z_old, z_new, problem.n_species)
+    # Expanding the domain scales the existing grid coordinates; the state
+    # values stay attached to their grid indices so edge slopes decrease.
+    x_new = np.asarray(x, dtype=float).copy()
     _assign_grid(problem, z_new)
 
     x_new = problem.reset_bad_values(x_new)

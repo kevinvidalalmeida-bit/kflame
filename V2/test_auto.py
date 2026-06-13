@@ -3,7 +3,7 @@ import numpy as np
 from config import FlameCase
 from problem import FreeFlameProblem
 from species_backend import SpeciesBackend
-from solver_cantera_auto import solve_free_flame, SolveOptions
+from solver import solve_free_flame, SolveOptions
 from state import unpack_state
 
 def main():

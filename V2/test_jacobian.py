@@ -18,8 +18,8 @@ import cantera as ct
 from config import FlameCase
 from problem import FreeFlameProblem
 from species_backend import SpeciesBackend
-from residual import residual
-from jacobian import (banded_jacobian, build_jacobian_steady,
+from equations import residual
+from equations import (banded_jacobian, build_jacobian_steady,
                       build_jacobian_transient, update_transient)
 from state import pack_state, build_transient_mask
 

@@ -17,8 +17,8 @@ import cantera as ct
 from config import FlameCase
 from problem import FreeFlameProblem
 from species_backend import SpeciesBackend
-from solver_cantera_auto import SolveOptions, _hybrid_newton
-from residual import residual
+from solver import SolveOptions, _hybrid_newton
+from equations import residual
 from state import pack_state, unpack_state
 
 
