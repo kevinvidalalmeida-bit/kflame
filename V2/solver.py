@@ -1,26 +1,22 @@
+"""Solver, mesh adaptation, and nonlinear iteration for the 1-D free flame."""
+
 from __future__ import annotations
 
-from equations import (
-    residual,
-    build_jacobian_steady,
-    update_transient,
-    factorize,
-    solve_linear
-)
-from state import build_transient_mask
-from dataclasses import dataclass, field
-from species_backend import SpeciesBackend
-from state import pack_state, unpack_state, interpolate_state
-from typing import Any
-import numpy as np
 import time
-"""
-solver.py - Consolida la lógica algorítmica de resolución (Newton, Mesh, Solver).
-"""
-"""
-mesh.py – Generación de malla y refinamiento adaptativo tipo Cantera.
-"""
+from dataclasses import dataclass, field
+from typing import Any
 
+import numpy as np
+
+from equations import (
+    build_jacobian_steady,
+    factorize,
+    residual,
+    solve_linear,
+    update_transient,
+)
+from species_backend import SpeciesBackend
+from state import build_transient_mask, interpolate_state, pack_state, unpack_state
 
 # ---------------------------------------------------------------------------
 #  Malla inicial (clustering gaussiano)

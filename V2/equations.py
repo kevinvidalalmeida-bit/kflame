@@ -1,27 +1,12 @@
+"""Residual and Jacobian assembly for the 1-D free-flame solver."""
+
 from __future__ import annotations
+
+import numpy as np
 from scipy import sparse
 from scipy.sparse.linalg import splu
-from state import unpack_state, build_transient_mask, C_U, C_T, C_Y
-import numpy as np
-"""
-equations.py - Consolida la matemática gobernante (Residuales y Jacobiano).
-"""
-"""
-residual.py – Residual acoplado para llama libre premezclada 1-D.
 
-UNA SOLA funcion `residual(...)` para estacionario, Backward Euler y BDF2.
-El termino temporal usa rdt = 1/dt y la mascara de variables diferenciales.
-
-Esto replica exactamente el comportamiento de Flow1D::eval() en Cantera:
-el mismo método calcula siempre el residual, y si rdt != 0, añade el
-término de derivada temporal usando la solución previa almacenada.
-
-Layout del estado y del residual: POR-PUNTO ENTRELAZADO.
-  x = [u0, T0, Y0..YK at pt0,  u1, T1, Y0..YK at pt1, ...]
-  F = misma estructura
-"""
-
-
+from state import C_T, C_U, C_Y, build_transient_mask, unpack_state
 
 # ---------------------------------------------------------------------------
 #  Helpers de flujo difusivo
@@ -103,7 +88,8 @@ def residual(
                 T[j], Y[:, j], omega[:, j], hk_n[:, j]
             )
     except Exception as exc:
-        print(f"EXCEPTION IN RESIDUAL PROP: {exc}")
+        if bool(getattr(problem, "debug_residual_errors", False)):
+            print(f"EXCEPTION IN RESIDUAL PROP: {exc}")
         problem.last_residual_error = str(exc)
         return np.full(x.size, 1.0e20)
 
@@ -126,7 +112,8 @@ def residual(
             flux[:, jf] = _corrected_flux(
                 Y[:, jf], Y[:, jf + 1], rho_f, D_f, dz_f, W, W_mix_f, basis)
     except Exception as exc:
-        print(f"EXCEPTION IN RESIDUAL FACE: {exc}")
+        if bool(getattr(problem, "debug_residual_errors", False)):
+            print(f"EXCEPTION IN RESIDUAL FACE: {exc}")
         problem.last_residual_error = str(exc)
         return np.full(x.size, 1.0e20)
 
