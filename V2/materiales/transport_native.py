@@ -23,6 +23,13 @@ from pathlib import Path
 PI = math.pi
 EPSILON_0 = 8.854187817e-12  # vacuum permittivity [F/m]
 
+
+def _host_array(arr):
+    """Return a NumPy view/copy for one-time CPU preprocessing."""
+    if hasattr(arr, "get"):
+        return arr.get()
+    return np.asarray(arr)
+
 # Load pre-exported Cantera transport polynomials (ln(T) basis)
 _TRANSPORT_POLY_FILE = Path(__file__).parent / "cantera_transport_poly_coeffs.json"
 try:
@@ -66,12 +73,12 @@ class NativeTransport:
         _del_p = np.zeros((n, n))
 
         # Perform the pair mixing rules in NumPy (it's one-time init)
-        eps_cpu = np.asarray(mech.well_depth)
-        sig_cpu = np.asarray(mech.diameter)
-        dip_cpu = np.asarray(mech.dipole)
-        alp_cpu = np.asarray(mech.polarizability)
+        eps_cpu = np.asarray(_host_array(mech.well_depth), dtype=float)
+        sig_cpu = np.asarray(_host_array(mech.diameter), dtype=float)
+        dip_cpu = np.asarray(_host_array(mech.dipole), dtype=float)
+        alp_cpu = np.asarray(_host_array(mech.polarizability), dtype=float)
         pol_cpu = dip_cpu > 0.0
-        mw_cpu = np.asarray(mech.molecular_weights)
+        mw_cpu = np.asarray(_host_array(mech.molecular_weights), dtype=float)
 
         for i in range(n):
             for j in range(i, n):
@@ -276,7 +283,7 @@ class NativeTransport:
             Phi = factor1**2 / self.xp.sqrt(8.0 * (1.0 + 1.0 / mw_ratio))
             denom = Phi @ X
             Xsafe = self.xp.maximum(X, self._tiny)
-            return float(self.xp.sum((Xsafe * visc_k) / self.xp.maximum(denom, self._tiny)))
+            return self.xp.sum((Xsafe * visc_k) / self.xp.maximum(denom, self._tiny))
 
     # ------------------------------------------------------------------
     #  Pure-species thermal conductivity (Empirical Cantera polynomials)
@@ -395,9 +402,9 @@ class NativeTransport:
             sum2 = self.xp.sum(Xsafe * 1.0 / self.xp.maximum(cond_k, 1e-300), axis=0)
             return 0.5 * (sum1 + 1.0 / self.xp.maximum(sum2, 1e-300))
         else:
-            sum1 = float(self.xp.sum(Xsafe * cond_k))
-            sum2 = float(self.xp.sum(Xsafe * 1.0 / self.xp.maximum(cond_k, 1e-300)))
-            return 0.5 * (sum1 + 1.0 / max(sum2, 1e-300))
+            sum1 = self.xp.sum(Xsafe * cond_k)
+            sum2 = self.xp.sum(Xsafe * 1.0 / self.xp.maximum(cond_k, 1e-300))
+            return 0.5 * (sum1 + 1.0 / self.xp.maximum(sum2, 1e-300))
 
     # ------------------------------------------------------------------
     #  Binary diffusion coefficients at unit pressure
@@ -443,7 +450,7 @@ class NativeTransport:
             Wmix_b = Wmix[None, :]
             mw_b = self.mw[:, None]
         else:
-            Wmix = float(self.xp.sum(X * self.mw))
+            Wmix = self.xp.sum(X * self.mw)
             sum2 = (inv_bdiff * mask) @ Xsafe
             diag_bdiff = self.xp.diag(bdiff)
             Wmix_b = Wmix
@@ -466,7 +473,7 @@ class NativeTransport:
             X = YW / self.xp.maximum(YW.sum(axis=0)[None, :], 1e-300)
         else:
             YW = Y * invW
-            X = YW / max(YW.sum(), 1e-300)
+            X = YW / self.xp.maximum(YW.sum(), 1e-300)
             
         mu  = self.viscosity(T, X)
         lam = self.thermal_conductivity(T, X, cp_R)

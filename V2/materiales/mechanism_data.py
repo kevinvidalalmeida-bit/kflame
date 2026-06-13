@@ -418,9 +418,11 @@ def load_mechanism(filepath: str | Path) -> MechanismData:
     nu_p = np.zeros((n_sp, n_rxn))
     for j, rxn in enumerate(reactions):
         for k, nu in zip(rxn.reactant_indices, rxn.reactant_stoich):
-            nu_r[k, j] = nu
+            # Accumulate in case a species appears multiple times
+            # (e.g. "CH2 + CH2" instead of "2 CH2").
+            nu_r[k, j] += nu
         for k, nu in zip(rxn.product_indices, rxn.product_stoich):
-            nu_p[k, j] = nu
+            nu_p[k, j] += nu
     nu_net = nu_p - nu_r
 
     return MechanismData(

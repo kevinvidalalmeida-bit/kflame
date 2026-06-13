@@ -35,7 +35,23 @@ class NativeSpeciesBackend:
 
     def __init__(self, problem, mech_data: MechanismData | None = None, use_gpu: bool = False):
         self.problem = problem
+        self.backend_kind = "native"
+        self.use_gpu = bool(use_gpu)
         P = problem.P
+        if self.use_gpu:
+            try:
+                import cupy as cp
+            except ImportError:
+                self.use_gpu = False
+                self.xp = np
+                self._cp = None
+            else:
+                self.xp = cp
+                self._cp = cp
+        else:
+            self.xp = np
+            self._cp = None
+        self._is_gpu = self.use_gpu
 
         # Load mechanism if not provided
         if mech_data is None:
@@ -43,21 +59,22 @@ class NativeSpeciesBackend:
             mech_data = load_mechanism(mech_path)
 
         # Move to GPU if requested
-        mech_data.to_device(use_gpu)
+        mech_data.to_device(self.use_gpu)
 
         self.mech = mech_data
         self.mech.pressure = P
 
-        # Initialize sub-modules (they will automatically detect cupy from mech arrays)
-        self.thermo    = NativeThermo(mech_data)
-        self.transport = NativeTransport(mech_data)
-        self.kinetics  = NativeKinetics(mech_data)
-        
-        self.xp = self.thermo.xp
+        self.thermo    = NativeThermo(mech_data, xp=self.xp)
+        self.transport = NativeTransport(mech_data, xp=self.xp)
+        self.kinetics  = NativeKinetics(mech_data, xp=self.xp)
 
-        # Convenience aliases
-        self.W = self.xp.asarray(mech_data.molecular_weights)
-        self.invW = self.xp.asarray(mech_data.inv_molecular_weights)
+        # Convenience aliases:
+        # - public `W` / `invW` stay on CPU for solver compatibility
+        # - internal `*_dev` stay on current device (NumPy/CuPy)
+        self.W = np.asarray(self._to_host(mech_data.molecular_weights), dtype=float)
+        self.invW = np.asarray(self._to_host(mech_data.inv_molecular_weights), dtype=float)
+        self.W_dev = self.xp.asarray(self.W)
+        self.invW_dev = self.xp.asarray(self.invW)
         self.n_species = mech_data.n_species
 
         # Transport / flux settings from problem
@@ -70,17 +87,32 @@ class NativeSpeciesBackend:
     #  Internal helpers
     # ------------------------------------------------------------------
     def _safe_Y(self, Y: np.ndarray) -> np.ndarray:
-        """Clip and ensure finite."""
+        """
+        Ensure finite composition without renormalizing.
+
+        This mirrors the solver path using Cantera's
+        `set_unnormalized_mass_fractions`, which preserves the incoming state.
+        """
         Y = self.xp.asarray(Y, dtype=float)
-        Y = self.xp.clip(Y, 0.0, None)
-        if Y.ndim == 1:
-            s = Y.sum()
-            if s > 0:
-                Y = Y / s
+        finite = self.xp.all(self.xp.isfinite(Y))
+        if self._is_gpu:
+            finite = bool(self._cp.asnumpy(finite))
         else:
-            s = Y.sum(axis=0)
-            Y = Y / self.xp.maximum(s, 1e-300)[None, :]
+            finite = bool(finite)
+        if not finite:
+            raise ValueError("Se detectaron fracciones másicas no finitas.")
         return Y
+
+    def _to_host(self, arr):
+        if self._is_gpu:
+            return self._cp.asnumpy(arr)
+        return np.asarray(arr)
+
+    def _copy_to_out(self, out: np.ndarray, arr):
+        if self._is_gpu:
+            out[:] = self._cp.asnumpy(arr)
+        else:
+            out[:] = arr
 
     def _Y_to_X(self, Y: np.ndarray) -> np.ndarray:
         """Mass fractions → mole fractions."""
@@ -90,9 +122,9 @@ class NativeSpeciesBackend:
         """Species concentrations [kmol/m³]."""
         rho = self.thermo.density(T, self.problem.P, Y)
         if Y.ndim == 1:
-            return rho * Y * self.invW
+            return rho * Y * self.invW_dev
         else:
-            return rho[None, :] * Y * self.invW[:, None]
+            return rho[None, :] * Y * self.invW_dev[:, None]
 
     # ------------------------------------------------------------------
     #  eval_grid_into  (Full Grid Vectorization)
@@ -111,20 +143,22 @@ class NativeSpeciesBackend:
         # Thermodynamics
         rho = self.thermo.density(T, P, Y_safe)
         cp  = self.thermo.cp_mass(T, Y_safe)
-        hk_out[:] = self.thermo.partial_molar_enthalpies(T)
+        hk_vals = self.thermo.partial_molar_enthalpies(T)
+        self._copy_to_out(hk_out, hk_vals)
 
         # Transport
         cp_R = self.thermo.cp_R(T)
         X = self._Y_to_X(Y_safe)
-        _mu, lam, Dm, _X = self.transport.eval_all(T, P, Y_safe, cp_R, self.invW)
+        _mu, lam, Dm, _X = self.transport.eval_all(T, P, Y_safe, cp_R, self.invW_dev)
 
         # Kinetics
-        C = rho[None, :] * Y_safe * self.invW[:, None]
+        C = rho[None, :] * Y_safe * self.invW_dev[:, None]
         g_RT = self.thermo.g_RT(T)
         wdot = self.kinetics.net_production_rates(T, C, g_RT)  # kmol/(m³·s)
-        self.xp.multiply(wdot, self.W[:, None], out=omega_out)  # → kg/(m³·s)
+        omega_mass = wdot * self.W_dev[:, None]
+        self._copy_to_out(omega_out, omega_mass)
 
-        return rho, Dm, cp, lam
+        return self._to_host(rho), self._to_host(Dm), self._to_host(cp), self._to_host(lam)
 
     def eval_faces(self, T_face: np.ndarray, Y_face: np.ndarray):
         """
@@ -140,9 +174,9 @@ class NativeSpeciesBackend:
         X = self._Y_to_X(Y_safe)
         lam = self.transport.thermal_conductivity(T_face, X, cp_R)
         Dm  = self.transport.mix_diff_coeffs(T_face, P, X)
-        Wmix = self.thermo.mean_molecular_weight(Y_safe, self.invW)
+        Wmix = self.thermo.mean_molecular_weight(Y_safe, self.invW_dev)
         
-        return rho, Dm, lam, Wmix
+        return self._to_host(rho), self._to_host(Dm), self._to_host(lam), self._to_host(Wmix)
 
     # ------------------------------------------------------------------
     #  eval_node_into  (Single point interface)
@@ -157,28 +191,35 @@ class NativeSpeciesBackend:
         # Thermodynamics
         rho = self.thermo.density(T, P, Y)
         cp  = self.thermo.cp_mass(T, Y)
-        hk_out[:] = self.thermo.partial_molar_enthalpies(T)
+        hk_vals = self.thermo.partial_molar_enthalpies(T)
+        self._copy_to_out(hk_out, hk_vals)
 
         # Transport
         cp_R = self.thermo.cp_R(T)
         X = self._Y_to_X(Y)
-        _mu, lam, Dm, _X = self.transport.eval_all(T, P, Y, cp_R, self.invW)
+        _mu, lam, Dm, _X = self.transport.eval_all(T, P, Y, cp_R, self.invW_dev)
 
         # Kinetics
-        C = rho * Y * self.invW
+        C = rho * Y * self.invW_dev
         g_RT = self.thermo.g_RT(T)
         wdot = self.kinetics.net_production_rates(T, C, g_RT)
-        self.xp.multiply(wdot, self.W, out=omega_out)
+        omega_mass = wdot * self.W_dev
+        self._copy_to_out(omega_out, omega_mass)
 
-        return rho, Dm, cp, lam
+        return (
+            float(np.asarray(self._to_host(rho))),
+            self._to_host(Dm),
+            float(np.asarray(self._to_host(cp))),
+            float(np.asarray(self._to_host(lam))),
+        )
 
     # ------------------------------------------------------------------
     #  eval_node  (returns everything)
     # ------------------------------------------------------------------
     def eval_node(self, T: float, Y: np.ndarray):
         """Returns (rho, Dm, omega_mass, cp, lam, hk)."""
-        omega = self.xp.empty(self.n_species, dtype=float)
-        hk = self.xp.empty(self.n_species, dtype=float)
+        omega = np.empty(self.n_species, dtype=float)
+        hk = np.empty(self.n_species, dtype=float)
         rho, Dm, cp, lam = self.eval_node_into(T, Y, omega, hk)
         return rho, Dm, omega, cp, lam, hk
 
@@ -195,8 +236,12 @@ class NativeSpeciesBackend:
 
         rho = self.thermo.density(Tm, P, Ym)
         Dm_arr = self.transport.mix_diff_coeffs(Tm, P, self._Y_to_X(Ym))
-        Wmix = self.thermo.mean_molecular_weight(Ym, self.invW)
-        return rho, Dm_arr, Wmix
+        Wmix = self.thermo.mean_molecular_weight(Ym, self.invW_dev)
+        return (
+            float(np.asarray(self._to_host(rho))),
+            self._to_host(Dm_arr),
+            float(np.asarray(self._to_host(Wmix))),
+        )
 
     def eval_midpoint_full_transport(self, T_left: float, T_right: float,
                                      Y_left: np.ndarray, Y_right: np.ndarray):
@@ -211,8 +256,13 @@ class NativeSpeciesBackend:
         X = self._Y_to_X(Ym)
         lam = self.transport.thermal_conductivity(Tm, X, cp_R)
         Dm  = self.transport.mix_diff_coeffs(Tm, P, X)
-        Wmix = self.thermo.mean_molecular_weight(Ym, self.invW)
-        return rho, Dm, lam, Wmix
+        Wmix = self.thermo.mean_molecular_weight(Ym, self.invW_dev)
+        return (
+            float(np.asarray(self._to_host(rho))),
+            self._to_host(Dm),
+            float(np.asarray(self._to_host(lam))),
+            float(np.asarray(self._to_host(Wmix))),
+        )
 
     def eval_midpoint_full(self, T_left: float, T_right: float,
                            Y_left: np.ndarray, Y_right: np.ndarray):
@@ -228,4 +278,5 @@ class NativeSpeciesBackend:
     def density(self, T: float, Y: np.ndarray) -> float:
         """ρ = P · W_mix / (R · T)."""
         Y = self._safe_Y(Y)
-        return self.thermo.density(float(T), self.problem.P, Y)
+        rho = self.thermo.density(float(T), self.problem.P, Y)
+        return float(np.asarray(self._to_host(rho)))

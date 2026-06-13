@@ -2,11 +2,36 @@
 
 from __future__ import annotations
 
+from time import perf_counter
+
 import numpy as np
 from scipy import sparse
 from scipy.sparse.linalg import splu
 
 from state import C_T, C_U, C_Y, build_transient_mask, unpack_state
+
+
+def _profile_start(problem) -> float:
+    return perf_counter() if getattr(problem, "_profile", None) is not None else 0.0
+
+
+def _profile_record(problem, key: str, t0: float, count: int = 1) -> None:
+    profile = getattr(problem, "_profile", None)
+    if profile is None:
+        return
+    entry = profile.setdefault(key, {"time_s": 0.0, "count": 0})
+    entry["time_s"] += perf_counter() - t0
+    entry["count"] += int(count)
+
+
+def _profile_return(problem, key: str, t0: float, value):
+    _profile_record(problem, key, t0)
+    return value
+
+
+def _state_views(x: np.ndarray, n_points: int, n_species: int):
+    x_r = np.asarray(x, dtype=float).reshape(n_points, 2 + n_species)
+    return x_r[:, C_U], x_r[:, C_T], x_r[:, C_Y:].T
 
 # ---------------------------------------------------------------------------
 #  Helpers de flujo difusivo
@@ -60,6 +85,7 @@ def residual(
       1 -> Backward Euler
       2 -> BDF2
     """
+    t_profile = _profile_start(problem)
     x = np.asarray(x, dtype=float)
     n_pts = int(problem.n_points)
     n_sp = int(problem.n_species)
@@ -73,7 +99,7 @@ def residual(
     # ------------------------------------------------------------------
     #  1. Propiedades nodales
     # ------------------------------------------------------------------
-    u, T, Y = unpack_state(x, n_pts, n_sp)
+    u, T, Y = _state_views(x, n_pts, n_sp)
 
     rho = np.empty(n_pts)
     cp_n = np.empty(n_pts)
@@ -91,7 +117,7 @@ def residual(
         if bool(getattr(problem, "debug_residual_errors", False)):
             print(f"EXCEPTION IN RESIDUAL PROP: {exc}")
         problem.last_residual_error = str(exc)
-        return np.full(x.size, 1.0e20)
+        return _profile_return(problem, "residual_full", t_profile, np.full(x.size, 1.0e20))
 
     # ------------------------------------------------------------------
     #  2. Flujos difusivos en caras (n_pts-1 caras)
@@ -115,7 +141,7 @@ def residual(
         if bool(getattr(problem, "debug_residual_errors", False)):
             print(f"EXCEPTION IN RESIDUAL FACE: {exc}")
         problem.last_residual_error = str(exc)
-        return np.full(x.size, 1.0e20)
+        return _profile_return(problem, "residual_full", t_profile, np.full(x.size, 1.0e20))
 
     # ------------------------------------------------------------------
     #  3. Ensamblar residual bloque a bloque
@@ -189,9 +215,9 @@ def residual(
             F -= mask * rdt * (x - x_old)
 
     if not np.all(np.isfinite(F)):
-        return np.full(x.size, 1.0e20)
+        return _profile_return(problem, "residual_full", t_profile, np.full(x.size, 1.0e20))
 
-    return F
+    return _profile_return(problem, "residual_full", t_profile, F)
 
 
 # ---------------------------------------------------------------------------
@@ -318,6 +344,7 @@ def build_local_jacobian_cache(x: np.ndarray, problem) -> dict:
     - Transport properties are frozen from the base state, matching Cantera's
       Jacobian path where transport is not updated by default during eval(j,...).
     """
+    t_profile = _profile_start(problem)
     x = np.asarray(x, dtype=float)
     n_pts = int(problem.n_points)
     n_sp = int(problem.n_species)
@@ -328,7 +355,7 @@ def build_local_jacobian_cache(x: np.ndarray, problem) -> dict:
     invW = np.asarray(backend.invW, dtype=float)
     basis = str(getattr(problem, "flux_gradient_basis", "molar")).lower()
 
-    u, T, Y = unpack_state(x, n_pts, n_sp)
+    u, T, Y = _state_views(x, n_pts, n_sp)
 
     # Nodal thermo/kinetics at base state
     rho = np.empty(n_pts, dtype=float)
@@ -379,7 +406,15 @@ def build_local_jacobian_cache(x: np.ndarray, problem) -> dict:
                 else:
                     face_coeff[:, jf] = rho_f * D_f
 
-    return {
+    row_offsets = np.arange(2 + n_sp, dtype=np.int32)
+    local_rows = []
+    for j in range(n_pts):
+        p0 = max(0, j - 1)
+        p1 = min(n_pts - 1, j + 1)
+        blocks = np.arange(p0, p1 + 1, dtype=np.int32)[:, None] * (2 + n_sp)
+        local_rows.append((blocks + row_offsets[None, :]).ravel())
+
+    return _profile_return(problem, "jacobian_cache", t_profile, {
         "n_pts": n_pts,
         "n_sp": n_sp,
         "nv": 2 + n_sp,
@@ -395,7 +430,8 @@ def build_local_jacobian_cache(x: np.ndarray, problem) -> dict:
         "lam_face": lam_face,
         "face_coeff": face_coeff,
         "dz_face": dz_face,
-    }
+        "local_rows": local_rows,
+    })
 
 
 def _corrected_flux_frozen(Y_L: np.ndarray, Y_R: np.ndarray,
@@ -427,6 +463,7 @@ def residual_local_rows(x: np.ndarray, problem, center_j: int,
     rows : ndarray[int]
     vals : ndarray[float]
     """
+    t_profile = _profile_start(problem)
     x = np.asarray(x, dtype=float)
 
     if cache is None:
@@ -449,7 +486,7 @@ def residual_local_rows(x: np.ndarray, problem, center_j: int,
     T_in = float(problem.T_in)
     Y_in = problem.Y_in
 
-    u, T, Y = unpack_state(x, n_pts, n_sp)
+    u, T, Y = _state_views(x, n_pts, n_sp)
 
     j_center = int(np.clip(center_j, 0, n_pts - 1))
     p0 = max(0, j_center - 1)
@@ -495,16 +532,12 @@ def residual_local_rows(x: np.ndarray, problem, center_j: int,
 
     lam_face = cache["lam_face"]
 
-    n_blocks = p1 - p0 + 1
-    rows_out = np.empty(n_blocks * nv, dtype=np.int32)
-    vals_out = np.empty(n_blocks * nv, dtype=float)
-    row_block = np.arange(nv, dtype=np.int32)
+    rows_out = cache["local_rows"][j_center]
+    vals_out = np.empty(rows_out.size, dtype=float)
     out_i = 0
 
     for j in range(p0, p1 + 1):
-        b = j * nv
         sl = slice(out_i, out_i + nv)
-        rows_out[sl] = b + row_block
         block = vals_out[sl]
 
         if j == 0:
@@ -587,7 +620,7 @@ def residual_local_rows(x: np.ndarray, problem, center_j: int,
 
         out_i += nv
 
-    return rows_out, vals_out
+    return _profile_return(problem, "residual_local", t_profile, (rows_out, vals_out))
 
 
 # --- FIN DE RESIDUAL.PY, INICIO DE JACOBIAN.PY ---
@@ -618,13 +651,13 @@ def _banded_jacobian_cantera_local(fun, x: np.ndarray, problem, eps: float = 1e-
     - write local rows into Jacobian    # Las funciones residual_local_rows y build_local_jacobian_cache están en este mismo archivo.
     """
 
+    t_profile = _profile_start(problem)
     x = np.asarray(x, dtype=float)
     n_pts = int(problem.n_points)
     n_sp = int(problem.n_species)
     nv = 2 + n_sp
     n_total = n_pts * nv
 
-    # Eval base and precompute
     cache = build_local_jacobian_cache(x, problem)
     f0 = fun(x, problem)
 
@@ -632,12 +665,29 @@ def _banded_jacobian_cantera_local(fun, x: np.ndarray, problem, eps: float = 1e-
     abs_perturb = float(getattr(problem, "jacobian_abs_perturb", 1e-10))
     threshold = float(getattr(problem, "jacobian_threshold", 0.0))
 
-    rows_list: list[int] = []
-    cols_list: list[int] = []
-    vals_list: list[float] = []
-
     xp = x.copy()
-    local_cache = build_local_jacobian_cache(x, problem)
+    max_rows_per_col = min(n_total, 3 * nv)
+    capacity = max(1, n_total * max_rows_per_col)
+    rows_arr = np.empty(capacity, dtype=np.int32)
+    cols_arr = np.empty(capacity, dtype=np.int32)
+    vals_arr = np.empty(capacity, dtype=float)
+    nnz_total = 0
+
+    def ensure_capacity(extra: int) -> None:
+        nonlocal rows_arr, cols_arr, vals_arr
+        required = nnz_total + int(extra)
+        if required <= rows_arr.size:
+            return
+        new_size = max(required, rows_arr.size * 2)
+        rows_new = np.empty(new_size, dtype=np.int32)
+        cols_new = np.empty(new_size, dtype=np.int32)
+        vals_new = np.empty(new_size, dtype=float)
+        rows_new[:nnz_total] = rows_arr[:nnz_total]
+        cols_new[:nnz_total] = cols_arr[:nnz_total]
+        vals_new[:nnz_total] = vals_arr[:nnz_total]
+        rows_arr = rows_new
+        cols_arr = cols_new
+        vals_arr = vals_new
 
     for j in range(n_pts):
         base = j * nv
@@ -654,31 +704,39 @@ def _banded_jacobian_cantera_local(fun, x: np.ndarray, problem, eps: float = 1e-
             xp[col] = xsave + dx
             rdx = 1.0 / (xp[col] - xsave)
 
-            rows, f_local = residual_local_rows(xp, problem, j, cache=local_cache)
+            rows, f_local = residual_local_rows(xp, problem, j, cache=cache)
             delta = f_local - f0[rows]
 
             if threshold > 0.0:
                 keep = np.abs(delta) > threshold
-            else:
-                keep = np.ones(delta.size, dtype=bool)
-
-            # Keep diagonal entry even if tiny (as in Cantera condition).
-            kdiag = np.where(rows == col)[0]
-            if kdiag.size > 0:
-                keep[int(kdiag[0])] = True
-
-            if np.any(keep):
+                # Keep diagonal entry even if tiny (as in Cantera condition).
+                kdiag = np.where(rows == col)[0]
+                if kdiag.size > 0:
+                    keep[int(kdiag[0])] = True
                 rows_nz = rows[keep]
                 vals_nz = delta[keep] * rdx
-                nnz = int(rows_nz.size)
-                rows_list.extend(rows_nz.tolist())
-                cols_list.extend([col] * nnz)
-                vals_list.extend(vals_nz.tolist())
+            else:
+                rows_nz = rows
+                vals_nz = delta * rdx
+
+            nnz = int(rows_nz.size)
+            if nnz:
+                ensure_capacity(nnz)
+                end = nnz_total + nnz
+                rows_arr[nnz_total:end] = rows_nz
+                cols_arr[nnz_total:end] = col
+                vals_arr[nnz_total:end] = vals_nz
+                nnz_total = end
 
             xp[col] = xsave
 
-    jmat = sparse.coo_matrix((vals_list, (rows_list, cols_list)), shape=(n_total, n_total)).tocsr()
-    return jmat
+    t_sparse = _profile_start(problem)
+    jmat = sparse.coo_matrix(
+        (vals_arr[:nnz_total], (rows_arr[:nnz_total], cols_arr[:nnz_total])),
+        shape=(n_total, n_total),
+    ).tocsr()
+    _profile_record(problem, "jacobian_sparse_assembly", t_sparse)
+    return _profile_return(problem, "jacobian_build", t_profile, jmat)
 
 
 # ---------------------------------------------------------------------------
@@ -793,14 +851,24 @@ def build_jacobian_transient(fun, x: np.ndarray, problem, rdt: float,
 #  Sparse linear solver wrappers
 # ---------------------------------------------------------------------------
 def factorize(jmat: sparse.csr_matrix) -> dict:
+    problem = getattr(jmat, "_profile_problem", None)
+    t_profile = _profile_start(problem) if problem is not None else 0.0
     j_csc = jmat.tocsc()
-    return {
+    out = {
         "method": "direct",
         "solver": splu(j_csc, permc_spec="COLAMD"),
     }
+    if problem is not None:
+        _profile_record(problem, "linear_factorize", t_profile)
+    return out
 
 
 def solve_linear(linear_state, rhs: np.ndarray) -> np.ndarray:
+    problem = linear_state.get("profile_problem") if isinstance(linear_state, dict) else None
+    t_profile = _profile_start(problem) if problem is not None else 0.0
     if hasattr(linear_state, "solve") and not isinstance(linear_state, dict):
         return linear_state.solve(rhs)
-    return linear_state["solver"].solve(rhs)
+    out = linear_state["solver"].solve(rhs)
+    if problem is not None:
+        _profile_record(problem, "linear_solve", t_profile)
+    return out

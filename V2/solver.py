@@ -18,6 +18,47 @@ from equations import (
 from species_backend import SpeciesBackend
 from state import build_transient_mask, interpolate_state, pack_state, unpack_state
 
+
+def _profile_start(problem) -> float:
+    return time.perf_counter() if getattr(problem, "_profile", None) is not None else 0.0
+
+
+def _profile_record(problem, key: str, t0: float, count: int = 1) -> None:
+    profile = getattr(problem, "_profile", None)
+    if profile is None:
+        return
+    entry = profile.setdefault(key, {"time_s": 0.0, "count": 0})
+    entry["time_s"] += time.perf_counter() - t0
+    entry["count"] += int(count)
+
+
+def _profile_snapshot(profile: dict[str, dict[str, float | int]]) -> dict[str, dict[str, float | int]]:
+    return {
+        key: {"time_s": float(value.get("time_s", 0.0)), "count": int(value.get("count", 0))}
+        for key, value in sorted(profile.items())
+    }
+
+
+def _make_backend(problem):
+    factory = getattr(problem, "backend_factory", None)
+    if factory is not None:
+        return factory(problem)
+
+    current = getattr(problem, "backend", None)
+    if current is not None:
+        cls = current.__class__
+        use_gpu = bool(getattr(current, "use_gpu", False))
+        try:
+            return cls(problem, use_gpu=use_gpu)
+        except TypeError:
+            return cls(problem)
+
+    return SpeciesBackend(problem)
+
+
+def _refresh_backend(problem) -> None:
+    problem.backend = _make_backend(problem)
+
 # ---------------------------------------------------------------------------
 #  Malla inicial (clustering gaussiano)
 # ---------------------------------------------------------------------------
@@ -444,6 +485,7 @@ def _transient_alpha(transient_order: int, x_older: np.ndarray | None) -> float:
 def _build_linear_model(steady_fun, x: np.ndarray, problem,
                         jac_eps: float, mask: np.ndarray,
                         rdt_curr: float) -> tuple[object, object, np.ndarray]:
+    t_profile = _profile_start(problem)
     problem._current_rdt = rdt_curr
     try:
         j_ss, ss_diag = build_jacobian_steady(steady_fun, x, problem, eps=jac_eps)
@@ -455,7 +497,12 @@ def _build_linear_model(steady_fun, x: np.ndarray, problem,
         j_t = update_transient(j_ss, mask, rdt_curr, inplace=True)
     else:
         j_t = j_ss
+    if getattr(problem, "_profile", None) is not None:
+        setattr(j_t, "_profile_problem", problem)
     lu = factorize(j_t)
+    if isinstance(lu, dict):
+        lu["profile_problem"] = problem
+    _profile_record(problem, "linear_model", t_profile)
     return j_t, lu, ss_diag
 
 
@@ -595,6 +642,7 @@ def newton_solve(
         x1 = x.copy()
         s1 = float("inf")
 
+        t_damp = _profile_start(problem)
         for _ in range(max_damp_iter):
             if alpha < alpha_min:
                 break
@@ -623,6 +671,7 @@ def newton_solve(
                 break
 
             alpha /= damp_factor
+        _profile_record(problem, "newton_damping", t_damp)
 
         if damp_ok:
             x = x1
@@ -770,6 +819,7 @@ class SolveOptions:
 
     max_total_time_s: float = 300.0
     verbose: bool = True
+    profile: bool = False
 
 
 class DomainTooNarrowError(RuntimeError):
@@ -1041,8 +1091,10 @@ def _refine_and_solve(
         profiles = build_freeflame_refiner_profiles(problem, u, T, Y)
 
         z_old = problem.z.copy()
+        t_refine = _profile_start(problem)
         z_new, changed, n_ins, n_rem = refiner.refine(
             z_old, profiles, all_Y=Y, j_fixed=problem.j_fixed)
+        _profile_record(problem, "refine_grid", t_refine)
 
         info: dict[str, Any] = {
             "pass": pass_idx, "changed": changed,
@@ -1069,7 +1121,7 @@ def _refine_and_solve(
         problem.z = z_new
         problem.n_points = int(z_new.size)
         problem.width = float(z_new[-1] - z_new[0])
-        problem.backend = SpeciesBackend(problem)
+        _refresh_backend(problem)
         x_new = problem.reset_bad_values(x_new)
 
         _, T_new, Y_new = unpack_state(x_new, problem.n_points, problem.n_species)
@@ -1101,7 +1153,7 @@ def _refine_and_solve(
             problem.z = z_last_ss
             problem.n_points = n_last_ss
             problem.width = float(z_last_ss[-1] - z_last_ss[0])
-            problem.backend = SpeciesBackend(problem)
+            _refresh_backend(problem)
             _, T_old, _ = unpack_state(x_last_ss, n_last_ss, problem.n_species)
             problem.setup_fixed_temperature(T_profile=T_old)
             info["restored"] = True
@@ -1293,7 +1345,7 @@ def _assign_grid(problem, z_new: np.ndarray) -> None:
     problem.z = z_new
     problem.n_points = int(z_new.size)
     problem.width = float(z_new[-1] - z_new[0])
-    problem.backend = SpeciesBackend(problem)
+    _refresh_backend(problem)
 
 
 def _bootstrap_grid_sequence(problem, opts: SolveOptions, restart_mode: bool) -> list[int]:
@@ -1442,8 +1494,10 @@ def _refine_grid_once(problem, x: np.ndarray, opts: SolveOptions) -> tuple[np.nd
     z_old = problem.z.copy()
     u, T, Y = unpack_state(x, problem.n_points, problem.n_species)
     profiles = build_freeflame_refiner_profiles(problem, u, T, Y)
+    t_refine = _profile_start(problem)
     z_new, changed, n_ins, n_rem = refiner.refine(
         z_old, profiles, all_Y=Y, j_fixed=problem.j_fixed)
+    _profile_record(problem, "refine_grid", t_refine)
 
     info["changed"] = bool(changed)
     info["n_old"] = int(z_old.size)
@@ -1482,9 +1536,13 @@ def solve_free_flame(
     t_start = time.perf_counter()
     deadline = (t_start + opts.max_total_time_s
                 if np.isfinite(opts.max_total_time_s) else None)
+    if bool(getattr(opts, "profile", False)):
+        problem._profile = {}
+    elif hasattr(problem, "_profile"):
+        delattr(problem, "_profile")
 
     if problem.backend is None:
-        problem.backend = SpeciesBackend(problem)
+        _refresh_backend(problem)
 
     restart_mode = x0 is not None
     x = None if x0 is None else problem.reset_bad_values(np.asarray(x0, dtype=float))
@@ -1640,6 +1698,8 @@ def solve_free_flame(
     report["total_time_s"] = float(time.perf_counter() - t_start)
     report["Finf_final"] = float(np.linalg.norm(
         residual(x, problem), ord=np.inf))
+    if bool(getattr(opts, "profile", False)):
+        report["profile"] = _profile_snapshot(getattr(problem, "_profile", {}))
 
     if opts.verbose:
         print(f"\n{'='*60}")
