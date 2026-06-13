@@ -33,6 +33,161 @@ def _state_views(x: np.ndarray, n_points: int, n_species: int):
     x_r = np.asarray(x, dtype=float).reshape(n_points, 2 + n_species)
     return x_r[:, C_U], x_r[:, C_T], x_r[:, C_Y:].T
 
+
+def _device_residual_enabled(problem) -> bool:
+    backend = getattr(problem, "backend", None)
+    return (
+        backend is not None
+        and bool(getattr(backend, "use_gpu", False))
+        and hasattr(backend, "eval_grid_device")
+        and hasattr(backend, "eval_faces_device")
+        and hasattr(backend, "_to_host")
+    )
+
+
+def _corrected_flux_device(xp, Y_L, Y_R, rho_f, D_f, dz, W, W_mix_f, basis: str):
+    if basis in ("molar", "mole"):
+        W_mix_L = 1.0 / xp.sum(Y_L / W[:, None], axis=0)
+        W_mix_R = 1.0 / xp.sum(Y_R / W[:, None], axis=0)
+        X_L = Y_L * (W_mix_L[None, :] / W[:, None])
+        X_R = Y_R * (W_mix_R[None, :] / W[:, None])
+        dphi = (X_R - X_L) / dz[None, :]
+        J_star = -rho_f[None, :] * (W[:, None] / W_mix_f[None, :]) * D_f * dphi
+    else:
+        dphi = (Y_R - Y_L) / dz[None, :]
+        J_star = -rho_f[None, :] * D_f * dphi
+    return J_star - Y_L * xp.sum(J_star, axis=0, keepdims=True)
+
+
+def _residual_device(
+    x: np.ndarray,
+    problem,
+    rdt: float = 0.0,
+    x_old: np.ndarray | None = None,
+    x_older: np.ndarray | None = None,
+    transient_order: int = 1,
+) -> np.ndarray:
+    backend = problem.backend
+    xp = backend.xp
+    n_pts = int(problem.n_points)
+    n_sp = int(problem.n_species)
+    nv = 2 + n_sp
+    basis = str(getattr(problem, "flux_gradient_basis", "molar")).lower()
+
+    x_dev = xp.asarray(x, dtype=float)
+    x_r = x_dev.reshape(n_pts, nv)
+    u = x_r[:, C_U]
+    T = x_r[:, C_T]
+    Y = x_r[:, C_Y:].T
+    z = xp.asarray(problem.z, dtype=float)
+    W = backend.W_dev
+    invW = backend.invW_dev
+
+    rho, _Dm_nodes, cp_n, lam_n, omega, hk_n = backend.eval_grid_device(T, Y)
+
+    T_face = 0.5 * (T[:-1] + T[1:])
+    Y_face = 0.5 * (Y[:, :-1] + Y[:, 1:])
+    rho_face, D_face, lam_face, W_mix_face = backend.eval_faces_device(T_face, Y_face)
+    dz_face = z[1:] - z[:-1]
+    flux = _corrected_flux_device(xp, Y[:, :-1], Y[:, 1:], rho_face, D_face, dz_face, W, W_mix_face, basis)
+
+    F = xp.empty((n_pts, nv), dtype=float)
+
+    dz0 = z[1] - z[0]
+    F[0, C_U] = -(rho[1] * u[1] - rho[0] * u[0]) / dz0
+    T_prof = getattr(problem, "T_profile_fixed", None)
+    solve_energy = bool(problem.solve_energy)
+    if solve_energy:
+        F[0, C_T] = T[0] - float(problem.T_in)
+    else:
+        T_prof_dev = xp.asarray(T_prof, dtype=float) if T_prof is not None else None
+        F[0, C_T] = T[0] - (T_prof_dev[0] if T_prof_dev is not None else float(problem.T_in))
+
+    mdot_in = rho[0] * u[0]
+    Y_in = xp.asarray(problem.Y_in, dtype=float)
+    left_species = (-(flux[:, 0] + mdot_in * Y[:, 0]) + mdot_in * Y_in)
+    k_idx = xp.arange(n_sp)
+    k_exc = xp.argmax(Y[:, 0])
+    F[0, C_Y:C_Y + n_sp] = xp.where(k_idx == k_exc, 1.0 - xp.sum(Y[:, 0]), left_species)
+
+    if n_pts > 2:
+        j = xp.arange(1, n_pts - 1)
+        dzm = z[1:-1] - z[:-2]
+        dzp = z[2:] - z[1:-1]
+        dz2 = z[2:] - z[:-2]
+        fm = flux[:, :-1]
+        fp = flux[:, 1:]
+
+        j_fixed = problem.j_fixed
+        cont_forward = -(rho[2:] * u[2:] - rho[1:-1] * u[1:-1]) / dzp
+        if j_fixed is None:
+            F[1:-1, C_U] = cont_forward
+        else:
+            cont_backward = -(rho[1:-1] * u[1:-1] - rho[:-2] * u[:-2]) / dzm
+            if solve_energy:
+                cont_anchor = T[1:-1] - float(problem.T_fixed_point)
+            else:
+                cont_anchor = rho[1:-1] * u[1:-1] - rho[0] * 0.3
+            F[1:-1, C_U] = xp.where(
+                j == int(j_fixed),
+                cont_anchor,
+                xp.where(j > int(j_fixed), cont_backward, cont_forward),
+            )
+
+        rho_j = rho[1:-1]
+        rho_u_j = rho_j * u[1:-1]
+        jloc = xp.where(u[1:-1] > 0.0, j, j + 1)
+        jloc_m = jloc - 1
+        dz_up = z[jloc] - z[jloc_m]
+
+        if solve_energy:
+            dTdz = (T[jloc] - T[jloc_m]) / dz_up
+            cond = -2.0 * (
+                lam_face[1:] * (T[2:] - T[1:-1]) / dzp
+                - lam_face[:-1] * (T[1:-1] - T[:-2]) / dzm
+            ) / dz2
+            dhk_dz = (hk_n[:, jloc] - hk_n[:, jloc_m]) / dz_up[None, :]
+            flx = 0.5 * (fm + fp)
+            en_sum = (
+                xp.sum(hk_n[:, 1:-1] * omega[:, 1:-1] * invW[:, None], axis=0)
+                + xp.sum(flx * dhk_dz * invW[:, None], axis=0)
+            )
+            F[1:-1, C_T] = (-cp_n[1:-1] * rho_u_j * dTdz - cond - en_sum) / (rho_j * cp_n[1:-1])
+        else:
+            T_prof_dev = xp.asarray(T_prof, dtype=float) if T_prof is not None else None
+            F[1:-1, C_T] = T[1:-1] - (T_prof_dev[1:-1] if T_prof_dev is not None else float(problem.T_in))
+
+        dYdz = (Y[:, jloc] - Y[:, jloc_m]) / dz_up[None, :]
+        conv = rho_u_j[None, :] * dYdz
+        diff = 2.0 * (fp - fm) / dz2[None, :]
+        F[1:-1, C_Y:C_Y + n_sp] = ((omega[:, 1:-1] - conv - diff) / rho_j[None, :]).T
+
+    F[-1, C_U] = rho[-1] * u[-1] - rho[-2] * u[-2]
+    if solve_energy:
+        F[-1, C_T] = T[-1] - T[-2]
+    else:
+        T_prof_dev = xp.asarray(T_prof, dtype=float) if T_prof is not None else None
+        F[-1, C_T] = T[-1] - (T_prof_dev[-1] if T_prof_dev is not None else T[-2])
+    right_species = Y[:, -1] - Y[:, -2]
+    k_exc = xp.argmax(Y[:, -1])
+    F[-1, C_Y:C_Y + n_sp] = xp.where(k_idx == k_exc, 1.0 - xp.sum(Y[:, -1]), right_species)
+
+    F_flat = F.ravel()
+    if rdt > 0.0 and x_old is not None:
+        mask = xp.asarray(
+            build_transient_mask(n_pts, n_sp, solve_energy=solve_energy),
+            dtype=float,
+        )
+        x_old_dev = xp.asarray(x_old, dtype=float)
+        use_bdf2 = int(transient_order) >= 2 and x_older is not None
+        if use_bdf2:
+            x_older_dev = xp.asarray(x_older, dtype=float)
+            F_flat -= mask * (1.5 * rdt * x_dev - 2.0 * rdt * x_old_dev + 0.5 * rdt * x_older_dev)
+        else:
+            F_flat -= mask * rdt * (x_dev - x_old_dev)
+
+    return np.asarray(backend._to_host(F_flat), dtype=float)
+
 # ---------------------------------------------------------------------------
 #  Helpers de flujo difusivo
 # ---------------------------------------------------------------------------
@@ -86,6 +241,20 @@ def residual(
       2 -> BDF2
     """
     t_profile = _profile_start(problem)
+    if _device_residual_enabled(problem):
+        try:
+            F_dev = _residual_device(
+                x, problem, rdt=rdt, x_old=x_old,
+                x_older=x_older, transient_order=transient_order,
+            )
+            if not np.all(np.isfinite(F_dev)):
+                F_dev = np.full(np.asarray(x, dtype=float).size, 1.0e20)
+            return _profile_return(problem, "residual_full", t_profile, F_dev)
+        except Exception as exc:
+            problem.last_residual_error = f"GPU residual fallback: {exc}"
+            if bool(getattr(problem, "debug_residual_errors", False)):
+                print(problem.last_residual_error)
+
     x = np.asarray(x, dtype=float)
     n_pts = int(problem.n_points)
     n_sp = int(problem.n_species)
@@ -739,6 +908,247 @@ def _banded_jacobian_cantera_local(fun, x: np.ndarray, problem, eps: float = 1e-
     return _profile_return(problem, "jacobian_build", t_profile, jmat)
 
 
+def _residual_device_batch_steady(x_batch: np.ndarray, problem) -> np.ndarray:
+    backend = problem.backend
+    xp = backend.xp
+    x_dev = xp.asarray(x_batch, dtype=float)
+    n_batch = int(x_dev.shape[0])
+    n_pts = int(problem.n_points)
+    n_sp = int(problem.n_species)
+    nv = 2 + n_sp
+    basis = str(getattr(problem, "flux_gradient_basis", "molar")).lower()
+
+    x_r = x_dev.reshape(n_batch, n_pts, nv)
+    u = x_r[:, :, C_U]
+    T = x_r[:, :, C_T]
+    Y = x_r[:, :, C_Y:].transpose(0, 2, 1)
+    z = xp.asarray(problem.z, dtype=float)
+    W = backend.W_dev
+    invW = backend.invW_dev
+
+    T_flat = T.reshape(n_batch * n_pts)
+    Y_flat = Y.transpose(1, 0, 2).reshape(n_sp, n_batch * n_pts)
+    rho_flt, _Dm_nodes, cp_flt, lam_flt, omega_flt, hk_flt = backend.eval_grid_device(T_flat, Y_flat)
+    rho = rho_flt.reshape(n_batch, n_pts)
+    cp_n = cp_flt.reshape(n_batch, n_pts)
+    omega = omega_flt.reshape(n_sp, n_batch, n_pts).transpose(1, 0, 2)
+    hk_n = hk_flt.reshape(n_sp, n_batch, n_pts).transpose(1, 0, 2)
+
+    n_faces = n_pts - 1
+    T_face = 0.5 * (T[:, :-1] + T[:, 1:])
+    Y_face = 0.5 * (Y[:, :, :-1] + Y[:, :, 1:])
+    T_face_flat = T_face.reshape(n_batch * n_faces)
+    Y_face_flat = Y_face.transpose(1, 0, 2).reshape(n_sp, n_batch * n_faces)
+    rho_face_flt, D_face_flt, lam_face_flt, Wmix_face_flt = backend.eval_faces_device(T_face_flat, Y_face_flat)
+    rho_face = rho_face_flt.reshape(n_batch, n_faces)
+    D_face = D_face_flt.reshape(n_sp, n_batch, n_faces).transpose(1, 0, 2)
+    lam_face = lam_face_flt.reshape(n_batch, n_faces)
+    Wmix_face = Wmix_face_flt.reshape(n_batch, n_faces)
+
+    YL = Y[:, :, :-1]
+    YR = Y[:, :, 1:]
+    dz_face = z[1:] - z[:-1]
+    if basis in ("molar", "mole"):
+        Wb = W[None, :, None]
+        Wmix_L = 1.0 / xp.sum(YL / Wb, axis=1)
+        Wmix_R = 1.0 / xp.sum(YR / Wb, axis=1)
+        X_L = YL * (Wmix_L[:, None, :] / Wb)
+        X_R = YR * (Wmix_R[:, None, :] / Wb)
+        dphi = (X_R - X_L) / dz_face[None, None, :]
+        flux_star = (
+            -rho_face[:, None, :]
+            * (Wb / Wmix_face[:, None, :])
+            * D_face
+            * dphi
+        )
+    else:
+        dphi = (YR - YL) / dz_face[None, None, :]
+        flux_star = -rho_face[:, None, :] * D_face * dphi
+    flux = flux_star - YL * xp.sum(flux_star, axis=1, keepdims=True)
+
+    F = xp.empty((n_batch, n_pts, nv), dtype=float)
+    solve_energy = bool(problem.solve_energy)
+    T_prof = getattr(problem, "T_profile_fixed", None)
+    T_prof_dev = xp.asarray(T_prof, dtype=float) if T_prof is not None else None
+
+    dz0 = z[1] - z[0]
+    F[:, 0, C_U] = -(rho[:, 1] * u[:, 1] - rho[:, 0] * u[:, 0]) / dz0
+    if solve_energy:
+        F[:, 0, C_T] = T[:, 0] - float(problem.T_in)
+    else:
+        F[:, 0, C_T] = T[:, 0] - (T_prof_dev[0] if T_prof_dev is not None else float(problem.T_in))
+
+    Y_in = xp.asarray(problem.Y_in, dtype=float)
+    mdot_in = rho[:, 0] * u[:, 0]
+    left_species = (-(flux[:, :, 0] + mdot_in[:, None] * Y[:, :, 0]) + mdot_in[:, None] * Y_in[None, :])
+    k_idx = xp.arange(n_sp)[None, :]
+    k_exc = xp.argmax(Y[:, :, 0], axis=1)[:, None]
+    F[:, 0, C_Y:C_Y + n_sp] = xp.where(k_idx == k_exc, 1.0 - xp.sum(Y[:, :, 0], axis=1)[:, None], left_species)
+
+    if n_pts > 2:
+        j = xp.arange(1, n_pts - 1)
+        dzm = z[1:-1] - z[:-2]
+        dzp = z[2:] - z[1:-1]
+        dz2 = z[2:] - z[:-2]
+        fm = flux[:, :, :-1]
+        fp = flux[:, :, 1:]
+
+        cont_forward = -(rho[:, 2:] * u[:, 2:] - rho[:, 1:-1] * u[:, 1:-1]) / dzp[None, :]
+        j_fixed = problem.j_fixed
+        if j_fixed is None:
+            F[:, 1:-1, C_U] = cont_forward
+        else:
+            cont_backward = -(rho[:, 1:-1] * u[:, 1:-1] - rho[:, :-2] * u[:, :-2]) / dzm[None, :]
+            if solve_energy:
+                cont_anchor = T[:, 1:-1] - float(problem.T_fixed_point)
+            else:
+                cont_anchor = rho[:, 1:-1] * u[:, 1:-1] - rho[:, 0:1] * 0.3
+            F[:, 1:-1, C_U] = xp.where(
+                j[None, :] == int(j_fixed),
+                cont_anchor,
+                xp.where(j[None, :] > int(j_fixed), cont_backward, cont_forward),
+            )
+
+        rho_j = rho[:, 1:-1]
+        rho_u_j = rho_j * u[:, 1:-1]
+        jloc = xp.where(u[:, 1:-1] > 0.0, j[None, :], j[None, :] + 1)
+        jloc_m = jloc - 1
+        dz_up = xp.take_along_axis(z[None, :].repeat(n_batch, axis=0), jloc, axis=1) - xp.take_along_axis(
+            z[None, :].repeat(n_batch, axis=0), jloc_m, axis=1)
+
+        if solve_energy:
+            T_jloc = xp.take_along_axis(T, jloc, axis=1)
+            T_jloc_m = xp.take_along_axis(T, jloc_m, axis=1)
+            dTdz = (T_jloc - T_jloc_m) / dz_up
+            cond = -2.0 * (
+                lam_face[:, 1:] * (T[:, 2:] - T[:, 1:-1]) / dzp[None, :]
+                - lam_face[:, :-1] * (T[:, 1:-1] - T[:, :-2]) / dzm[None, :]
+            ) / dz2[None, :]
+            hk_jloc = xp.take_along_axis(hk_n, jloc[:, None, :], axis=2)
+            hk_jloc_m = xp.take_along_axis(hk_n, jloc_m[:, None, :], axis=2)
+            dhk_dz = (hk_jloc - hk_jloc_m) / dz_up[:, None, :]
+            flx = 0.5 * (fm + fp)
+            en_sum = (
+                xp.sum(hk_n[:, :, 1:-1] * omega[:, :, 1:-1] * invW[None, :, None], axis=1)
+                + xp.sum(flx * dhk_dz * invW[None, :, None], axis=1)
+            )
+            F[:, 1:-1, C_T] = (
+                -cp_n[:, 1:-1] * rho_u_j * dTdz - cond - en_sum
+            ) / (rho_j * cp_n[:, 1:-1])
+        else:
+            F[:, 1:-1, C_T] = T[:, 1:-1] - (
+                T_prof_dev[None, 1:-1] if T_prof_dev is not None else float(problem.T_in)
+            )
+
+        Y_jloc = xp.take_along_axis(Y, jloc[:, None, :], axis=2)
+        Y_jloc_m = xp.take_along_axis(Y, jloc_m[:, None, :], axis=2)
+        dYdz = (Y_jloc - Y_jloc_m) / dz_up[:, None, :]
+        conv = rho_u_j[:, None, :] * dYdz
+        diff = 2.0 * (fp - fm) / dz2[None, None, :]
+        F[:, 1:-1, C_Y:C_Y + n_sp] = (
+            (omega[:, :, 1:-1] - conv - diff) / rho_j[:, None, :]
+        ).transpose(0, 2, 1)
+
+    F[:, -1, C_U] = rho[:, -1] * u[:, -1] - rho[:, -2] * u[:, -2]
+    if solve_energy:
+        F[:, -1, C_T] = T[:, -1] - T[:, -2]
+    else:
+        F[:, -1, C_T] = T[:, -1] - (T_prof_dev[-1] if T_prof_dev is not None else T[:, -2])
+    right_species = Y[:, :, -1] - Y[:, :, -2]
+    k_exc = xp.argmax(Y[:, :, -1], axis=1)[:, None]
+    F[:, -1, C_Y:C_Y + n_sp] = xp.where(k_idx == k_exc, 1.0 - xp.sum(Y[:, :, -1], axis=1)[:, None], right_species)
+
+    return np.asarray(backend._to_host(F.reshape(n_batch, n_pts * nv)), dtype=float)
+
+
+def _banded_jacobian_gpu_batch(fun, x: np.ndarray, problem, eps: float = 1e-5) -> sparse.csr_matrix:
+    t_profile = _profile_start(problem)
+    x = np.asarray(x, dtype=float)
+    n_pts = int(problem.n_points)
+    n_sp = int(problem.n_species)
+    nv = 2 + n_sp
+    n_total = n_pts * nv
+
+    f0 = fun(x, problem)
+    rel_perturb = float(getattr(problem, "jacobian_rel_perturb", eps))
+    abs_perturb = float(getattr(problem, "jacobian_abs_perturb", 1e-10))
+    threshold = float(getattr(problem, "jacobian_threshold", 0.0))
+
+    row_offsets = np.arange(nv, dtype=np.int32)
+    local_rows = []
+    for j in range(n_pts):
+        p0 = max(0, j - 1)
+        p1 = min(n_pts - 1, j + 1)
+        blocks = np.arange(p0, p1 + 1, dtype=np.int32)[:, None] * nv
+        local_rows.append((blocks + row_offsets[None, :]).ravel())
+
+    max_rows_per_col = min(n_total, 3 * nv)
+    capacity = max(1, n_total * max_rows_per_col)
+    rows_arr = np.empty(capacity, dtype=np.int32)
+    cols_arr = np.empty(capacity, dtype=np.int32)
+    vals_arr = np.empty(capacity, dtype=float)
+    nnz_total = 0
+
+    def ensure_capacity(extra: int) -> None:
+        nonlocal rows_arr, cols_arr, vals_arr
+        required = nnz_total + int(extra)
+        if required <= rows_arr.size:
+            return
+        new_size = max(required, rows_arr.size * 2)
+        rows_new = np.empty(new_size, dtype=np.int32)
+        cols_new = np.empty(new_size, dtype=np.int32)
+        vals_new = np.empty(new_size, dtype=float)
+        rows_new[:nnz_total] = rows_arr[:nnz_total]
+        cols_new[:nnz_total] = cols_arr[:nnz_total]
+        vals_new[:nnz_total] = vals_arr[:nnz_total]
+        rows_arr = rows_new
+        cols_arr = cols_new
+        vals_arr = vals_new
+
+    for j in range(n_pts):
+        base = j * nv
+        cols = np.arange(base, base + nv, dtype=np.int32)
+        xsave = x[cols]
+        dx = np.abs(xsave) * rel_perturb + abs_perturb
+        dx[dx <= 0.0] = max(abs(rel_perturb), abs(eps), 1e-10)
+        dx = np.where(xsave < 0.0, -dx, dx)
+
+        x_batch = np.broadcast_to(x, (nv, n_total)).copy()
+        x_batch[np.arange(nv), cols] = xsave + dx
+        f_batch = _residual_device_batch_steady(x_batch, problem)
+
+        rows = local_rows[j]
+        delta = f_batch[:, rows] - f0[rows][None, :]
+        vals = delta / dx[:, None]
+
+        for i, col in enumerate(cols):
+            col_rows = rows
+            col_vals = vals[i]
+            if threshold > 0.0:
+                keep = np.abs(col_vals) > threshold
+                kdiag = np.where(col_rows == int(col))[0]
+                if kdiag.size > 0:
+                    keep[int(kdiag[0])] = True
+                col_rows = col_rows[keep]
+                col_vals = col_vals[keep]
+            nnz = int(col_rows.size)
+            if nnz:
+                ensure_capacity(nnz)
+                end = nnz_total + nnz
+                rows_arr[nnz_total:end] = col_rows
+                cols_arr[nnz_total:end] = int(col)
+                vals_arr[nnz_total:end] = col_vals
+                nnz_total = end
+
+    t_sparse = _profile_start(problem)
+    jmat = sparse.coo_matrix(
+        (vals_arr[:nnz_total], (rows_arr[:nnz_total], cols_arr[:nnz_total])),
+        shape=(n_total, n_total),
+    ).tocsr()
+    _profile_record(problem, "jacobian_sparse_assembly", t_sparse)
+    return _profile_return(problem, "jacobian_build", t_profile, jmat)
+
+
 # ---------------------------------------------------------------------------
 #  Legacy 3-coloring Jacobian (fallback / debug)
 # ---------------------------------------------------------------------------
@@ -808,9 +1218,14 @@ def banded_jacobian(fun, x: np.ndarray, problem, eps: float = 1e-5) -> sparse.cs
 
     Modes (problem.jacobian_mode):
     - "cantera_local" (default)
+    - "gpu_batch"
     - "coloring"
     """
     mode = str(getattr(problem, "jacobian_mode", "cantera_local")).strip().lower()
+    if mode in ("gpu", "gpu_batch", "device_batch"):
+        if not _device_residual_enabled(problem):
+            raise RuntimeError("jacobian_mode='gpu_batch' requiere backend nativo con CuPy activo.")
+        return _banded_jacobian_gpu_batch(fun, x, problem, eps=eps)
     if mode in ("coloring", "3color", "legacy"):
         return _banded_jacobian_coloring(fun, x, problem, eps=eps)
     return _banded_jacobian_cantera_local(fun, x, problem, eps=eps)

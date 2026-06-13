@@ -129,6 +129,31 @@ class NativeSpeciesBackend:
     # ------------------------------------------------------------------
     #  eval_grid_into  (Full Grid Vectorization)
     # ------------------------------------------------------------------
+    def eval_grid_device(self, T: np.ndarray, Y: np.ndarray):
+        """
+        Evaluate all nodal properties on the active array backend.
+
+        Returns device arrays when CuPy is enabled:
+        (rho, Dm, cp, lam, omega_mass, hk).
+        """
+        P = self.problem.P
+        T_dev = self.xp.asarray(T, dtype=float)
+        Y_safe = self._safe_Y(Y)
+
+        rho = self.thermo.density(T_dev, P, Y_safe)
+        cp = self.thermo.cp_mass(T_dev, Y_safe)
+        hk_vals = self.thermo.partial_molar_enthalpies(T_dev)
+
+        cp_R = self.thermo.cp_R(T_dev)
+        _mu, lam, Dm, _X = self.transport.eval_all(T_dev, P, Y_safe, cp_R, self.invW_dev)
+
+        C = rho[None, :] * Y_safe * self.invW_dev[:, None]
+        g_RT = self.thermo.g_RT(T_dev)
+        wdot = self.kinetics.net_production_rates(T_dev, C, g_RT)
+        omega_mass = wdot * self.W_dev[:, None]
+
+        return rho, Dm, cp, lam, omega_mass, hk_vals
+
     def eval_grid_into(self, T: np.ndarray, Y: np.ndarray,
                        omega_out: np.ndarray, hk_out: np.ndarray):
         """
@@ -137,27 +162,9 @@ class NativeSpeciesBackend:
         omega_out is (n_sp, N), hk_out is (n_sp, N).
         Returns (rho, Dm, cp, lam).
         """
-        P = self.problem.P
-        Y_safe = self._safe_Y(Y)
-
-        # Thermodynamics
-        rho = self.thermo.density(T, P, Y_safe)
-        cp  = self.thermo.cp_mass(T, Y_safe)
-        hk_vals = self.thermo.partial_molar_enthalpies(T)
+        rho, Dm, cp, lam, omega_mass, hk_vals = self.eval_grid_device(T, Y)
         self._copy_to_out(hk_out, hk_vals)
-
-        # Transport
-        cp_R = self.thermo.cp_R(T)
-        X = self._Y_to_X(Y_safe)
-        _mu, lam, Dm, _X = self.transport.eval_all(T, P, Y_safe, cp_R, self.invW_dev)
-
-        # Kinetics
-        C = rho[None, :] * Y_safe * self.invW_dev[:, None]
-        g_RT = self.thermo.g_RT(T)
-        wdot = self.kinetics.net_production_rates(T, C, g_RT)  # kmol/(m³·s)
-        omega_mass = wdot * self.W_dev[:, None]
         self._copy_to_out(omega_out, omega_mass)
-
         return self._to_host(rho), self._to_host(Dm), self._to_host(cp), self._to_host(lam)
 
     def eval_faces(self, T_face: np.ndarray, Y_face: np.ndarray):
@@ -166,17 +173,27 @@ class NativeSpeciesBackend:
         T_face is (N-1,), Y_face is (n_sp, N-1).
         Returns (rho_f, Dm_f, lam_f, Wmix_f).
         """
+        rho, Dm, lam, Wmix = self.eval_faces_device(T_face, Y_face)
+        return self._to_host(rho), self._to_host(Dm), self._to_host(lam), self._to_host(Wmix)
+
+    def eval_faces_device(self, T_face: np.ndarray, Y_face: np.ndarray):
+        """
+        Evaluate face transport properties on the active array backend.
+
+        Returns device arrays when CuPy is enabled:
+        (rho_f, Dm_f, lam_f, Wmix_f).
+        """
         P = self.problem.P
+        T_dev = self.xp.asarray(T_face, dtype=float)
         Y_safe = self._safe_Y(Y_face)
 
-        rho = self.thermo.density(T_face, P, Y_safe)
-        cp_R = self.thermo.cp_R(T_face)
+        rho = self.thermo.density(T_dev, P, Y_safe)
+        cp_R = self.thermo.cp_R(T_dev)
         X = self._Y_to_X(Y_safe)
-        lam = self.transport.thermal_conductivity(T_face, X, cp_R)
-        Dm  = self.transport.mix_diff_coeffs(T_face, P, X)
+        lam = self.transport.thermal_conductivity(T_dev, X, cp_R)
+        Dm = self.transport.mix_diff_coeffs(T_dev, P, X)
         Wmix = self.thermo.mean_molecular_weight(Y_safe, self.invW_dev)
-        
-        return self._to_host(rho), self._to_host(Dm), self._to_host(lam), self._to_host(Wmix)
+        return rho, Dm, lam, Wmix
 
     # ------------------------------------------------------------------
     #  eval_node_into  (Single point interface)
