@@ -23,6 +23,107 @@ from pathlib import Path
 PI = math.pi
 EPSILON_0 = 8.854187817e-12  # vacuum permittivity [F/m]
 
+try:
+    from numba import njit, prange
+except Exception:  # pragma: no cover - optional acceleration
+    njit = None
+    prange = range
+
+
+if njit is not None:
+    @njit(cache=True)
+    def _eval_faces_poly_numba_core(T, Y, P, invW, mw, cond_poly, diff_poly):
+        n_sp = Y.shape[0]
+        n_faces = Y.shape[1]
+        rho = np.empty(n_faces, dtype=np.float64)
+        Dm = np.empty((n_sp, n_faces), dtype=np.float64)
+        lam = np.empty(n_faces, dtype=np.float64)
+        Wmix = np.empty(n_faces, dtype=np.float64)
+
+        for m in range(n_faces):
+            X = np.empty(n_sp, dtype=np.float64)
+            cond = np.empty(n_sp, dtype=np.float64)
+            inv_wmix = 0.0
+            for k in range(n_sp):
+                inv_wmix += Y[k, m] * invW[k]
+            wm = 1.0 / max(inv_wmix, 1.0e-300)
+            Wmix[m] = wm
+            rho[m] = P * wm / (R_UNIV * T[m])
+
+            for k in range(n_sp):
+                X[k] = Y[k, m] * wm * invW[k]
+
+            logT = math.log(T[m])
+            sqrtT = math.sqrt(T[m])
+            TsqrtT = T[m] * sqrtT
+
+            sum1 = 0.0
+            sum2 = 0.0
+            for k in range(n_sp):
+                poly = (
+                    cond_poly[k, 0]
+                    + logT * (
+                        cond_poly[k, 1]
+                        + logT * (
+                            cond_poly[k, 2]
+                            + logT * (
+                                cond_poly[k, 3] + logT * cond_poly[k, 4]
+                            )
+                        )
+                    )
+                )
+                ck = sqrtT * poly
+                cond[k] = ck
+                xk = max(X[k], 1.0e-300)
+                sum1 += xk * ck
+                sum2 += xk / max(ck, 1.0e-300)
+
+            lam[m] = 0.5 * (sum1 + 1.0 / max(sum2, 1.0e-300))
+
+            for k in range(n_sp):
+                sumd = 0.0
+                for j in range(n_sp):
+                    if j == k:
+                        continue
+                    poly = (
+                        diff_poly[k, j, 0]
+                        + logT * (
+                            diff_poly[k, j, 1]
+                            + logT * (
+                                diff_poly[k, j, 2]
+                                + logT * (
+                                    diff_poly[k, j, 3] + logT * diff_poly[k, j, 4]
+                                )
+                            )
+                        )
+                    )
+                    bdiff = TsqrtT * poly
+                    sumd += max(X[j], 1.0e-300) / max(bdiff, 1.0e-300)
+
+                poly_diag = (
+                    diff_poly[k, k, 0]
+                    + logT * (
+                        diff_poly[k, k, 1]
+                        + logT * (
+                            diff_poly[k, k, 2]
+                            + logT * (
+                                diff_poly[k, k, 3] + logT * diff_poly[k, k, 4]
+                            )
+                        )
+                    )
+                )
+                diag_bdiff = TsqrtT * poly_diag
+                if sumd <= 0.0:
+                    Dm[k, m] = diag_bdiff / P
+                else:
+                    Dm[k, m] = (
+                        wm - max(X[k], 1.0e-300) * mw[k]
+                    ) / (P * wm * max(sumd, 1.0e-300))
+
+        return rho, Dm, lam, Wmix
+else:
+    _eval_faces_poly_numba_core = None
+
 
 def _host_array(arr):
     """Return a NumPy view/copy for one-time CPU preprocessing."""
@@ -178,6 +279,26 @@ class NativeTransport:
         self._has_visc_poly = self.xp.asarray(has_visc)
         self._has_cond_poly = self.xp.asarray(has_cond)
         self._has_diff_poly = self.xp.asarray(has_diff)
+        self._fast_poly_available = (
+            _eval_faces_poly_numba_core is not None
+            and getattr(self.xp, "__name__", "") == "numpy"
+            and bool(has_cond.all())
+            and bool(has_diff.all())
+        )
+
+    def eval_faces_poly_fast(self, T, P: float, Y: np.ndarray, invW: np.ndarray):
+        """Fast CPU path for face transport using Cantera polynomial fits."""
+        if not self._fast_poly_available:
+            return None
+        return _eval_faces_poly_numba_core(
+            np.asarray(T, dtype=np.float64),
+            np.ascontiguousarray(Y, dtype=np.float64),
+            float(P),
+            np.asarray(invW, dtype=np.float64),
+            np.asarray(self.mw, dtype=np.float64),
+            np.asarray(self._cond_poly, dtype=np.float64),
+            np.asarray(self._diff_poly, dtype=np.float64),
+        )
 
     def _omega_22(self, Tstar):
         return (1.16145 * self.xp.power(Tstar, -0.14874)

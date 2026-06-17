@@ -19,6 +19,234 @@ from mechanism_data import MechanismData, ReactionData, R_UNIV
 # R_UNIV = 8314.46261815324 J/(kmol·K)
 
 
+try:
+    from numba import njit, prange
+except Exception:  # pragma: no cover - optional acceleration
+    njit = None
+    prange = range
+
+
+if njit is not None:
+    @njit(cache=True)
+    def _net_production_rates_numba_core(
+        T_arr, C, g_RT, A_hi, b_hi, Ea_hi, A_lo, b_lo, Ea_lo,
+        is_three_body, is_falloff, is_reversible, has_troe,
+        troe_A, troe_T3, troe_T1, troe_T2, nu_r, nu_p, nu_net, eff,
+        delta_nu,
+    ):
+        n_sp = C.shape[0]
+        n_pts = C.shape[1]
+        n_rxn = A_hi.shape[0]
+        out = np.zeros((n_sp, n_pts), dtype=np.float64)
+
+        for m in range(n_pts):
+            logC = np.empty(n_sp, dtype=np.float64)
+            T = T_arr[m]
+            c_factor = 101325.0 / (R_UNIV * T)
+            inv_RT = 1.0 / (R_UNIV * T)
+            logT = math.log(T)
+
+            for k in range(n_sp):
+                c = C[k, m]
+                if c < 0.0:
+                    c = 0.0
+                if c < 1.0e-300:
+                    c = 1.0e-300
+                logC[k] = math.log(c)
+
+            for r in range(n_rxn):
+                kf = A_hi[r] * math.exp(b_hi[r] * logT - Ea_hi[r] * inv_RT)
+
+                delta_g = 0.0
+                rf_exp = 0.0
+                rr_exp = 0.0
+                M = 0.0
+                for k in range(n_sp):
+                    delta_g += nu_net[k, r] * g_RT[k, m]
+                    rf_exp += nu_r[k, r] * logC[k]
+                    rr_exp += nu_p[k, r] * logC[k]
+                    ck = C[k, m]
+                    if ck < 0.0:
+                        ck = 0.0
+                    M += eff[r, k] * ck
+
+                if delta_g > 500.0:
+                    delta_g = 500.0
+                elif delta_g < -500.0:
+                    delta_g = -500.0
+
+                Kc = math.exp(-delta_g) * (c_factor ** delta_nu[r])
+                kr = 0.0
+                if is_reversible[r]:
+                    kr = kf / max(Kc, 1.0e-300)
+
+                Rf = math.exp(rf_exp) * kf
+                Rr = 0.0
+                if is_reversible[r]:
+                    Rr = math.exp(rr_exp) * kr
+
+                if is_three_body[r]:
+                    Rf *= M
+                    Rr *= M
+
+                if is_falloff[r]:
+                    k0 = A_lo[r] * math.exp(b_lo[r] * logT - Ea_lo[r] * inv_RT)
+                    Pr = k0 * M / max(kf, 1.0e-300)
+                    F_lind = Pr / (1.0 + Pr)
+                    F = 1.0
+
+                    if has_troe[r]:
+                        t3 = max(troe_T3[r], 1.0e-300)
+                        t1 = max(troe_T1[r], 1.0e-300)
+                        Fcent = (
+                            (1.0 - troe_A[r]) * math.exp(-T / t3)
+                            + troe_A[r] * math.exp(-T / t1)
+                            + math.exp(-troe_T2[r] / max(T, 1.0e-300))
+                        )
+                        Fcent = max(Fcent, 1.0e-300)
+                        logFcent = math.log10(Fcent)
+                        logPr = math.log10(max(Pr, 1.0e-300))
+                        c_troe = -0.4 - 0.67 * logFcent
+                        n_troe = 0.75 - 1.27 * logFcent
+                        d_troe = 0.14
+                        f1 = (logPr + c_troe) / (
+                            n_troe - d_troe * (logPr + c_troe)
+                        )
+                        F = 10.0 ** (logFcent / (1.0 + f1 * f1))
+
+                    kf_falloff = kf * F_lind * F
+                    Rf = kf_falloff * (Rf / max(kf, 1.0e-300))
+                    if is_reversible[r]:
+                        kr_falloff = kf_falloff / max(Kc, 1.0e-300)
+                        Rr = kr_falloff * (Rr / max(kr, 1.0e-300))
+
+                q = Rf - Rr
+                for k in range(n_sp):
+                    out[k, m] += nu_net[k, r] * q
+
+        return out
+
+
+    @njit(cache=True)
+    def _net_production_rates_sparse_numba_core(
+        T_arr, C, g_RT, A_hi, b_hi, Ea_hi, A_lo, b_lo, Ea_lo,
+        is_three_body, is_falloff, is_reversible, has_troe,
+        troe_A, troe_T3, troe_T1, troe_T2,
+        r_idx, r_nu, r_count, p_idx, p_nu, p_count,
+        net_idx, net_nu, net_count, eff_idx, eff_delta, eff_count,
+        delta_nu,
+    ):
+        n_sp = C.shape[0]
+        n_pts = C.shape[1]
+        n_rxn = A_hi.shape[0]
+        out = np.zeros((n_sp, n_pts), dtype=np.float64)
+
+        for m in range(n_pts):
+            logC = np.empty(n_sp, dtype=np.float64)
+            T = T_arr[m]
+            c_factor = 101325.0 / (R_UNIV * T)
+            inv_RT = 1.0 / (R_UNIV * T)
+            logT = math.log(T)
+            c_total = 0.0
+
+            for k in range(n_sp):
+                c = C[k, m]
+                if c < 0.0:
+                    c = 0.0
+                c_total += c
+                if c < 1.0e-300:
+                    c = 1.0e-300
+                logC[k] = math.log(c)
+
+            for r in range(n_rxn):
+                kf = A_hi[r] * math.exp(b_hi[r] * logT - Ea_hi[r] * inv_RT)
+
+                rf_exp = 0.0
+                for ii in range(r_count[r]):
+                    k = r_idx[r, ii]
+                    rf_exp += r_nu[r, ii] * logC[k]
+
+                rr_exp = 0.0
+                if is_reversible[r]:
+                    for ii in range(p_count[r]):
+                        k = p_idx[r, ii]
+                        rr_exp += p_nu[r, ii] * logC[k]
+
+                delta_g = 0.0
+                for ii in range(net_count[r]):
+                    k = net_idx[r, ii]
+                    delta_g += net_nu[r, ii] * g_RT[k, m]
+
+                if delta_g > 500.0:
+                    delta_g = 500.0
+                elif delta_g < -500.0:
+                    delta_g = -500.0
+
+                Kc = math.exp(-delta_g) * (c_factor ** delta_nu[r])
+                kr = 0.0
+                if is_reversible[r]:
+                    kr = kf / max(Kc, 1.0e-300)
+
+                Rf = math.exp(rf_exp) * kf
+                Rr = 0.0
+                if is_reversible[r]:
+                    Rr = math.exp(rr_exp) * kr
+
+                M = c_total
+                if is_three_body[r] or is_falloff[r]:
+                    for ii in range(eff_count[r]):
+                        k = eff_idx[r, ii]
+                        ck = C[k, m]
+                        if ck < 0.0:
+                            ck = 0.0
+                        M += eff_delta[r, ii] * ck
+
+                if is_three_body[r]:
+                    Rf *= M
+                    Rr *= M
+
+                if is_falloff[r]:
+                    k0 = A_lo[r] * math.exp(b_lo[r] * logT - Ea_lo[r] * inv_RT)
+                    Pr = k0 * M / max(kf, 1.0e-300)
+                    F_lind = Pr / (1.0 + Pr)
+                    F = 1.0
+
+                    if has_troe[r]:
+                        t3 = max(troe_T3[r], 1.0e-300)
+                        t1 = max(troe_T1[r], 1.0e-300)
+                        Fcent = (
+                            (1.0 - troe_A[r]) * math.exp(-T / t3)
+                            + troe_A[r] * math.exp(-T / t1)
+                            + math.exp(-troe_T2[r] / max(T, 1.0e-300))
+                        )
+                        Fcent = max(Fcent, 1.0e-300)
+                        logFcent = math.log10(Fcent)
+                        logPr = math.log10(max(Pr, 1.0e-300))
+                        c_troe = -0.4 - 0.67 * logFcent
+                        n_troe = 0.75 - 1.27 * logFcent
+                        d_troe = 0.14
+                        f1 = (logPr + c_troe) / (
+                            n_troe - d_troe * (logPr + c_troe)
+                        )
+                        F = 10.0 ** (logFcent / (1.0 + f1 * f1))
+
+                    kf_falloff = kf * F_lind * F
+                    Rf = kf_falloff * (Rf / max(kf, 1.0e-300))
+                    if is_reversible[r]:
+                        kr_falloff = kf_falloff / max(Kc, 1.0e-300)
+                        Rr = kr_falloff * (Rr / max(kr, 1.0e-300))
+
+                q = Rf - Rr
+                for ii in range(net_count[r]):
+                    k = net_idx[r, ii]
+                    out[k, m] += net_nu[r, ii] * q
+
+        return out
+else:
+    _net_production_rates_numba_core = None
+    _net_production_rates_sparse_numba_core = None
+
+
 class NativeKinetics:
     """Evaluate net production rates ẇ_k [kmol/(m³·s)] for all species."""
 
@@ -39,6 +267,18 @@ class NativeKinetics:
 
         # Pre-extract reaction parameters into flat arrays for vectorisation
         self._build_reaction_arrays()
+        self._numba_available = (
+            _net_production_rates_numba_core is not None
+            and getattr(self.xp, "__name__", "") == "numpy"
+        )
+        self._sparse_numba_available = (
+            _net_production_rates_sparse_numba_core is not None
+            and getattr(self.xp, "__name__", "") == "numpy"
+        )
+        self._use_numba = False
+        self._use_sparse_numba = False
+        if self._numba_available or self._sparse_numba_available:
+            self._prepare_numba_arrays()
 
     # ------------------------------------------------------------------
     #  Pre-extract flat arrays from ReactionData list
@@ -78,6 +318,83 @@ class NativeKinetics:
             if r.efficiencies is not None:
                 eff[j, :] = r.efficiencies
         self.eff = self.xp.asarray(eff)
+
+    def _prepare_numba_arrays(self):
+        """Keep CPU-contiguous mechanism arrays for the optional Numba path."""
+        self._nb_A_hi = np.asarray(self.A_hi, dtype=np.float64)
+        self._nb_b_hi = np.asarray(self.b_hi, dtype=np.float64)
+        self._nb_Ea_hi = np.asarray(self.Ea_hi, dtype=np.float64)
+        self._nb_A_lo = np.asarray(self.A_lo, dtype=np.float64)
+        self._nb_b_lo = np.asarray(self.b_lo, dtype=np.float64)
+        self._nb_Ea_lo = np.asarray(self.Ea_lo, dtype=np.float64)
+        self._nb_is_three_body = np.asarray(self.is_three_body, dtype=np.bool_)
+        self._nb_is_falloff = np.asarray(self.is_falloff, dtype=np.bool_)
+        self._nb_is_reversible = np.asarray(self.is_reversible, dtype=np.bool_)
+        self._nb_has_troe = np.asarray(self.has_troe, dtype=np.bool_)
+        self._nb_troe_A = np.asarray(self.troe_A, dtype=np.float64)
+        self._nb_troe_T3 = np.asarray(self.troe_T3, dtype=np.float64)
+        self._nb_troe_T1 = np.asarray(self.troe_T1, dtype=np.float64)
+        self._nb_troe_T2 = np.asarray(self.troe_T2, dtype=np.float64)
+        self._nb_nu_r = np.ascontiguousarray(self.nu_r, dtype=np.float64)
+        self._nb_nu_p = np.ascontiguousarray(self.nu_p, dtype=np.float64)
+        self._nb_nu_net = np.ascontiguousarray(self.nu_net, dtype=np.float64)
+        self._nb_eff = np.ascontiguousarray(self.eff, dtype=np.float64)
+        self._nb_delta_nu = np.asarray(self.nu_net.sum(axis=0), dtype=np.float64)
+
+        nu_r = np.asarray(self.nu_r, dtype=np.float64)
+        nu_p = np.asarray(self.nu_p, dtype=np.float64)
+        nu_net = np.asarray(self.nu_net, dtype=np.float64)
+        eff = np.asarray(self.eff, dtype=np.float64)
+        nr = self.n_rxn
+
+        r_lists = [np.nonzero(nu_r[:, j])[0] for j in range(nr)]
+        p_lists = [np.nonzero(nu_p[:, j])[0] for j in range(nr)]
+        net_lists = [np.nonzero(nu_net[:, j])[0] for j in range(nr)]
+        eff_lists = [
+            np.nonzero(np.abs(eff[j, :] - 1.0) > 0.0)[0]
+            if bool(self._nb_is_three_body[j] or self._nb_is_falloff[j])
+            else np.empty(0, dtype=np.int64)
+            for j in range(nr)
+        ]
+
+        max_r = max(1, max(len(v) for v in r_lists))
+        max_p = max(1, max(len(v) for v in p_lists))
+        max_net = max(1, max(len(v) for v in net_lists))
+        max_eff = max(1, max(len(v) for v in eff_lists))
+
+        self._sp_r_idx = np.zeros((nr, max_r), dtype=np.int64)
+        self._sp_r_nu = np.zeros((nr, max_r), dtype=np.float64)
+        self._sp_r_count = np.zeros(nr, dtype=np.int64)
+        self._sp_p_idx = np.zeros((nr, max_p), dtype=np.int64)
+        self._sp_p_nu = np.zeros((nr, max_p), dtype=np.float64)
+        self._sp_p_count = np.zeros(nr, dtype=np.int64)
+        self._sp_net_idx = np.zeros((nr, max_net), dtype=np.int64)
+        self._sp_net_nu = np.zeros((nr, max_net), dtype=np.float64)
+        self._sp_net_count = np.zeros(nr, dtype=np.int64)
+        self._sp_eff_idx = np.zeros((nr, max_eff), dtype=np.int64)
+        self._sp_eff_delta = np.zeros((nr, max_eff), dtype=np.float64)
+        self._sp_eff_count = np.zeros(nr, dtype=np.int64)
+
+        for j in range(nr):
+            idx = r_lists[j]
+            self._sp_r_count[j] = len(idx)
+            self._sp_r_idx[j, :len(idx)] = idx
+            self._sp_r_nu[j, :len(idx)] = nu_r[idx, j]
+
+            idx = p_lists[j]
+            self._sp_p_count[j] = len(idx)
+            self._sp_p_idx[j, :len(idx)] = idx
+            self._sp_p_nu[j, :len(idx)] = nu_p[idx, j]
+
+            idx = net_lists[j]
+            self._sp_net_count[j] = len(idx)
+            self._sp_net_idx[j, :len(idx)] = idx
+            self._sp_net_nu[j, :len(idx)] = nu_net[idx, j]
+
+            idx = eff_lists[j]
+            self._sp_eff_count[j] = len(idx)
+            self._sp_eff_idx[j, :len(idx)] = idx
+            self._sp_eff_delta[j, :len(idx)] = eff[j, idx] - 1.0
 
     # ------------------------------------------------------------------
     #  Arrhenius rate constant
@@ -207,6 +524,96 @@ class NativeKinetics:
         -------
         wdot : net production rates [kmol/(m³·s)], shape (n_sp,) or (n_sp, N)
         """
+        if self._use_sparse_numba:
+            C_arr = np.asarray(C, dtype=np.float64)
+            g_arr = np.asarray(g_RT, dtype=np.float64)
+            scalar = C_arr.ndim == 1
+            if scalar:
+                C_work = np.ascontiguousarray(C_arr[:, None])
+                g_work = np.ascontiguousarray(g_arr[:, None])
+                T_work = np.asarray([float(T)], dtype=np.float64)
+            else:
+                C_work = np.ascontiguousarray(C_arr)
+                g_work = np.ascontiguousarray(g_arr)
+                T_work = np.asarray(T, dtype=np.float64).reshape(-1)
+                if T_work.size == 1 and C_work.shape[1] != 1:
+                    T_work = np.full(C_work.shape[1], float(T_work[0]), dtype=np.float64)
+
+            wdot = _net_production_rates_sparse_numba_core(
+                T_work,
+                C_work,
+                g_work,
+                self._nb_A_hi,
+                self._nb_b_hi,
+                self._nb_Ea_hi,
+                self._nb_A_lo,
+                self._nb_b_lo,
+                self._nb_Ea_lo,
+                self._nb_is_three_body,
+                self._nb_is_falloff,
+                self._nb_is_reversible,
+                self._nb_has_troe,
+                self._nb_troe_A,
+                self._nb_troe_T3,
+                self._nb_troe_T1,
+                self._nb_troe_T2,
+                self._sp_r_idx,
+                self._sp_r_nu,
+                self._sp_r_count,
+                self._sp_p_idx,
+                self._sp_p_nu,
+                self._sp_p_count,
+                self._sp_net_idx,
+                self._sp_net_nu,
+                self._sp_net_count,
+                self._sp_eff_idx,
+                self._sp_eff_delta,
+                self._sp_eff_count,
+                self._nb_delta_nu,
+            )
+            return wdot[:, 0] if scalar else wdot
+
+        if self._use_numba:
+            C_arr = np.asarray(C, dtype=np.float64)
+            g_arr = np.asarray(g_RT, dtype=np.float64)
+            scalar = C_arr.ndim == 1
+            if scalar:
+                C_work = np.ascontiguousarray(C_arr[:, None])
+                g_work = np.ascontiguousarray(g_arr[:, None])
+                T_work = np.asarray([float(T)], dtype=np.float64)
+            else:
+                C_work = np.ascontiguousarray(C_arr)
+                g_work = np.ascontiguousarray(g_arr)
+                T_work = np.asarray(T, dtype=np.float64).reshape(-1)
+                if T_work.size == 1 and C_work.shape[1] != 1:
+                    T_work = np.full(C_work.shape[1], float(T_work[0]), dtype=np.float64)
+
+            wdot = _net_production_rates_numba_core(
+                T_work,
+                C_work,
+                g_work,
+                self._nb_A_hi,
+                self._nb_b_hi,
+                self._nb_Ea_hi,
+                self._nb_A_lo,
+                self._nb_b_lo,
+                self._nb_Ea_lo,
+                self._nb_is_three_body,
+                self._nb_is_falloff,
+                self._nb_is_reversible,
+                self._nb_has_troe,
+                self._nb_troe_A,
+                self._nb_troe_T3,
+                self._nb_troe_T1,
+                self._nb_troe_T2,
+                self._nb_nu_r,
+                self._nb_nu_p,
+                self._nb_nu_net,
+                self._nb_eff,
+                self._nb_delta_nu,
+            )
+            return wdot[:, 0] if scalar else wdot
+
         Csafe = self.xp.maximum(C, 0.0)
         is_grid = self._is_grid(T)
 

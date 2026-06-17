@@ -10,6 +10,13 @@ from scipy.sparse.linalg import splu
 
 from state import C_T, C_U, C_Y, build_transient_mask, unpack_state
 
+try:
+    from numba import njit
+except Exception:  # pragma: no cover - optional acceleration
+    njit = None
+
+_NUMBA_AVAILABLE = njit is not None
+
 
 def _profile_start(problem) -> float:
     return perf_counter() if getattr(problem, "_profile", None) is not None else 0.0
@@ -34,8 +41,17 @@ def _state_views(x: np.ndarray, n_points: int, n_species: int):
     return x_r[:, C_U], x_r[:, C_T], x_r[:, C_Y:].T
 
 
-def _device_residual_enabled(problem) -> bool:
-    backend = getattr(problem, "backend", None)
+def _residual_backend(problem):
+    return getattr(problem, "residual_backend", None) or getattr(problem, "backend", None)
+
+
+def _jacobian_backend(problem):
+    return getattr(problem, "jacobian_backend", None) or getattr(problem, "backend", None)
+
+
+def _device_backend_enabled(problem, backend=None) -> bool:
+    if backend is None:
+        backend = _jacobian_backend(problem)
     return (
         backend is not None
         and bool(getattr(backend, "use_gpu", False))
@@ -43,6 +59,14 @@ def _device_residual_enabled(problem) -> bool:
         and hasattr(backend, "eval_faces_device")
         and hasattr(backend, "_to_host")
     )
+
+
+def _device_residual_enabled(problem, backend=None) -> bool:
+    if not bool(getattr(problem, "use_device_residual", True)):
+        return False
+    if backend is None:
+        backend = _residual_backend(problem)
+    return _device_backend_enabled(problem, backend)
 
 
 def _corrected_flux_device(xp, Y_L, Y_R, rho_f, D_f, dz, W, W_mix_f, basis: str):
@@ -62,12 +86,14 @@ def _corrected_flux_device(xp, Y_L, Y_R, rho_f, D_f, dz, W, W_mix_f, basis: str)
 def _residual_device(
     x: np.ndarray,
     problem,
+    backend=None,
     rdt: float = 0.0,
     x_old: np.ndarray | None = None,
     x_older: np.ndarray | None = None,
     transient_order: int = 1,
 ) -> np.ndarray:
-    backend = problem.backend
+    if backend is None:
+        backend = _residual_backend(problem)
     xp = backend.xp
     n_pts = int(problem.n_points)
     n_sp = int(problem.n_species)
@@ -83,7 +109,10 @@ def _residual_device(
     W = backend.W_dev
     invW = backend.invW_dev
 
-    rho, _Dm_nodes, cp_n, lam_n, omega, hk_n = backend.eval_grid_device(T, Y)
+    if hasattr(backend, "eval_grid_thermo_kinetics_device"):
+        rho, cp_n, omega, hk_n = backend.eval_grid_thermo_kinetics_device(T, Y)
+    else:
+        rho, _Dm_nodes, cp_n, _lam_n, omega, hk_n = backend.eval_grid_device(T, Y)
 
     T_face = 0.5 * (T[:-1] + T[1:])
     Y_face = 0.5 * (Y[:, :-1] + Y[:, 1:])
@@ -215,6 +244,127 @@ def _corrected_flux(Y_L: np.ndarray, Y_R: np.ndarray,
     return J_star - Y_L * J_star.sum()
 
 
+if _NUMBA_AVAILABLE:
+    @njit(cache=True)
+    def _assemble_residual_numba_core(
+        F, u, T, Y, z, rho, cp_n, omega, hk_n, lam_face, flux,
+        invW, Y_in, T_prof, has_T_prof, solve_energy, j_fixed,
+        T_fixed, T_in,
+    ):
+        n_pts = z.shape[0]
+        n_sp = Y.shape[0]
+        nv = 2 + n_sp
+
+        for i in range(F.shape[0]):
+            F[i] = 0.0
+
+        dz0 = z[1] - z[0]
+        F[C_U] = -(rho[1] * u[1] - rho[0] * u[0]) / dz0
+        if solve_energy:
+            F[C_T] = T[0] - T_in
+        else:
+            F[C_T] = T[0] - (T_prof[0] if has_T_prof else T_in)
+
+        mdot_in = rho[0] * u[0]
+        k_exc = 0
+        y_max = Y[0, 0]
+        y_sum = 0.0
+        for k in range(n_sp):
+            yk = Y[k, 0]
+            y_sum += yk
+            if yk > y_max:
+                y_max = yk
+                k_exc = k
+            F[C_Y + k] = -(flux[k, 0] + mdot_in * yk) + mdot_in * Y_in[k]
+        F[C_Y + k_exc] = 1.0 - y_sum
+
+        for j in range(1, n_pts - 1):
+            b = j * nv
+            dzm = z[j] - z[j - 1]
+            dzp = z[j + 1] - z[j]
+            dz2 = z[j + 1] - z[j - 1]
+
+            if j_fixed >= 0 and j == j_fixed:
+                if solve_energy:
+                    F[b + C_U] = T[j] - T_fixed
+                else:
+                    F[b + C_U] = rho[j] * u[j] - rho[0] * 0.3
+            elif j_fixed >= 0 and j > j_fixed:
+                F[b + C_U] = -(rho[j] * u[j] - rho[j - 1] * u[j - 1]) / dzm
+            else:
+                F[b + C_U] = -(rho[j + 1] * u[j + 1] - rho[j] * u[j]) / dzp
+
+            rho_j = rho[j]
+            rho_u_j = rho_j * u[j]
+            jloc = j if u[j] > 0.0 else j + 1
+            dz_up = z[jloc] - z[jloc - 1]
+
+            if solve_energy:
+                dTdz = (T[jloc] - T[jloc - 1]) / dz_up
+                cond = -2.0 * (
+                    lam_face[j] * (T[j + 1] - T[j]) / dzp
+                    - lam_face[j - 1] * (T[j] - T[j - 1]) / dzm
+                ) / dz2
+
+                en_sum = 0.0
+                for k in range(n_sp):
+                    dhk_dz = (hk_n[k, jloc] - hk_n[k, jloc - 1]) / dz_up
+                    flx = 0.5 * (flux[k, j - 1] + flux[k, j])
+                    en_sum += hk_n[k, j] * omega[k, j] * invW[k]
+                    en_sum += flx * dhk_dz * invW[k]
+
+                cp_j = cp_n[j]
+                F[b + C_T] = (-cp_j * rho_u_j * dTdz - cond - en_sum) / (rho_j * cp_j)
+            else:
+                F[b + C_T] = T[j] - (T_prof[j] if has_T_prof else T_in)
+
+            for k in range(n_sp):
+                dYdz = (Y[k, jloc] - Y[k, jloc - 1]) / dz_up
+                conv = rho_u_j * dYdz
+                diff = 2.0 * (flux[k, j] - flux[k, j - 1]) / dz2
+                F[b + C_Y + k] = (omega[k, j] - conv - diff) / rho_j
+
+        b = (n_pts - 1) * nv
+        F[b + C_U] = rho[n_pts - 1] * u[n_pts - 1] - rho[n_pts - 2] * u[n_pts - 2]
+        if solve_energy:
+            F[b + C_T] = T[n_pts - 1] - T[n_pts - 2]
+        else:
+            F[b + C_T] = T[n_pts - 1] - (T_prof[n_pts - 1] if has_T_prof else T[n_pts - 2])
+
+        k_exc = 0
+        y_max = Y[0, n_pts - 1]
+        y_sum = 0.0
+        for k in range(n_sp):
+            yk = Y[k, n_pts - 1]
+            y_sum += yk
+            if yk > y_max:
+                y_max = yk
+                k_exc = k
+            F[b + C_Y + k] = yk - Y[k, n_pts - 2]
+        F[b + C_Y + k_exc] = 1.0 - y_sum
+else:
+    _assemble_residual_numba_core = None
+
+
+def _apply_transient_terms(F: np.ndarray, x: np.ndarray, problem, rdt: float,
+                           x_old: np.ndarray | None,
+                           x_older: np.ndarray | None,
+                           transient_order: int) -> np.ndarray:
+    if rdt > 0.0 and x_old is not None:
+        x_old = np.asarray(x_old, dtype=float)
+        mask = build_transient_mask(
+            int(problem.n_points), int(problem.n_species),
+            solve_energy=bool(problem.solve_energy),
+        )
+        use_bdf2 = int(transient_order) >= 2 and x_older is not None
+        if use_bdf2:
+            x_older = np.asarray(x_older, dtype=float)
+            F -= mask * (1.5 * rdt * x - 2.0 * rdt * x_old + 0.5 * rdt * x_older)
+        else:
+            F -= mask * rdt * (x - x_old)
+    return F
+
+
 # ---------------------------------------------------------------------------
 #  Función residual principal
 # ---------------------------------------------------------------------------
@@ -241,11 +391,12 @@ def residual(
       2 -> BDF2
     """
     t_profile = _profile_start(problem)
-    if _device_residual_enabled(problem):
+    residual_backend = _residual_backend(problem)
+    if _device_residual_enabled(problem, residual_backend):
         try:
             t_device = _profile_start(problem)
             F_dev = _residual_device(
-                x, problem, rdt=rdt, x_old=x_old,
+                x, problem, backend=residual_backend, rdt=rdt, x_old=x_old,
                 x_older=x_older, transient_order=transient_order,
             )
             _profile_record(problem, "residual_device", t_device)
@@ -261,7 +412,7 @@ def residual(
     n_pts = int(problem.n_points)
     n_sp = int(problem.n_species)
     nv = 2 + n_sp
-    backend = problem.backend
+    backend = residual_backend
     z = problem.z
     W = backend.W
     invW = backend.invW
@@ -279,11 +430,33 @@ def residual(
     hk_n = np.empty((n_sp, n_pts))
 
     try:
-        eval_node_into = backend.eval_node_into
-        for j in range(n_pts):
-            rho[j], _, cp_n[j], lam_n[j] = eval_node_into(
-                T[j], Y[:, j], omega[:, j], hk_n[:, j]
-            )
+        if hasattr(backend, "eval_grid_thermo_kinetics_into"):
+            rho_g, cp_g = backend.eval_grid_thermo_kinetics_into(T, Y, omega, hk_n)
+            rho[:] = _to_numpy(rho_g)
+            cp_n[:] = _to_numpy(cp_g)
+            lam_n.fill(0.0)
+            omega[:] = _to_numpy(omega)
+            hk_n[:] = _to_numpy(hk_n)
+        elif hasattr(backend, "eval_grid_into"):
+            rho_g, _, cp_g, lam_g = backend.eval_grid_into(T, Y, omega, hk_n)
+            rho[:] = _to_numpy(rho_g)
+            cp_n[:] = _to_numpy(cp_g)
+            lam_n[:] = _to_numpy(lam_g)
+            omega[:] = _to_numpy(omega)
+            hk_n[:] = _to_numpy(hk_n)
+        else:
+            eval_node_tk_into = getattr(backend, "eval_node_thermo_kinetics_into", None)
+            eval_node_into = backend.eval_node_into
+            for j in range(n_pts):
+                if eval_node_tk_into is not None:
+                    rho[j], cp_n[j] = eval_node_tk_into(
+                        T[j], Y[:, j], omega[:, j], hk_n[:, j]
+                    )
+                    lam_n[j] = 0.0
+                else:
+                    rho[j], _, cp_n[j], lam_n[j] = eval_node_into(
+                        T[j], Y[:, j], omega[:, j], hk_n[:, j]
+                    )
     except Exception as exc:
         if bool(getattr(problem, "debug_residual_errors", False)):
             print(f"EXCEPTION IN RESIDUAL PROP: {exc}")
@@ -298,21 +471,69 @@ def residual(
     lam_face = np.empty(n_pts - 1)
 
     try:
-        eval_face = backend.eval_midpoint_full_transport
-        for jf in range(n_pts - 1):
-            dz_f = z[jf + 1] - z[jf]
-            rho_f, D_f, lam_f, W_mix_f = eval_face(
-                T[jf], T[jf + 1], Y[:, jf], Y[:, jf + 1]
-            )
-            rho_face[jf] = rho_f
-            lam_face[jf] = lam_f
-            flux[:, jf] = _corrected_flux(
-                Y[:, jf], Y[:, jf + 1], rho_f, D_f, dz_f, W, W_mix_f, basis)
+        if hasattr(backend, "eval_faces"):
+            T_face = 0.5 * (T[:-1] + T[1:])
+            Y_face = 0.5 * (Y[:, :-1] + Y[:, 1:])
+            rho_f, D_f, lam_f, W_mix_f = backend.eval_faces(T_face, Y_face)
+            rho_face[:] = _to_numpy(rho_f)
+            D_f = _to_numpy(D_f)
+            lam_face[:] = _to_numpy(lam_f)
+            W_mix_f = _to_numpy(W_mix_f)
+            dz_face = z[1:] - z[:-1]
+            if basis in ("molar", "mole"):
+                face_coeff = rho_face[None, :] * (W[:, None] / W_mix_f[None, :]) * D_f
+            else:
+                face_coeff = rho_face[None, :] * D_f
+            flux[:] = _corrected_flux_frozen(Y[:, :-1], Y[:, 1:], face_coeff, dz_face, W, basis)
+        else:
+            eval_face = backend.eval_midpoint_full_transport
+            for jf in range(n_pts - 1):
+                dz_f = z[jf + 1] - z[jf]
+                rho_f, D_f, lam_f, W_mix_f = eval_face(
+                    T[jf], T[jf + 1], Y[:, jf], Y[:, jf + 1]
+                )
+                rho_face[jf] = rho_f
+                lam_face[jf] = lam_f
+                flux[:, jf] = _corrected_flux(
+                    Y[:, jf], Y[:, jf + 1], rho_f, D_f, dz_f, W, W_mix_f, basis)
     except Exception as exc:
         if bool(getattr(problem, "debug_residual_errors", False)):
             print(f"EXCEPTION IN RESIDUAL FACE: {exc}")
         problem.last_residual_error = str(exc)
         return _profile_return(problem, "residual_full", t_profile, np.full(x.size, 1.0e20))
+
+    if _assemble_residual_numba_core is not None and bool(
+        getattr(problem, "use_numba_residual", True)
+    ):
+        try:
+            F_numba = np.empty(x.size, dtype=float)
+            T_prof = getattr(problem, "T_profile_fixed", None)
+            has_T_prof = T_prof is not None
+            T_prof_arr = (
+                np.asarray(T_prof, dtype=float)
+                if has_T_prof else np.zeros(n_pts, dtype=float)
+            )
+            j_fixed = -1 if problem.j_fixed is None else int(problem.j_fixed)
+            T_fixed = (
+                float(problem.T_fixed_point)
+                if problem.T_fixed_point is not None else 0.0
+            )
+            t_assembly = _profile_start(problem)
+            _assemble_residual_numba_core(
+                F_numba, u, T, Y, np.asarray(z, dtype=float), rho, cp_n,
+                omega, hk_n, lam_face, flux, invW, np.asarray(problem.Y_in, dtype=float),
+                T_prof_arr, bool(has_T_prof), bool(problem.solve_energy),
+                j_fixed, T_fixed, float(problem.T_in),
+            )
+            _profile_record(problem, "residual_assembly_numba", t_assembly)
+            _apply_transient_terms(F_numba, x, problem, rdt, x_old, x_older, transient_order)
+            if not np.all(np.isfinite(F_numba)):
+                F_numba = np.full(x.size, 1.0e20)
+            return _profile_return(problem, "residual_full", t_profile, F_numba)
+        except Exception as exc:
+            problem.last_residual_error = f"Numba residual fallback: {exc}"
+            if bool(getattr(problem, "debug_residual_errors", False)):
+                print(problem.last_residual_error)
 
     # ------------------------------------------------------------------
     #  3. Ensamblar residual bloque a bloque
@@ -520,7 +741,7 @@ def build_local_jacobian_cache(x: np.ndarray, problem) -> dict:
     n_pts = int(problem.n_points)
     n_sp = int(problem.n_species)
 
-    backend = problem.backend
+    backend = _jacobian_backend(problem)
     z = problem.z
     W = np.asarray(backend.W, dtype=float)
     invW = np.asarray(backend.invW, dtype=float)
@@ -535,7 +756,14 @@ def build_local_jacobian_cache(x: np.ndarray, problem) -> dict:
     omega = np.empty((n_sp, n_pts), dtype=float)
     hk_n = np.empty((n_sp, n_pts), dtype=float)
 
-    if hasattr(backend, "eval_grid_into"):
+    if hasattr(backend, "eval_grid_thermo_kinetics_into"):
+        rho_g, cp_g = backend.eval_grid_thermo_kinetics_into(T, Y, omega, hk_n)
+        rho[:] = _to_numpy(rho_g)
+        cp_n[:] = _to_numpy(cp_g)
+        lam_n.fill(0.0)
+        omega[:] = _to_numpy(omega)
+        hk_n[:] = _to_numpy(hk_n)
+    elif hasattr(backend, "eval_grid_into"):
         rho_g, _, cp_g, lam_g = backend.eval_grid_into(T, Y, omega, hk_n)
         rho[:] = _to_numpy(rho_g)
         cp_n[:] = _to_numpy(cp_g)
@@ -585,6 +813,18 @@ def build_local_jacobian_cache(x: np.ndarray, problem) -> dict:
         blocks = np.arange(p0, p1 + 1, dtype=np.int32)[:, None] * (2 + n_sp)
         local_rows.append((blocks + row_offsets[None, :]).ravel())
 
+    T_prof = getattr(problem, "T_profile_fixed", None)
+    has_T_prof = T_prof is not None
+    T_prof_arr = (
+        np.asarray(T_prof, dtype=float)
+        if has_T_prof else np.zeros(n_pts, dtype=float)
+    )
+    j_fixed = -1 if problem.j_fixed is None else int(problem.j_fixed)
+    T_fixed = (
+        float(problem.T_fixed_point)
+        if problem.T_fixed_point is not None else 0.0
+    )
+
     return _profile_return(problem, "jacobian_cache", t_profile, {
         "n_pts": n_pts,
         "n_sp": n_sp,
@@ -602,6 +842,15 @@ def build_local_jacobian_cache(x: np.ndarray, problem) -> dict:
         "face_coeff": face_coeff,
         "dz_face": dz_face,
         "local_rows": local_rows,
+        "Y_in": np.asarray(problem.Y_in, dtype=float),
+        "T_prof_arr": T_prof_arr,
+        "has_T_prof": bool(has_T_prof),
+        "solve_energy": bool(problem.solve_energy),
+        "j_fixed": int(j_fixed),
+        "T_fixed": float(T_fixed),
+        "T_in": float(problem.T_in),
+        "basis_molar": basis in ("molar", "mole"),
+        "rho0": float(rho[0]),
     })
 
 
@@ -674,13 +923,18 @@ def residual_local_rows(x: np.ndarray, problem, center_j: int,
     hk_local = cache["hk_n"][:, n0:n1 + 1].copy()
 
     # Recompute only perturbed node thermo/kinetics (strictly enough + faster)
-    eval_node_into = problem.backend.eval_node_into
+    backend = _jacobian_backend(problem)
+    eval_node_tk_into = getattr(backend, "eval_node_thermo_kinetics_into", None)
+    eval_node_into = backend.eval_node_into
     j = j_center
     if n0 <= j <= n1:
         jl = j - n0
         om = np.empty(n_sp, dtype=float)
         hk = np.empty(n_sp, dtype=float)
-        rhoj, _, cpj, _ = eval_node_into(T[j], Y[:, j], om, hk)
+        if eval_node_tk_into is not None:
+            rhoj, cpj = eval_node_tk_into(T[j], Y[:, j], om, hk)
+        else:
+            rhoj, _, cpj, _ = eval_node_into(T[j], Y[:, j], om, hk)
         rho_local[jl] = rhoj
         cp_local[jl] = cpj
         omega_local[:, jl] = om
@@ -816,6 +1070,377 @@ def _take_point_values(arr: np.ndarray, idx: np.ndarray) -> np.ndarray:
     return arr[batch, :, idx]
 
 
+def _local_cache_buffer(cache: dict, key: str, shape: tuple[int, ...],
+                        dtype=float) -> np.ndarray:
+    buffers = cache.setdefault("_buffers", {})
+    arr = buffers.get(key)
+    if arr is None or arr.shape != shape or arr.dtype != np.dtype(dtype):
+        arr = np.empty(shape, dtype=dtype)
+        buffers[key] = arr
+    return arr
+
+
+if _NUMBA_AVAILABLE:
+    @njit(cache=True)
+    def _fill_local_jacobian_block_numba(
+        rows_arr, cols_arr, vals_arr, start, rows, cols, vals, threshold,
+    ):
+        pos = start
+        n_cols = cols.shape[0]
+        n_rows = rows.shape[0]
+        if threshold <= 0.0:
+            for i in range(n_cols):
+                col = cols[i]
+                for k in range(n_rows):
+                    rows_arr[pos] = rows[k]
+                    cols_arr[pos] = col
+                    vals_arr[pos] = vals[i, k]
+                    pos += 1
+            return pos
+
+        for i in range(n_cols):
+            col = cols[i]
+            for k in range(n_rows):
+                v = vals[i, k]
+                if abs(v) > threshold or rows[k] == col:
+                    rows_arr[pos] = rows[k]
+                    cols_arr[pos] = col
+                    vals_arr[pos] = v
+                    pos += 1
+        return pos
+
+
+    @njit(cache=True)
+    def _assemble_local_batch_numba_core(
+        vals_out, u, T, Y, rho_local, cp_local, omega_local, hk_local,
+        z, lam_face, face_coeff, dz_face, W, invW, Y_in, T_prof,
+        has_T_prof, solve_energy, j_fixed, T_fixed, T_in, p0, p1, n0,
+        f0, n_faces, basis_molar, rho0_base,
+    ):
+        n_batch = u.shape[0]
+        n_sp = Y.shape[1]
+        nv = 2 + n_sp
+        n_pts = z.shape[0]
+
+        flux_local = np.empty((n_batch, n_sp, n_faces), dtype=np.float64)
+        for ib in range(n_batch):
+            for lf in range(n_faces):
+                f = f0 + lf
+                jl = f - n0
+                jr = jl + 1
+                dz = dz_face[f]
+                sum_j = 0.0
+
+                if basis_molar:
+                    denom_l = 0.0
+                    denom_r = 0.0
+                    for k in range(n_sp):
+                        denom_l += Y[ib, k, jl] / W[k]
+                        denom_r += Y[ib, k, jr] / W[k]
+                    W_mix_l = 1.0 / denom_l
+                    W_mix_r = 1.0 / denom_r
+                    for k in range(n_sp):
+                        x_l = Y[ib, k, jl] * W_mix_l / W[k]
+                        x_r = Y[ib, k, jr] * W_mix_r / W[k]
+                        j_star = -face_coeff[k, f] * (x_r - x_l) / dz
+                        flux_local[ib, k, lf] = j_star
+                        sum_j += j_star
+                else:
+                    for k in range(n_sp):
+                        j_star = -face_coeff[k, f] * (Y[ib, k, jr] - Y[ib, k, jl]) / dz
+                        flux_local[ib, k, lf] = j_star
+                        sum_j += j_star
+
+                for k in range(n_sp):
+                    flux_local[ib, k, lf] -= Y[ib, k, jl] * sum_j
+
+        out_i = 0
+        for j in range(p0, p1 + 1):
+            jo = j - n0
+            for ib in range(n_batch):
+                base = out_i
+
+                if j == 0:
+                    dz0 = z[1] - z[0]
+                    rho0 = rho_local[ib, 0 - n0]
+                    rho1 = rho_local[ib, 1 - n0]
+                    vals_out[ib, base + C_U] = -(rho1 * u[ib, 1 - n0] - rho0 * u[ib, 0 - n0]) / dz0
+
+                    if solve_energy:
+                        vals_out[ib, base + C_T] = T[ib, 0 - n0] - T_in
+                    else:
+                        vals_out[ib, base + C_T] = T[ib, 0 - n0] - (T_prof[0] if has_T_prof else T_in)
+
+                    mdot_in = rho0 * u[ib, 0 - n0]
+                    y_sum = 0.0
+                    k_exc = 0
+                    y_max = Y[ib, 0, 0 - n0]
+                    for k in range(n_sp):
+                        yk = Y[ib, k, 0 - n0]
+                        y_sum += yk
+                        if yk > y_max:
+                            y_max = yk
+                            k_exc = k
+                        flux0 = flux_local[ib, k, 0 - f0]
+                        vals_out[ib, base + C_Y + k] = -(flux0 + mdot_in * yk) + mdot_in * Y_in[k]
+                    vals_out[ib, base + C_Y + k_exc] = 1.0 - y_sum
+
+                elif j == n_pts - 1:
+                    rho_n = rho_local[ib, (n_pts - 1) - n0]
+                    rho_nm1 = rho_local[ib, (n_pts - 2) - n0]
+                    vals_out[ib, base + C_U] = rho_n * u[ib, (n_pts - 1) - n0] - rho_nm1 * u[ib, (n_pts - 2) - n0]
+
+                    if solve_energy:
+                        vals_out[ib, base + C_T] = T[ib, (n_pts - 1) - n0] - T[ib, (n_pts - 2) - n0]
+                    else:
+                        vals_out[ib, base + C_T] = T[ib, (n_pts - 1) - n0] - (
+                            T_prof[n_pts - 1] if has_T_prof else T[ib, (n_pts - 2) - n0]
+                        )
+
+                    y_sum = 0.0
+                    k_exc = 0
+                    y_max = Y[ib, 0, (n_pts - 1) - n0]
+                    for k in range(n_sp):
+                        yk = Y[ib, k, (n_pts - 1) - n0]
+                        y_sum += yk
+                        if yk > y_max:
+                            y_max = yk
+                            k_exc = k
+                        vals_out[ib, base + C_Y + k] = yk - Y[ib, k, (n_pts - 2) - n0]
+                    vals_out[ib, base + C_Y + k_exc] = 1.0 - y_sum
+
+                else:
+                    dzm = z[j] - z[j - 1]
+                    dzp = z[j + 1] - z[j]
+                    dz2 = z[j + 1] - z[j - 1]
+
+                    if j_fixed >= 0 and j == j_fixed:
+                        if solve_energy:
+                            vals_out[ib, base + C_U] = T[ib, jo] - T_fixed
+                        else:
+                            vals_out[ib, base + C_U] = rho_local[ib, jo] * u[ib, jo] - rho0_base * 0.3
+                    elif j_fixed >= 0 and j > j_fixed:
+                        vals_out[ib, base + C_U] = -(
+                            rho_local[ib, jo] * u[ib, jo]
+                            - rho_local[ib, jo - 1] * u[ib, jo - 1]
+                        ) / dzm
+                    else:
+                        vals_out[ib, base + C_U] = -(
+                            rho_local[ib, jo + 1] * u[ib, jo + 1]
+                            - rho_local[ib, jo] * u[ib, jo]
+                        ) / dzp
+
+                    rho_j = rho_local[ib, jo]
+                    rho_u_j = rho_j * u[ib, jo]
+                    jloc = j if u[ib, jo] > 0.0 else j + 1
+                    jloc_o = jloc - n0
+                    jloc_m_o = jloc_o - 1
+                    dz_up = z[jloc] - z[jloc - 1]
+                    fm_i = (j - 1) - f0
+                    fp_i = j - f0
+
+                    if solve_energy:
+                        dTdz = (T[ib, jloc_o] - T[ib, jloc_m_o]) / dz_up
+                        cond = -2.0 * (
+                            lam_face[j] * (T[ib, jo + 1] - T[ib, jo]) / dzp
+                            - lam_face[j - 1] * (T[ib, jo] - T[ib, jo - 1]) / dzm
+                        ) / dz2
+
+                        en_sum = 0.0
+                        for k in range(n_sp):
+                            fm = flux_local[ib, k, fm_i]
+                            fp = flux_local[ib, k, fp_i]
+                            dhk_dz = (hk_local[ib, k, jloc_o] - hk_local[ib, k, jloc_m_o]) / dz_up
+                            flx = 0.5 * (fm + fp)
+                            en_sum += hk_local[ib, k, jo] * omega_local[ib, k, jo] * invW[k]
+                            en_sum += flx * dhk_dz * invW[k]
+
+                        cp_j = cp_local[ib, jo]
+                        vals_out[ib, base + C_T] = (
+                            -cp_j * rho_u_j * dTdz - cond - en_sum
+                        ) / (rho_j * cp_j)
+                    else:
+                        vals_out[ib, base + C_T] = T[ib, jo] - (T_prof[j] if has_T_prof else T_in)
+
+                    for k in range(n_sp):
+                        fm = flux_local[ib, k, fm_i]
+                        fp = flux_local[ib, k, fp_i]
+                        dYdz = (Y[ib, k, jloc_o] - Y[ib, k, jloc_m_o]) / dz_up
+                        conv = rho_u_j * dYdz
+                        diff = 2.0 * (fp - fm) / dz2
+                        vals_out[ib, base + C_Y + k] = (omega_local[ib, k, jo] - conv - diff) / rho_j
+
+            out_i += nv
+else:
+    _fill_local_jacobian_block_numba = None
+    _assemble_local_batch_numba_core = None
+
+
+def residual_local_rows_batch_perturbed(
+    x: np.ndarray,
+    problem,
+    center_j: int,
+    cols: np.ndarray,
+    x_perturbed: np.ndarray,
+    cache: dict | None = None,
+):
+    """
+    Evaluate local rows for point-wise perturbations without materializing a
+    full (n_vars_per_point, n_state) state batch.
+    """
+    t_profile = _profile_start(problem)
+    x = np.asarray(x, dtype=float)
+    cols = np.asarray(cols, dtype=np.int32)
+    x_perturbed = np.asarray(x_perturbed, dtype=float)
+
+    if cache is None:
+        cache = build_local_jacobian_cache(x, problem)
+
+    if _assemble_local_batch_numba_core is None or not bool(
+        getattr(problem, "use_numba_local_jacobian", True)
+    ):
+        n_batch = int(cols.size)
+        x_batch = np.broadcast_to(x, (n_batch, x.size)).copy()
+        x_batch[np.arange(n_batch), cols] = x_perturbed
+        return residual_local_rows_batch(x_batch, problem, center_j, cache=cache)
+
+    n_batch = int(cols.size)
+    n_pts = int(cache["n_pts"])
+    n_sp = int(cache["n_sp"])
+    nv = int(cache["nv"])
+
+    j_center = int(np.clip(center_j, 0, n_pts - 1))
+    p0 = max(0, j_center - 1)
+    p1 = min(n_pts - 1, j_center + 1)
+    n0 = max(0, p0 - 1)
+    n1 = min(n_pts - 1, p1 + 1)
+    local_len = n1 - n0 + 1
+    center_l = j_center - n0
+
+    x_r = x.reshape(n_pts, nv)
+    base = j_center * nv
+    local_vars = cols - base
+
+    backend = _jacobian_backend(problem)
+    u_local = _local_cache_buffer(cache, "u_local", (n_batch, local_len))
+    T_local = _local_cache_buffer(cache, "T_local", (n_batch, local_len))
+    Y_local = _local_cache_buffer(cache, "Y_local", (n_batch, n_sp, local_len))
+    rho_local = _local_cache_buffer(cache, "rho_local", (n_batch, local_len))
+    cp_local = _local_cache_buffer(cache, "cp_local", (n_batch, local_len))
+    omega_local = _local_cache_buffer(cache, "omega_local", (n_batch, n_sp, local_len))
+    hk_local = _local_cache_buffer(cache, "hk_local", (n_batch, n_sp, local_len))
+
+    u_local[:] = x_r[n0:n1 + 1, C_U][None, :]
+    T_local[:] = x_r[n0:n1 + 1, C_T][None, :]
+    Y_base = x_r[n0:n1 + 1, C_Y:].T
+    Y_local[:] = Y_base[None, :, :]
+
+    for ib in range(n_batch):
+        var = int(local_vars[ib])
+        val = float(x_perturbed[ib])
+        if var == C_U:
+            u_local[ib, center_l] = val
+        elif var == C_T:
+            T_local[ib, center_l] = val
+        elif var >= C_Y:
+            Y_local[ib, var - C_Y, center_l] = val
+
+    rho_local[:] = cache["rho"][n0:n1 + 1][None, :]
+    cp_local[:] = cache["cp_n"][n0:n1 + 1][None, :]
+    omega_local[:] = cache["omega"][:, n0:n1 + 1][None, :, :]
+    hk_local[:] = cache["hk_n"][:, n0:n1 + 1][None, :, :]
+
+    omega_j = _local_cache_buffer(cache, "omega_j", (n_sp, n_batch))
+    hk_j = _local_cache_buffer(cache, "hk_j", (n_sp, n_batch))
+    if hasattr(backend, "eval_grid_thermo_kinetics_into"):
+        rho_j, cp_j = backend.eval_grid_thermo_kinetics_into(
+            T_local[:, center_l],
+            Y_local[:, :, center_l].T,
+            omega_j,
+            hk_j,
+        )
+        rho_local[:, center_l] = np.asarray(_to_numpy(rho_j), dtype=float)
+        cp_local[:, center_l] = np.asarray(_to_numpy(cp_j), dtype=float)
+        omega_local[:, :, center_l] = np.asarray(_to_numpy(omega_j), dtype=float).T
+        hk_local[:, :, center_l] = np.asarray(_to_numpy(hk_j), dtype=float).T
+    elif hasattr(backend, "eval_grid_into"):
+        rho_j, _, cp_j, _ = backend.eval_grid_into(
+            T_local[:, center_l],
+            Y_local[:, :, center_l].T,
+            omega_j,
+            hk_j,
+        )
+        rho_local[:, center_l] = np.asarray(_to_numpy(rho_j), dtype=float)
+        cp_local[:, center_l] = np.asarray(_to_numpy(cp_j), dtype=float)
+        omega_local[:, :, center_l] = np.asarray(_to_numpy(omega_j), dtype=float).T
+        hk_local[:, :, center_l] = np.asarray(_to_numpy(hk_j), dtype=float).T
+    else:
+        eval_node_tk_into = getattr(backend, "eval_node_thermo_kinetics_into", None)
+        for ib in range(n_batch):
+            om = np.empty(n_sp, dtype=float)
+            hk = np.empty(n_sp, dtype=float)
+            if eval_node_tk_into is not None:
+                rhoj, cpj = eval_node_tk_into(
+                    T_local[ib, center_l], Y_local[ib, :, center_l], om, hk
+                )
+            else:
+                rhoj, _, cpj, _ = backend.eval_node_into(
+                    T_local[ib, center_l], Y_local[ib, :, center_l], om, hk
+                )
+            rho_local[ib, center_l] = rhoj
+            cp_local[ib, center_l] = cpj
+            omega_local[ib, :, center_l] = om
+            hk_local[ib, :, center_l] = hk
+
+    f0 = max(0, p0 - 1)
+    f1 = min(n_pts - 2, p1)
+    n_faces = f1 - f0 + 1
+    rows_out = cache["local_rows"][j_center]
+    vals_out = _local_cache_buffer(cache, "vals_out", (n_batch, rows_out.size))
+
+    try:
+        _assemble_local_batch_numba_core(
+            vals_out,
+            u_local,
+            T_local,
+            Y_local,
+            rho_local,
+            cp_local,
+            omega_local,
+            hk_local,
+            cache["z"],
+            cache["lam_face"],
+            cache["face_coeff"],
+            cache["dz_face"],
+            cache["W"],
+            cache["invW"],
+            cache["Y_in"],
+            cache["T_prof_arr"],
+            bool(cache["has_T_prof"]),
+            bool(cache["solve_energy"]),
+            int(cache["j_fixed"]),
+            float(cache["T_fixed"]),
+            float(cache["T_in"]),
+            int(p0),
+            int(p1),
+            int(n0),
+            int(f0),
+            int(n_faces),
+            bool(cache["basis_molar"]),
+            float(cache["rho0"]),
+        )
+    except Exception as exc:
+        problem.last_residual_error = f"Numba local fallback: {exc}"
+        n_batch = int(cols.size)
+        x_batch = np.broadcast_to(x, (n_batch, x.size)).copy()
+        x_batch[np.arange(n_batch), cols] = x_perturbed
+        return residual_local_rows_batch(x_batch, problem, center_j, cache=cache)
+
+    return _profile_return(
+        problem, "residual_local_batch_numba", t_profile, (rows_out, vals_out)
+    )
+
+
 def residual_local_rows_batch(x_batch: np.ndarray, problem, center_j: int,
                               cache: dict | None = None):
     """
@@ -876,8 +1501,20 @@ def residual_local_rows_batch(x_batch: np.ndarray, problem, center_j: int,
         jl = j_center - n0
         omega_j = np.empty((n_sp, n_batch), dtype=float)
         hk_j = np.empty((n_sp, n_batch), dtype=float)
-        if hasattr(problem.backend, "eval_grid_into"):
-            rho_j, _, cp_j, _ = problem.backend.eval_grid_into(
+        backend = _jacobian_backend(problem)
+        if hasattr(backend, "eval_grid_thermo_kinetics_into"):
+            rho_j, cp_j = backend.eval_grid_thermo_kinetics_into(
+                T[:, j_center],
+                Y[:, :, j_center].T,
+                omega_j,
+                hk_j,
+            )
+            rho_local[:, jl] = np.asarray(_to_numpy(rho_j), dtype=float)
+            cp_local[:, jl] = np.asarray(_to_numpy(cp_j), dtype=float)
+            omega_local[:, :, jl] = np.asarray(_to_numpy(omega_j), dtype=float).T
+            hk_local[:, :, jl] = np.asarray(_to_numpy(hk_j), dtype=float).T
+        elif hasattr(backend, "eval_grid_into"):
+            rho_j, _, cp_j, _ = backend.eval_grid_into(
                 T[:, j_center],
                 Y[:, :, j_center].T,
                 omega_j,
@@ -888,10 +1525,14 @@ def residual_local_rows_batch(x_batch: np.ndarray, problem, center_j: int,
             omega_local[:, :, jl] = np.asarray(_to_numpy(omega_j), dtype=float).T
             hk_local[:, :, jl] = np.asarray(_to_numpy(hk_j), dtype=float).T
         else:
+            eval_node_tk_into = getattr(backend, "eval_node_thermo_kinetics_into", None)
             for ib in range(n_batch):
                 om = np.empty(n_sp, dtype=float)
                 hk = np.empty(n_sp, dtype=float)
-                rhoj, _, cpj, _ = problem.backend.eval_node_into(T[ib, j_center], Y[ib, :, j_center], om, hk)
+                if eval_node_tk_into is not None:
+                    rhoj, cpj = eval_node_tk_into(T[ib, j_center], Y[ib, :, j_center], om, hk)
+                else:
+                    rhoj, _, cpj, _ = backend.eval_node_into(T[ib, j_center], Y[ib, :, j_center], om, hk)
                 rho_local[ib, jl] = rhoj
                 cp_local[ib, jl] = cpj
                 omega_local[ib, :, jl] = om
@@ -1128,13 +1769,12 @@ def _banded_jacobian_cantera_local(fun, x: np.ndarray, problem, eps: float = 1e-
     return _profile_return(problem, "jacobian_build", t_profile, jmat)
 
 
-def _banded_jacobian_gpu_local(fun, x: np.ndarray, problem, eps: float = 1e-5) -> sparse.csr_matrix:
+def _banded_jacobian_batched_local(fun, x: np.ndarray, problem, eps: float = 1e-5) -> sparse.csr_matrix:
     """
     Cantera-style local Jacobian with batched perturbations per grid point.
 
-    This keeps transport frozen like _banded_jacobian_cantera_local, but reduces
-    per-column GPU launch/copy overhead by evaluating all variables at a point
-    in one backend batch.
+    This keeps transport frozen like _banded_jacobian_cantera_local, but avoids
+    per-column residual calls and materializes only the local stencil window.
     """
     t_profile = _profile_start(problem)
     x = np.asarray(x, dtype=float)
@@ -1181,251 +1821,19 @@ def _banded_jacobian_gpu_local(fun, x: np.ndarray, problem, eps: float = 1e-5) -
         dx[dx <= 0.0] = max(abs(rel_perturb), abs(eps), 1e-10)
         dx = np.where(xsave < 0.0, -dx, dx)
 
-        x_batch = np.broadcast_to(x, (nv, n_total)).copy()
-        x_batch[np.arange(nv), cols] = xsave + dx
-        rows, f_batch = residual_local_rows_batch(x_batch, problem, j, cache=cache)
+        rows, f_batch = residual_local_rows_batch_perturbed(
+            x, problem, j, cols, xsave + dx, cache=cache
+        )
         delta = f_batch - f0[rows][None, :]
         vals = delta / dx[:, None]
 
-        for i, col in enumerate(cols):
-            col_rows = rows
-            col_vals = vals[i]
-            if threshold > 0.0:
-                keep = np.abs(col_vals) > threshold
-                kdiag = np.where(col_rows == int(col))[0]
-                if kdiag.size > 0:
-                    keep[int(kdiag[0])] = True
-                col_rows = col_rows[keep]
-                col_vals = col_vals[keep]
-            nnz = int(col_rows.size)
-            if nnz:
-                ensure_capacity(nnz)
-                end = nnz_total + nnz
-                rows_arr[nnz_total:end] = col_rows
-                cols_arr[nnz_total:end] = int(col)
-                vals_arr[nnz_total:end] = col_vals
-                nnz_total = end
-
-    t_sparse = _profile_start(problem)
-    jmat = sparse.coo_matrix(
-        (vals_arr[:nnz_total], (rows_arr[:nnz_total], cols_arr[:nnz_total])),
-        shape=(n_total, n_total),
-    ).tocsr()
-    _profile_record(problem, "jacobian_sparse_assembly", t_sparse)
-    return _profile_return(problem, "jacobian_build", t_profile, jmat)
-
-
-def _residual_device_batch_steady(x_batch: np.ndarray, problem) -> np.ndarray:
-    backend = problem.backend
-    xp = backend.xp
-    x_dev = xp.asarray(x_batch, dtype=float)
-    n_batch = int(x_dev.shape[0])
-    n_pts = int(problem.n_points)
-    n_sp = int(problem.n_species)
-    nv = 2 + n_sp
-    basis = str(getattr(problem, "flux_gradient_basis", "molar")).lower()
-
-    x_r = x_dev.reshape(n_batch, n_pts, nv)
-    u = x_r[:, :, C_U]
-    T = x_r[:, :, C_T]
-    Y = x_r[:, :, C_Y:].transpose(0, 2, 1)
-    z = xp.asarray(problem.z, dtype=float)
-    W = backend.W_dev
-    invW = backend.invW_dev
-
-    T_flat = T.reshape(n_batch * n_pts)
-    Y_flat = Y.transpose(1, 0, 2).reshape(n_sp, n_batch * n_pts)
-    rho_flt, _Dm_nodes, cp_flt, lam_flt, omega_flt, hk_flt = backend.eval_grid_device(T_flat, Y_flat)
-    rho = rho_flt.reshape(n_batch, n_pts)
-    cp_n = cp_flt.reshape(n_batch, n_pts)
-    omega = omega_flt.reshape(n_sp, n_batch, n_pts).transpose(1, 0, 2)
-    hk_n = hk_flt.reshape(n_sp, n_batch, n_pts).transpose(1, 0, 2)
-
-    n_faces = n_pts - 1
-    T_face = 0.5 * (T[:, :-1] + T[:, 1:])
-    Y_face = 0.5 * (Y[:, :, :-1] + Y[:, :, 1:])
-    T_face_flat = T_face.reshape(n_batch * n_faces)
-    Y_face_flat = Y_face.transpose(1, 0, 2).reshape(n_sp, n_batch * n_faces)
-    rho_face_flt, D_face_flt, lam_face_flt, Wmix_face_flt = backend.eval_faces_device(T_face_flat, Y_face_flat)
-    rho_face = rho_face_flt.reshape(n_batch, n_faces)
-    D_face = D_face_flt.reshape(n_sp, n_batch, n_faces).transpose(1, 0, 2)
-    lam_face = lam_face_flt.reshape(n_batch, n_faces)
-    Wmix_face = Wmix_face_flt.reshape(n_batch, n_faces)
-
-    YL = Y[:, :, :-1]
-    YR = Y[:, :, 1:]
-    dz_face = z[1:] - z[:-1]
-    if basis in ("molar", "mole"):
-        Wb = W[None, :, None]
-        Wmix_L = 1.0 / xp.sum(YL / Wb, axis=1)
-        Wmix_R = 1.0 / xp.sum(YR / Wb, axis=1)
-        X_L = YL * (Wmix_L[:, None, :] / Wb)
-        X_R = YR * (Wmix_R[:, None, :] / Wb)
-        dphi = (X_R - X_L) / dz_face[None, None, :]
-        flux_star = (
-            -rho_face[:, None, :]
-            * (Wb / Wmix_face[:, None, :])
-            * D_face
-            * dphi
-        )
-    else:
-        dphi = (YR - YL) / dz_face[None, None, :]
-        flux_star = -rho_face[:, None, :] * D_face * dphi
-    flux = flux_star - YL * xp.sum(flux_star, axis=1, keepdims=True)
-
-    F = xp.empty((n_batch, n_pts, nv), dtype=float)
-    solve_energy = bool(problem.solve_energy)
-    T_prof = getattr(problem, "T_profile_fixed", None)
-    T_prof_dev = xp.asarray(T_prof, dtype=float) if T_prof is not None else None
-
-    dz0 = z[1] - z[0]
-    F[:, 0, C_U] = -(rho[:, 1] * u[:, 1] - rho[:, 0] * u[:, 0]) / dz0
-    if solve_energy:
-        F[:, 0, C_T] = T[:, 0] - float(problem.T_in)
-    else:
-        F[:, 0, C_T] = T[:, 0] - (T_prof_dev[0] if T_prof_dev is not None else float(problem.T_in))
-
-    Y_in = xp.asarray(problem.Y_in, dtype=float)
-    mdot_in = rho[:, 0] * u[:, 0]
-    left_species = (-(flux[:, :, 0] + mdot_in[:, None] * Y[:, :, 0]) + mdot_in[:, None] * Y_in[None, :])
-    k_idx = xp.arange(n_sp)[None, :]
-    k_exc = xp.argmax(Y[:, :, 0], axis=1)[:, None]
-    F[:, 0, C_Y:C_Y + n_sp] = xp.where(k_idx == k_exc, 1.0 - xp.sum(Y[:, :, 0], axis=1)[:, None], left_species)
-
-    if n_pts > 2:
-        j = xp.arange(1, n_pts - 1)
-        dzm = z[1:-1] - z[:-2]
-        dzp = z[2:] - z[1:-1]
-        dz2 = z[2:] - z[:-2]
-        fm = flux[:, :, :-1]
-        fp = flux[:, :, 1:]
-
-        cont_forward = -(rho[:, 2:] * u[:, 2:] - rho[:, 1:-1] * u[:, 1:-1]) / dzp[None, :]
-        j_fixed = problem.j_fixed
-        if j_fixed is None:
-            F[:, 1:-1, C_U] = cont_forward
-        else:
-            cont_backward = -(rho[:, 1:-1] * u[:, 1:-1] - rho[:, :-2] * u[:, :-2]) / dzm[None, :]
-            if solve_energy:
-                cont_anchor = T[:, 1:-1] - float(problem.T_fixed_point)
-            else:
-                cont_anchor = rho[:, 1:-1] * u[:, 1:-1] - rho[:, 0:1] * 0.3
-            F[:, 1:-1, C_U] = xp.where(
-                j[None, :] == int(j_fixed),
-                cont_anchor,
-                xp.where(j[None, :] > int(j_fixed), cont_backward, cont_forward),
-            )
-
-        rho_j = rho[:, 1:-1]
-        rho_u_j = rho_j * u[:, 1:-1]
-        jloc = xp.where(u[:, 1:-1] > 0.0, j[None, :], j[None, :] + 1)
-        jloc_m = jloc - 1
-        dz_up = z[jloc] - z[jloc_m]
-
-        if solve_energy:
-            T_jloc = xp.take_along_axis(T, jloc, axis=1)
-            T_jloc_m = xp.take_along_axis(T, jloc_m, axis=1)
-            dTdz = (T_jloc - T_jloc_m) / dz_up
-            cond = -2.0 * (
-                lam_face[:, 1:] * (T[:, 2:] - T[:, 1:-1]) / dzp[None, :]
-                - lam_face[:, :-1] * (T[:, 1:-1] - T[:, :-2]) / dzm[None, :]
-            ) / dz2[None, :]
-            hk_jloc = xp.take_along_axis(hk_n, jloc[:, None, :], axis=2)
-            hk_jloc_m = xp.take_along_axis(hk_n, jloc_m[:, None, :], axis=2)
-            dhk_dz = (hk_jloc - hk_jloc_m) / dz_up[:, None, :]
-            flx = 0.5 * (fm + fp)
-            en_sum = (
-                xp.sum(hk_n[:, :, 1:-1] * omega[:, :, 1:-1] * invW[None, :, None], axis=1)
-                + xp.sum(flx * dhk_dz * invW[None, :, None], axis=1)
-            )
-            F[:, 1:-1, C_T] = (
-                -cp_n[:, 1:-1] * rho_u_j * dTdz - cond - en_sum
-            ) / (rho_j * cp_n[:, 1:-1])
-        else:
-            F[:, 1:-1, C_T] = T[:, 1:-1] - (
-                T_prof_dev[None, 1:-1] if T_prof_dev is not None else float(problem.T_in)
-            )
-
-        Y_jloc = xp.take_along_axis(Y, jloc[:, None, :], axis=2)
-        Y_jloc_m = xp.take_along_axis(Y, jloc_m[:, None, :], axis=2)
-        dYdz = (Y_jloc - Y_jloc_m) / dz_up[:, None, :]
-        conv = rho_u_j[:, None, :] * dYdz
-        diff = 2.0 * (fp - fm) / dz2[None, None, :]
-        F[:, 1:-1, C_Y:C_Y + n_sp] = (
-            (omega[:, :, 1:-1] - conv - diff) / rho_j[:, None, :]
-        ).transpose(0, 2, 1)
-
-    F[:, -1, C_U] = rho[:, -1] * u[:, -1] - rho[:, -2] * u[:, -2]
-    if solve_energy:
-        F[:, -1, C_T] = T[:, -1] - T[:, -2]
-    else:
-        F[:, -1, C_T] = T[:, -1] - (T_prof_dev[-1] if T_prof_dev is not None else T[:, -2])
-    right_species = Y[:, :, -1] - Y[:, :, -2]
-    k_exc = xp.argmax(Y[:, :, -1], axis=1)[:, None]
-    F[:, -1, C_Y:C_Y + n_sp] = xp.where(k_idx == k_exc, 1.0 - xp.sum(Y[:, :, -1], axis=1)[:, None], right_species)
-
-    return np.asarray(backend._to_host(F.reshape(n_batch, n_pts * nv)), dtype=float)
-
-
-def _banded_jacobian_gpu_batch(fun, x: np.ndarray, problem, eps: float = 1e-5) -> sparse.csr_matrix:
-    t_profile = _profile_start(problem)
-    x = np.asarray(x, dtype=float)
-    n_pts = int(problem.n_points)
-    n_sp = int(problem.n_species)
-    nv = 2 + n_sp
-    n_total = n_pts * nv
-
-    f0 = fun(x, problem)
-    rel_perturb = float(getattr(problem, "jacobian_rel_perturb", eps))
-    abs_perturb = float(getattr(problem, "jacobian_abs_perturb", 1e-10))
-    threshold = float(getattr(problem, "jacobian_threshold", 0.0))
-
-    row_offsets = np.arange(nv, dtype=np.int32)
-    local_rows = []
-    for j in range(n_pts):
-        p0 = max(0, j - 1)
-        p1 = min(n_pts - 1, j + 1)
-        blocks = np.arange(p0, p1 + 1, dtype=np.int32)[:, None] * nv
-        local_rows.append((blocks + row_offsets[None, :]).ravel())
-
-    max_rows_per_col = min(n_total, 3 * nv)
-    capacity = max(1, n_total * max_rows_per_col)
-    rows_arr = np.empty(capacity, dtype=np.int32)
-    cols_arr = np.empty(capacity, dtype=np.int32)
-    vals_arr = np.empty(capacity, dtype=float)
-    nnz_total = 0
-
-    def ensure_capacity(extra: int) -> None:
-        nonlocal rows_arr, cols_arr, vals_arr
-        required = nnz_total + int(extra)
-        if required <= rows_arr.size:
-            return
-        new_size = max(required, rows_arr.size * 2)
-        rows_new = np.empty(new_size, dtype=np.int32)
-        cols_new = np.empty(new_size, dtype=np.int32)
-        vals_new = np.empty(new_size, dtype=float)
-        rows_new[:nnz_total] = rows_arr[:nnz_total]
-        cols_new[:nnz_total] = cols_arr[:nnz_total]
-        vals_new[:nnz_total] = vals_arr[:nnz_total]
-        rows_arr = rows_new
-        cols_arr = cols_new
-        vals_arr = vals_new
-
-    for j in range(n_pts):
-        base = j * nv
-        cols = np.arange(base, base + nv, dtype=np.int32)
-        xsave = x[cols]
-        dx = np.abs(xsave) * rel_perturb + abs_perturb
-        dx[dx <= 0.0] = max(abs(rel_perturb), abs(eps), 1e-10)
-        dx = np.where(xsave < 0.0, -dx, dx)
-
-        x_batch = np.broadcast_to(x, (nv, n_total)).copy()
-        x_batch[np.arange(nv), cols] = xsave + dx
-        f_batch = _residual_device_batch_steady(x_batch, problem)
-
-        rows = local_rows[j]
-        delta = f_batch[:, rows] - f0[rows][None, :]
-        vals = delta / dx[:, None]
+        if _fill_local_jacobian_block_numba is not None:
+            ensure_capacity(int(cols.size * rows.size))
+            nnz_total = int(_fill_local_jacobian_block_numba(
+                rows_arr, cols_arr, vals_arr, int(nnz_total),
+                rows, cols, np.ascontiguousarray(vals), float(threshold),
+            ))
+            continue
 
         for i, col in enumerate(cols):
             col_rows = rows
@@ -1453,66 +1861,6 @@ def _banded_jacobian_gpu_batch(fun, x: np.ndarray, problem, eps: float = 1e-5) -
     ).tocsr()
     _profile_record(problem, "jacobian_sparse_assembly", t_sparse)
     return _profile_return(problem, "jacobian_build", t_profile, jmat)
-
-
-# ---------------------------------------------------------------------------
-#  Legacy 3-coloring Jacobian (fallback / debug)
-# ---------------------------------------------------------------------------
-def _banded_jacobian_coloring(fun, x: np.ndarray, problem, eps: float = 1e-8) -> sparse.csr_matrix:
-    x = np.asarray(x, dtype=float)
-    n_pts = int(problem.n_points)
-    n_sp = int(problem.n_species)
-    nv = 2 + n_sp
-    n_total = n_pts * nv
-
-    f0 = fun(x, problem)
-    point_rows = [
-        np.arange(max(0, j - 1) * nv, (min(n_pts - 1, j + 1) + 1) * nv, dtype=np.int32)
-        for j in range(n_pts)
-    ]
-
-    rows_list: list[int] = []
-    cols_list: list[int] = []
-    vals_list: list[float] = []
-    xp = x.copy()
-
-    for v_idx in range(nv):
-        for color in range(3):
-            pts = list(range(color, n_pts, 3))
-            xp[:] = x
-            dx_vals: list[float] = []
-            cols: list[int] = []
-
-            for j in pts:
-                col_idx = j * nv + v_idx
-                xval = x[col_idx]
-                rel_pert = float(getattr(problem, "jacobian_rel_perturb", eps))
-                abs_pert = float(getattr(problem, "jacobian_abs_perturb", 1e-10))
-                dx = abs(xval) * rel_pert + abs_pert
-                if xval < 0:
-                    dx = -dx
-                xp[col_idx] += dx
-                dx_vals.append(dx)
-                cols.append(col_idx)
-
-            fp = fun(xp, problem)
-            df = fp - f0
-
-            for idx, j in enumerate(pts):
-                rows = point_rows[j]
-                vals = df[rows] / dx_vals[idx]
-                nz = np.abs(vals) > 1e-30
-                if not np.any(nz):
-                    continue
-                rows_nz = rows[nz]
-                vals_nz = vals[nz]
-                nnz = int(rows_nz.size)
-                rows_list.extend(rows_nz.tolist())
-                cols_list.extend([cols[idx]] * nnz)
-                vals_list.extend(vals_nz.tolist())
-
-    jmat = sparse.coo_matrix((vals_list, (rows_list, cols_list)), shape=(n_total, n_total)).tocsr()
-    return jmat
 
 
 # ---------------------------------------------------------------------------
@@ -1523,27 +1871,12 @@ def banded_jacobian(fun, x: np.ndarray, problem, eps: float = 1e-5) -> sparse.cs
     Build steady Jacobian.
 
     Modes (problem.jacobian_mode):
-    - "cantera_local" (default)
-    - "gpu_local"
-    - "gpu_batch"
-    - "coloring"
+    - "numba_local" / "batched_local" / "native_local" (production path)
+    - "cantera_local" (reference path)
     """
     mode = str(getattr(problem, "jacobian_mode", "cantera_local")).strip().lower()
-    if mode in ("gpu_local", "device_local"):
-        if not _device_residual_enabled(problem):
-            raise RuntimeError("jacobian_mode='gpu_local' requiere backend nativo con CuPy activo.")
-        return _banded_jacobian_gpu_local(fun, x, problem, eps=eps)
-    if mode in ("gpu", "gpu_batch", "device_batch"):
-        if not _device_residual_enabled(problem):
-            raise RuntimeError("jacobian_mode='gpu_batch' requiere backend nativo con CuPy activo.")
-        if not bool(getattr(problem, "allow_experimental_gpu_jacobian", False)):
-            raise RuntimeError(
-                "jacobian_mode='gpu_batch' es experimental; active "
-                "SolveOptions(experimental_gpu_jacobian=True) solo para pruebas."
-            )
-        return _banded_jacobian_gpu_batch(fun, x, problem, eps=eps)
-    if mode in ("coloring", "3color", "legacy"):
-        return _banded_jacobian_coloring(fun, x, problem, eps=eps)
+    if mode in ("numba_local", "batched_local", "native_local"):
+        return _banded_jacobian_batched_local(fun, x, problem, eps=eps)
     return _banded_jacobian_cantera_local(fun, x, problem, eps=eps)
 
 
@@ -1581,13 +1914,21 @@ def build_jacobian_transient(fun, x: np.ndarray, problem, rdt: float,
 # ---------------------------------------------------------------------------
 #  Sparse linear solver wrappers
 # ---------------------------------------------------------------------------
+from scipy.sparse.linalg import splu
+
 def factorize(jmat: sparse.csr_matrix) -> dict:
     problem = getattr(jmat, "_profile_problem", None)
     t_profile = _profile_start(problem) if problem is not None else 0.0
     j_csc = jmat.tocsc()
+    permc_spec = str(getattr(problem, "linear_permc_spec", "NATURAL"))
+    diag_pivot_thresh = float(getattr(problem, "linear_diag_pivot_thresh", 1.0))
     out = {
         "method": "direct",
-        "solver": splu(j_csc, permc_spec="COLAMD"),
+        "solver": splu(
+            j_csc,
+            permc_spec=permc_spec,
+            diag_pivot_thresh=diag_pivot_thresh,
+        ),
     }
     if problem is not None:
         _profile_record(problem, "linear_factorize", t_profile)

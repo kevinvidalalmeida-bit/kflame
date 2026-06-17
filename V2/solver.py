@@ -18,6 +18,83 @@ from equations import (
 from species_backend import SpeciesBackend
 from state import build_transient_mask, interpolate_state, pack_state, unpack_state
 
+try:
+    from numba import njit
+except Exception:  # pragma: no cover - optional acceleration
+    njit = None
+
+_NUMBA_AVAILABLE = njit is not None
+
+
+if _NUMBA_AVAILABLE:
+    @njit(cache=True)
+    def _weighted_norm_numba_core(step, x, n_pts, nv, rtol, atol):
+        n_total = n_pts * nv
+        sumsq = 0.0
+        for v in range(nv):
+            esum = 0.0
+            for j in range(n_pts):
+                xv = x[j * nv + v]
+                esum += abs(xv)
+            ewt = rtol * esum / n_pts + atol
+            if ewt < 1.0e-300:
+                ewt = 1.0e-300
+            for j in range(n_pts):
+                fs = step[j * nv + v] / ewt
+                sumsq += fs * fs
+        return np.sqrt(sumsq / n_total)
+
+
+    @njit(cache=True)
+    def _bound_step_limit_numba_core(x0, step0, n_pts, nv, t_lo, t_hi, y_lo, y_hi):
+        fbound = 1.0
+        reason_var = -1
+        reason_side = 0
+        reason_xv = 0.0
+        reason_sv = 0.0
+
+        for j in range(n_pts):
+            base = j * nv
+            for v in range(nv):
+                sv = step0[base + v]
+                if sv == 0.0:
+                    continue
+
+                lo = -1.0e20
+                hi = 1.0e20
+                if v == 1:
+                    lo = t_lo
+                    hi = t_hi
+                elif v >= 2:
+                    lo = y_lo
+                    hi = y_hi
+
+                xv = x0[base + v]
+                xnv = xv + sv
+                if sv > 0.0 and xnv > hi:
+                    cand = (hi - xv) / sv
+                    if cand < fbound:
+                        fbound = cand
+                        reason_var = v
+                        reason_side = 1
+                        reason_xv = xv
+                        reason_sv = sv
+                elif sv < 0.0 and xnv < lo:
+                    cand = (xv - lo) / (-sv)
+                    if cand < fbound:
+                        fbound = cand
+                        reason_var = v
+                        reason_side = -1
+                        reason_xv = xv
+                        reason_sv = sv
+
+        if fbound < 0.0:
+            fbound = 0.0
+        return fbound, reason_var, reason_side, reason_xv, reason_sv
+else:
+    _weighted_norm_numba_core = None
+    _bound_step_limit_numba_core = None
+
 
 def _profile_start(problem) -> float:
     return time.perf_counter() if getattr(problem, "_profile", None) is not None else 0.0
@@ -39,6 +116,24 @@ def _profile_snapshot(profile: dict[str, dict[str, float | int]]) -> dict[str, d
     }
 
 
+def _history_last_status(history: list[dict]) -> str | None:
+    for item in reversed(history):
+        status = item.get("last_status", item.get("status", item.get("reason")))
+        if status is not None:
+            return str(status)
+    return None
+
+
+def _history_timed_out(history: list[dict]) -> bool:
+    for item in history:
+        status = str(item.get("status", ""))
+        reason = str(item.get("reason", ""))
+        last_status = str(item.get("last_status", ""))
+        if "timeout" in (status, reason, last_status):
+            return True
+    return False
+
+
 def _make_backend(problem):
     factory = getattr(problem, "backend_factory", None)
     if factory is not None:
@@ -58,6 +153,9 @@ def _make_backend(problem):
 
 def _refresh_backend(problem) -> None:
     problem.backend = _make_backend(problem)
+    residual_factory = getattr(problem, "residual_backend_factory", None)
+    if residual_factory is not None:
+        problem.residual_backend = residual_factory(problem)
 
 # ---------------------------------------------------------------------------
 #  Malla inicial (clustering gaussiano)
@@ -197,7 +295,7 @@ class AdaptiveRefiner:
         self.prune = float(prune)
         self.grid_min = float(grid_min)
         self.max_points = int(max_points)
-        self._thresh = 1e-14
+        self._thresh = float(np.sqrt(np.finfo(float).eps))
         self._min_range = 0.01
         self._UNSET = 0
         self._KEEP = 1
@@ -236,7 +334,7 @@ class AdaptiveRefiner:
             val_mag = max(abs(val_max), abs(val_min))
             slp_mag = max(abs(slp_max), abs(slp_min))
 
-            if (val_max - val_min) > self._min_range * max(val_mag, self._thresh):
+            if (val_max - val_min) > self._min_range * val_mag:
                 max_change = self.slope * (val_max - val_min)
                 for j in range(n - 1):
                     ratio = abs(vals[j + 1] - vals[j]) / (max_change + self._thresh)
@@ -249,7 +347,7 @@ class AdaptiveRefiner:
                         elif keep[j] == self._UNSET:
                             keep[j] = self._REMOVE
 
-            if (slp_max - slp_min) > self._min_range * max(slp_mag, self._thresh):
+            if (slp_max - slp_min) > self._min_range * slp_mag:
                 max_change = self.curve * (slp_max - slp_min)
                 for j in range(n - 2):
                     ratio = abs(slope_arr[j + 1] - slope_arr[j]) / (
@@ -395,6 +493,16 @@ def weighted_norm(step: np.ndarray, x: np.ndarray, problem, rdt: float = 0.0) ->
         rtol = float(getattr(problem, "steady_rtol", 1e-4))
         atol = float(getattr(problem, "steady_atol", 1e-9))
 
+    if _weighted_norm_numba_core is not None:
+        return float(_weighted_norm_numba_core(
+            np.asarray(step, dtype=np.float64),
+            np.asarray(x, dtype=np.float64),
+            int(n_pts),
+            int(nv),
+            float(rtol),
+            float(atol),
+        ))
+
     x_r = x.reshape(n_pts, nv)
     step_r = step.reshape(n_pts, nv)
     sumsq = 0.0
@@ -411,7 +519,7 @@ def weighted_norm(step: np.ndarray, x: np.ndarray, problem, rdt: float = 0.0) ->
 #  Bound step factor (MultiNewton::boundStep analogue)
 # ---------------------------------------------------------------------------
 
-def bound_step_debug(x0: np.ndarray, step0: np.ndarray, problem) -> tuple[float, str]:
+def bound_step_limit(x0: np.ndarray, step0: np.ndarray, problem) -> tuple[float, str]:
     n_pts = int(problem.n_points)
     n_sp = int(problem.n_species)
     nv = 2 + n_sp
@@ -420,6 +528,23 @@ def bound_step_debug(x0: np.ndarray, step0: np.ndarray, problem) -> tuple[float,
     t_hi = float(getattr(problem, "T_upper_bound", 2.0 * 3000.0))
     y_lo = float(getattr(problem, "Y_lower_bound", -1e-5))
     y_hi = 1.0e5
+
+    if _bound_step_limit_numba_core is not None:
+        fbound, reason_var, reason_side, reason_xv, reason_sv = _bound_step_limit_numba_core(
+            np.asarray(x0, dtype=np.float64),
+            np.asarray(step0, dtype=np.float64),
+            int(n_pts),
+            int(nv),
+            float(t_lo),
+            float(t_hi),
+            float(y_lo),
+            float(y_hi),
+        )
+        reason = ""
+        if int(reason_var) >= 0:
+            side = "above upper" if int(reason_side) > 0 else "below lower"
+            reason = f"var={int(reason_var)} {side} xv={float(reason_xv)} sv={float(reason_sv)}"
+        return float(fbound), reason
 
     lower = np.full((n_pts, nv), -1e20)
     upper = np.full((n_pts, nv), 1e20)
@@ -506,6 +631,34 @@ def _build_linear_model(steady_fun, x: np.ndarray, problem,
     return j_t, lu, ss_diag
 
 
+def _update_linear_model_transient(jac_state: JacobianState, mask: np.ndarray,
+                                   rdt_curr: float, problem) -> None:
+    """
+    Cantera MultiJac::updateTransient equivalent.
+
+    Keep the steady finite-difference Jacobian and only refresh the transient
+    diagonal/factorization when the timestep changes.
+    """
+    if jac_state.J is None or jac_state.ss_diag.size == 0:
+        raise RuntimeError("No steady Jacobian available for transient update.")
+
+    t_profile = _profile_start(problem)
+    j_t = jac_state.J
+    diag = np.asarray(jac_state.ss_diag, dtype=float).copy()
+    if rdt_curr > 0.0:
+        diag -= np.asarray(mask, dtype=float) * float(rdt_curr)
+    j_t.setdiag(diag)
+    if getattr(problem, "_profile", None) is not None:
+        setattr(j_t, "_profile_problem", problem)
+    lu = factorize(j_t)
+    if isinstance(lu, dict):
+        lu["profile_problem"] = problem
+    jac_state.J = j_t
+    jac_state.lu = lu
+    jac_state.last_rdt = float(rdt_curr)
+    _profile_record(problem, "linear_model_transient_update", t_profile)
+
+
 # ---------------------------------------------------------------------------
 #  Main Newton solver
 # ---------------------------------------------------------------------------
@@ -518,7 +671,7 @@ def newton_solve(
     x_older: np.ndarray | None = None,
     transient_order: int = 1,
     max_iter: int = 20,
-    max_jac_age: int = 5,
+    max_jac_age: int = 20,
     max_damp_iter: int = 7,
     damp_factor: float = float(np.sqrt(2.0)),
     tol: float = 1.0,
@@ -526,6 +679,7 @@ def newton_solve(
     alpha_min: float = 1e-10,
     verbose: bool = False,
     jac_state: JacobianState | None = None,
+    deadline: float | None = None,
 ) -> tuple[np.ndarray, bool, list[dict], JacobianState]:
     """
     Damped Newton aligned with Cantera MultiNewton.
@@ -560,11 +714,17 @@ def newton_solve(
         or not np.isclose(jac_state.last_rdt, rdt_curr, rtol=1e-12, atol=0.0)
     )
 
-    force_new_jac = bool(rdt_changed)
+    force_new_jac = jac_state.J is None or jac_state.lu is None
     n_jac_reeval = 0
     status = -1
+    f_reusable = None
 
     for it in range(max_iter):
+        if deadline is not None and time.perf_counter() > deadline:
+            history.append({"iter": it, "status": "timeout"})
+            status = -6
+            break
+
         # Jacobian refresh logic
         if force_new_jac or jac_state.is_stale(max_jac_age):
             try:
@@ -582,9 +742,25 @@ def newton_solve(
                 history.append({"iter": it, "status": "jac_fail", "error": str(exc)})
                 status = -4
                 break
+            rdt_changed = False
+        elif rdt_changed:
+            try:
+                _update_linear_model_transient(jac_state, mask, rdt_curr, problem)
+            except Exception as exc:
+                history.append({
+                    "iter": it,
+                    "status": "transient_update_fail",
+                    "error": str(exc),
+                })
+                force_new_jac = True
+                continue
+            rdt_changed = False
 
         # MultiNewton::step equivalent
-        f = full_fun(x)
+        if f_reusable is not None:
+            f = f_reusable
+        else:
+            f = full_fun(x)
         if not np.all(np.isfinite(f)):
             history.append({"iter": it, "status": "nonfinite_F"})
             status = -5
@@ -609,7 +785,7 @@ def newton_solve(
 
         # Cantera's MultiNewton::boundStep: compute a scalar factor to keep
         # x + alpha*step inside bounds.
-        fbound, _fbound_reason = bound_step_debug(x, step0, problem)
+        fbound, _fbound_reason = bound_step_limit(x, step0, problem)
         if fbound < alpha_min:
             history.append({
                 "iter": it,
@@ -641,9 +817,21 @@ def newton_solve(
         damp_ok = False
         x1 = x.copy()
         s1 = float("inf")
+        c_armijo = 1e-4
 
         t_damp = _profile_start(problem)
         for _ in range(max_damp_iter):
+            if deadline is not None and time.perf_counter() > deadline:
+                history.append({
+                    "iter": it,
+                    "status": "timeout_damping",
+                    "normF": normf,
+                    "s0": s0,
+                    "jac_age": jac_state.age,
+                })
+                _profile_record(problem, "newton_damping", t_damp)
+                return x.copy(), False, history, jac_state
+
             if alpha < alpha_min:
                 break
 
@@ -653,28 +841,33 @@ def newton_solve(
                 alpha /= damp_factor
                 continue
 
-            try:
-                step1 = solve_linear(jac_state.lu, -f_try)
-            except Exception:
-                alpha /= damp_factor
-                continue
+            normf_try = float(np.linalg.norm(f_try, ord=np.inf))
 
-            if not np.all(np.isfinite(step1)):
-                alpha /= damp_factor
-                continue
+            # Sufficient decrease condition (Armijo) or if alpha is 1.0
+            if normf_try <= normf * (1.0 - c_armijo * alpha) or alpha == 1.0:
+                try:
+                    step1 = solve_linear(jac_state.lu, -f_try)
+                except Exception:
+                    alpha /= damp_factor
+                    continue
 
-            s1_try = weighted_norm(step1, x_try, problem, rdt=rdt)
-            if s1_try < 1.0 or s1_try < s0:
-                damp_ok = True
-                x1 = x_try
-                s1 = s1_try
-                break
+                if not np.all(np.isfinite(step1)):
+                    alpha /= damp_factor
+                    continue
+
+                s1_try = weighted_norm(step1, x_try, problem, rdt=rdt)
+                if s1_try < 1.0 or s1_try < s0:
+                    damp_ok = True
+                    x1 = x_try
+                    s1 = s1_try
+                    break
 
             alpha /= damp_factor
         _profile_record(problem, "newton_damping", t_damp)
 
         if damp_ok:
             x = x1
+            f_reusable = f_try
             converged = bool(s1 < tol)
             history.append({
                 "iter": it,
@@ -701,6 +894,7 @@ def newton_solve(
             status = 0
 
         else:
+            f_reusable = None
             history.append({
                 "iter": it,
                 "status": "no_damp",
@@ -771,7 +965,7 @@ class SolveOptions:
 
     # Newton estacionario
     steady_max_iter: int = 50
-    max_jac_age: int = 5
+    max_jac_age: int = 20
     steady_max_jac_age: int | None = None
     transient_max_jac_age: int | None = None
     max_damp_iter: int = 7
@@ -779,8 +973,7 @@ class SolveOptions:
     jac_eps: float = 1e-5
     jac_abs_perturb: float = 1e-10
     jac_threshold: float = 0.0
-    jacobian_mode: str = "cantera_local"
-    experimental_gpu_jacobian: bool = False
+    jacobian_mode: str = "numba_local"
     alpha_min: float = 1e-10
 
     # Time-stepping (híbrido)
@@ -791,7 +984,7 @@ class SolveOptions:
     min_time_step: float = 1e-16
     max_time_step: float = 1e8
     transient_steps_per_cycle: int = 10 # compatibilidad
-    time_step_sequence: tuple[int, ...] = (10,)
+    time_step_sequence: tuple[int, ...] = (20,)
     transient_max_iter: int = 50
     max_time_step_count: int = 500
     transient_scheme: str = "be"
@@ -846,7 +1039,8 @@ def _make_steady_fun(problem):
 #  Hybrid Newton (SteadyStateSystem::solve)
 # ---------------------------------------------------------------------------
 def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
-                   label: str = "", steady_callback=None) -> tuple[np.ndarray, bool, list[dict]]:
+                   label: str = "", steady_callback=None,
+                   deadline: float | None = None) -> tuple[np.ndarray, bool, list[dict]]:
     """
     Ciclos steady-Newton / time-step hasta convergencia.
     Si `steady_callback` existe, se ejecuta inmediatamente despues de cada
@@ -860,10 +1054,7 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
     problem.jacobian_rel_perturb = float(getattr(opts, "jac_eps", 1e-5))
     problem.jacobian_abs_perturb = float(getattr(opts, "jac_abs_perturb", 1e-10))
     problem.jacobian_threshold = float(getattr(opts, "jac_threshold", 0.0))
-    problem.jacobian_mode = str(getattr(opts, "jacobian_mode", "coloring"))
-    problem.allow_experimental_gpu_jacobian = bool(
-        getattr(opts, "experimental_gpu_jacobian", False)
-    )
+    problem.jacobian_mode = str(getattr(opts, "jacobian_mode", "numba_local"))
 
     steady_fun = _make_steady_fun(problem)
     jac: JacobianState | None = None
@@ -902,6 +1093,14 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
         print(f"\n{'-'*60}\n{label or 'Newton hibrido'}\n{'-'*60}")
 
     while True:
+        if deadline is not None and time.perf_counter() > deadline:
+            history.append({
+                "cycle": attempt,
+                "phase": "abort",
+                "reason": "timeout",
+            })
+            return x, False, history
+
         # ---- Intentar Newton estacionario ----
         x_ss, ok_ss, hist_ss, jac = newton_solve(
             steady_fun, x, problem,
@@ -914,9 +1113,16 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
             alpha_min=opts.alpha_min,
             verbose=opts.verbose,
             jac_state=jac,
+            deadline=deadline,
         )
         history.append(
-            {"cycle": attempt, "phase": "steady", "ok": ok_ss, "steps": len(hist_ss)}
+            {
+                "cycle": attempt,
+                "phase": "steady",
+                "ok": ok_ss,
+                "steps": len(hist_ss),
+                "last_status": hist_ss[-1].get("status") if hist_ss else None,
+            }
         )
 
         if ok_ss:
@@ -938,6 +1144,15 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
         successive_failures = 0
 
         while n_done < nsteps:
+            if deadline is not None and time.perf_counter() > deadline:
+                history.append({
+                    "cycle": attempt,
+                    "phase": "transient_abort",
+                    "reason": "timeout",
+                    "nsteps_total": int(nsteps_total),
+                })
+                return x, False, history
+
             dt_try = float(dt)
             if dt_try <= 0.0:
                 break
@@ -961,6 +1176,7 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                 alpha_min=opts.alpha_min,
                 verbose=opts.verbose,
                 jac_state=jac,
+                deadline=deadline,
             )
             jac_evals_after = int(jac.n_evals) if jac is not None else jac_evals_before
 
@@ -974,6 +1190,7 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                     "steps": len(hist_ts),
                     "jac_evals_before": jac_evals_before,
                     "jac_evals_after": jac_evals_after,
+                    "last_status": hist_ts[-1].get("status") if hist_ts else None,
                 }
             )
 
@@ -986,7 +1203,13 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                 n_done += 1
                 nsteps_total += 1
 
-                dt = min(opts.max_time_step, dt_try * opts.time_step_grow)
+                # Cantera only grows the timestep when Newton reused the
+                # existing Jacobian throughout this transient solve.
+                if jac_evals_after == jac_evals_before:
+                    dt = dt_try * opts.time_step_grow
+                else:
+                    dt = dt_try
+                dt = min(opts.max_time_step, dt)
 
                 if opts.verbose:
                     Finf = float(np.linalg.norm(residual(x, problem), ord=np.inf))
@@ -1142,8 +1365,11 @@ def _refine_and_solve(
             opts,
             label=f"Post-refine pass {pass_idx}",
             steady_callback=width_check,
+            deadline=deadline,
         )
         info["solve_ok"] = ok
+        info["solve_timeout"] = _history_timed_out(hist_ref)
+        info["last_status"] = _history_last_status(hist_ref)
         info["Finf_after"] = float(np.linalg.norm(
             residual(x_try, problem), ord=np.inf))
         log.append(info)
@@ -1161,7 +1387,7 @@ def _refine_and_solve(
             _, T_old, _ = unpack_state(x_last_ss, n_last_ss, problem.n_species)
             problem.setup_fixed_temperature(T_profile=T_old)
             info["restored"] = True
-            return x_last_ss, True, log
+            return x_last_ss, not bool(info.get("solve_timeout", False)), log
 
     return x_ss, True, log
 
@@ -1191,12 +1417,20 @@ def _solve_auto_stages(
     # ---- Stage A: energía ON ----
     problem.solve_energy = True
     x_a, ok_a, hist_a = _hybrid_newton(
-        problem, x, opts, label="Stage A: energia ON", steady_callback=width_check)
-    report["stage_A"] = {"ok": ok_a, "steps": len(hist_a)}
+        problem, x, opts, label="Stage A: energia ON",
+        steady_callback=width_check, deadline=deadline)
+    report["stage_A"] = {
+        "ok": ok_a,
+        "steps": len(hist_a),
+        "timeout": _history_timed_out(hist_a),
+        "last_status": _history_last_status(hist_a),
+    }
 
     if ok_a:
         x = x_a
         solved = True
+    elif _history_timed_out(hist_a):
+        return x_a, False, report
     else:
         # ---- Stage B: energía OFF ----
         problem.solve_energy = False
@@ -1205,8 +1439,14 @@ def _solve_auto_stages(
         problem.setup_fixed_temperature(T_profile=T_frz)
 
         x_b, ok_b, hist_b = _hybrid_newton(
-            problem, x, opts, label="Stage B: energia OFF", steady_callback=width_check)
-        report["stage_B"] = {"ok": ok_b, "steps": len(hist_b)}
+            problem, x, opts, label="Stage B: energia OFF",
+            steady_callback=width_check, deadline=deadline)
+        report["stage_B"] = {
+            "ok": ok_b,
+            "steps": len(hist_b),
+            "timeout": _history_timed_out(hist_b),
+            "last_status": _history_last_status(hist_b),
+        }
 
         if ok_b:
             x = x_b
@@ -1216,10 +1456,20 @@ def _solve_auto_stages(
             problem.setup_fixed_temperature(T_profile=T_re)
 
             x_c, ok_c, hist_c = _hybrid_newton(
-                problem, x, opts, label="Stage C: energia RE-ON", steady_callback=width_check)
-            report["stage_C"] = {"ok": ok_c, "steps": len(hist_c)}
+                problem, x, opts, label="Stage C: energia RE-ON",
+                steady_callback=width_check, deadline=deadline)
+            report["stage_C"] = {
+                "ok": ok_c,
+                "steps": len(hist_c),
+                "timeout": _history_timed_out(hist_c),
+                "last_status": _history_last_status(hist_c),
+            }
             x = x_c
             solved = ok_c
+            if _history_timed_out(hist_c):
+                return x_c, False, report
+        elif _history_timed_out(hist_b):
+            return x_b, False, report
         else:
             solved = False
 
@@ -1259,8 +1509,14 @@ def _solve_refine_energy_on(
     problem.setup_fixed_temperature(T_profile=T0)
 
     x_ss, ok_ss, hist_ss = _hybrid_newton(
-        problem, x, opts, label="Refine Stage: energia ON", steady_callback=width_check)
-    report["refine_stage_steady"] = {"ok": ok_ss, "steps": len(hist_ss)}
+        problem, x, opts, label="Refine Stage: energia ON",
+        steady_callback=width_check, deadline=deadline)
+    report["refine_stage_steady"] = {
+        "ok": ok_ss,
+        "steps": len(hist_ss),
+        "timeout": _history_timed_out(hist_ss),
+        "last_status": _history_last_status(hist_ss),
+    }
 
     if not ok_ss:
         return x_ss, False, report

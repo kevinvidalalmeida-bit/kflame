@@ -10,6 +10,7 @@ Provides the exact same interface as SpeciesBackend but uses:
 ZERO Cantera dependency.  GPU-ready via CuPy.
 """
 from __future__ import annotations
+import math
 import numpy as np
 from pathlib import Path
 
@@ -17,6 +18,173 @@ from mechanism_data import MechanismData, load_mechanism, R_UNIV
 from thermo_native import NativeThermo
 from transport_native import NativeTransport
 from kinetics_native import NativeKinetics
+
+try:
+    from numba import njit, prange
+except Exception:  # pragma: no cover - optional acceleration
+    njit = None
+    prange = range
+
+if njit is not None:
+    @njit(cache=True)
+    def _eval_thermo_kinetics_sparse_numba_core(
+        T_arr, Y, P, nasa_lo, nasa_hi, nasa_tmid, W, invW,
+        A_hi, b_hi, Ea_hi, A_lo, b_lo, Ea_lo,
+        is_three_body, is_falloff, is_reversible, has_troe,
+        troe_A, troe_T3, troe_T1, troe_T2,
+        r_idx, r_nu, r_count, p_idx, p_nu, p_count,
+        net_idx, net_nu, net_count, eff_idx, eff_delta, eff_count,
+        delta_nu, rho_out, cp_out, omega_out, hk_out,
+    ):
+        n_sp = Y.shape[0]
+        n_pts = Y.shape[1]
+        n_rxn = A_hi.shape[0]
+
+        for m in range(n_pts):
+            logC = np.empty(n_sp, dtype=np.float64)
+            g_RT = np.empty(n_sp, dtype=np.float64)
+            T = T_arr[m]
+            inv_RT = 1.0 / (R_UNIV * T)
+            inv_wmix = 0.0
+            for k in range(n_sp):
+                inv_wmix += Y[k, m] * invW[k]
+            if inv_wmix < 1.0e-300:
+                inv_wmix = 1.0e-300
+            Wmix = 1.0 / inv_wmix
+            rho = P * Wmix / (R_UNIV * T)
+            rho_out[m] = rho
+
+            logT = math.log(T)
+            cp_mix = 0.0
+            c_total = 0.0
+            for k in range(n_sp):
+                c = nasa_hi[k] if T > nasa_tmid[k] else nasa_lo[k]
+                cp_R = (
+                    c[0]
+                    + T * (c[1] + T * (c[2] + T * (c[3] + T * c[4])))
+                )
+                h_RT = (
+                    c[0]
+                    + T * (
+                        c[1] / 2.0
+                        + T * (
+                            c[2] / 3.0
+                            + T * (c[3] / 4.0 + T * c[4] / 5.0)
+                        )
+                    )
+                    + c[5] / T
+                )
+                s_R = (
+                    c[0] * logT
+                    + T * (
+                        c[1]
+                        + T * (
+                            c[2] / 2.0
+                            + T * (c[3] / 3.0 + T * c[4] / 4.0)
+                        )
+                    )
+                    + c[6]
+                )
+                hk_out[k, m] = h_RT * R_UNIV * T
+                g_RT[k] = h_RT - s_R
+                cp_mix += Y[k, m] * cp_R * R_UNIV * invW[k]
+
+                conc = rho * Y[k, m] * invW[k]
+                if conc < 0.0:
+                    conc = 0.0
+                c_total += conc
+                if conc < 1.0e-300:
+                    conc = 1.0e-300
+                logC[k] = math.log(conc)
+                omega_out[k, m] = 0.0
+
+            cp_out[m] = cp_mix
+            c_factor = 101325.0 / (R_UNIV * T)
+
+            for r in range(n_rxn):
+                kf = A_hi[r] * math.exp(b_hi[r] * logT - Ea_hi[r] * inv_RT)
+
+                rf_exp = 0.0
+                for ii in range(r_count[r]):
+                    k = r_idx[r, ii]
+                    rf_exp += r_nu[r, ii] * logC[k]
+
+                rr_exp = 0.0
+                if is_reversible[r]:
+                    for ii in range(p_count[r]):
+                        k = p_idx[r, ii]
+                        rr_exp += p_nu[r, ii] * logC[k]
+
+                delta_g = 0.0
+                for ii in range(net_count[r]):
+                    k = net_idx[r, ii]
+                    delta_g += net_nu[r, ii] * g_RT[k]
+
+                if delta_g > 500.0:
+                    delta_g = 500.0
+                elif delta_g < -500.0:
+                    delta_g = -500.0
+
+                Kc = math.exp(-delta_g) * (c_factor ** delta_nu[r])
+                kr = 0.0
+                if is_reversible[r]:
+                    kr = kf / max(Kc, 1.0e-300)
+
+                Rf = math.exp(rf_exp) * kf
+                Rr = 0.0
+                if is_reversible[r]:
+                    Rr = math.exp(rr_exp) * kr
+
+                M = c_total
+                if is_three_body[r] or is_falloff[r]:
+                    for ii in range(eff_count[r]):
+                        k = eff_idx[r, ii]
+                        ck = rho * Y[k, m] * invW[k]
+                        if ck < 0.0:
+                            ck = 0.0
+                        M += eff_delta[r, ii] * ck
+
+                if is_three_body[r]:
+                    Rf *= M
+                    Rr *= M
+
+                if is_falloff[r]:
+                    k0 = A_lo[r] * math.exp(b_lo[r] * logT - Ea_lo[r] * inv_RT)
+                    Pr = k0 * M / max(kf, 1.0e-300)
+                    F_lind = Pr / (1.0 + Pr)
+                    F = 1.0
+
+                    if has_troe[r]:
+                        t3 = max(troe_T3[r], 1.0e-300)
+                        t1 = max(troe_T1[r], 1.0e-300)
+                        Fcent = (
+                            (1.0 - troe_A[r]) * math.exp(-T / t3)
+                            + troe_A[r] * math.exp(-T / t1)
+                            + math.exp(-troe_T2[r] / max(T, 1.0e-300))
+                        )
+                        Fcent = max(Fcent, 1.0e-300)
+                        logFcent = math.log10(Fcent)
+                        logPr = math.log10(max(Pr, 1.0e-300))
+                        c_troe = -0.4 - 0.67 * logFcent
+                        n_troe = 0.75 - 1.27 * logFcent
+                        d_troe = 0.14
+                        f1 = (logPr + c_troe) / (
+                            n_troe - d_troe * (logPr + c_troe)
+                        )
+                        F = 10.0 ** (logFcent / (1.0 + f1 * f1))
+
+                    kf_falloff = kf * F_lind * F
+                    Rf = kf_falloff * (Rf / max(kf, 1.0e-300))
+                    if is_reversible[r]:
+                        kr_falloff = kf_falloff / max(Kc, 1.0e-300)
+                        Rr = kr_falloff * (Rr / max(kr, 1.0e-300))
+
+                q = Rf - Rr
+                for ii in range(net_count[r]):
+                    k = net_idx[r, ii]
+                    omega_out[k, m] += net_nu[r, ii] * q * W[k]
+else:
+    _eval_thermo_kinetics_sparse_numba_core = None
 
 
 class NativeSpeciesBackend:
@@ -67,6 +235,12 @@ class NativeSpeciesBackend:
         self.thermo    = NativeThermo(mech_data, xp=self.xp)
         self.transport = NativeTransport(mech_data, xp=self.xp)
         self.kinetics  = NativeKinetics(mech_data, xp=self.xp)
+        if getattr(self.kinetics, "_numba_available", False):
+            self.kinetics._use_numba = bool(getattr(problem, "use_numba_kinetics", False))
+        if getattr(self.kinetics, "_sparse_numba_available", False):
+            self.kinetics._use_sparse_numba = bool(
+                getattr(problem, "use_sparse_numba_kinetics", True)
+            )
 
         # Convenience aliases:
         # - public `W` / `invW` stay on CPU for solver compatibility
@@ -76,6 +250,10 @@ class NativeSpeciesBackend:
         self.W_dev = self.xp.asarray(self.W)
         self.invW_dev = self.xp.asarray(self.invW)
         self.n_species = mech_data.n_species
+        self._P_float = float(P)
+        self._nb_nasa_lo = np.asarray(self.thermo._lo, dtype=np.float64)
+        self._nb_nasa_hi = np.asarray(self.thermo._hi, dtype=np.float64)
+        self._nb_nasa_tmid = np.asarray(self.thermo._Tmid, dtype=np.float64)
 
         # Transport / flux settings from problem
         self.flux_gradient_basis = str(
@@ -94,6 +272,8 @@ class NativeSpeciesBackend:
         `set_unnormalized_mass_fractions`, which preserves the incoming state.
         """
         Y = self.xp.asarray(Y, dtype=float)
+        if bool(getattr(self.problem, "assume_finite_y", False)):
+            return Y
         finite = self.xp.all(self.xp.isfinite(Y))
         if self._is_gpu:
             finite = bool(self._cp.asnumpy(finite))
@@ -154,6 +334,28 @@ class NativeSpeciesBackend:
 
         return rho, Dm, cp, lam, omega_mass, hk_vals
 
+    def eval_grid_thermo_kinetics_device(self, T: np.ndarray, Y: np.ndarray):
+        """
+        Evaluate nodal thermo and kinetics on the active array backend.
+
+        Returns device arrays when CuPy is enabled:
+        (rho, cp, omega_mass, hk).
+        """
+        P = self.problem.P
+        T_dev = self.xp.asarray(T, dtype=float)
+        Y_safe = self._safe_Y(Y)
+
+        inv_wmix = self.xp.sum(Y_safe * self.invW_dev[:, None], axis=0)
+        Wmix = 1.0 / self.xp.maximum(inv_wmix, 1e-300)
+        rho = P * Wmix / (R_UNIV * T_dev)
+        cp, hk_vals, g_RT = self.thermo.cp_mass_hk_g_RT(T_dev, Y_safe)
+
+        C = rho[None, :] * Y_safe * self.invW_dev[:, None]
+        wdot = self.kinetics.net_production_rates(T_dev, C, g_RT)
+        omega_mass = wdot * self.W_dev[:, None]
+
+        return rho, cp, omega_mass, hk_vals
+
     def eval_grid_into(self, T: np.ndarray, Y: np.ndarray,
                        omega_out: np.ndarray, hk_out: np.ndarray):
         """
@@ -166,6 +368,79 @@ class NativeSpeciesBackend:
         self._copy_to_out(hk_out, hk_vals)
         self._copy_to_out(omega_out, omega_mass)
         return self._to_host(rho), self._to_host(Dm), self._to_host(cp), self._to_host(lam)
+
+    def eval_grid_thermo_kinetics_into(self, T: np.ndarray, Y: np.ndarray,
+                                       omega_out: np.ndarray, hk_out: np.ndarray):
+        """
+        Evaluate nodal thermo and kinetics without transport.
+
+        The local Jacobian freezes transport coefficients, matching Cantera's
+        Jacobian path. For local perturbations, only density, cp, enthalpy and
+        production rates need to be refreshed.
+        """
+        if (
+            not self.use_gpu
+            and _eval_thermo_kinetics_sparse_numba_core is not None
+            and bool(getattr(self.problem, "use_fused_numba_thermo_kinetics", True))
+            and getattr(self.kinetics, "_sparse_numba_available", False)
+        ):
+            T_work = np.asarray(T, dtype=np.float64).reshape(-1)
+            Y_work = np.ascontiguousarray(self._safe_Y(Y), dtype=np.float64)
+            if Y_work.ndim == 1:
+                Y_work = np.ascontiguousarray(Y_work[:, None], dtype=np.float64)
+            if Y_work.shape[1] != T_work.size:
+                raise ValueError("T and Y sizes do not match for thermo/kinetics evaluation.")
+
+            rho = np.empty(T_work.size, dtype=np.float64)
+            cp = np.empty(T_work.size, dtype=np.float64)
+            _eval_thermo_kinetics_sparse_numba_core(
+                T_work,
+                Y_work,
+                self._P_float,
+                self._nb_nasa_lo,
+                self._nb_nasa_hi,
+                self._nb_nasa_tmid,
+                self.W,
+                self.invW,
+                self.kinetics._nb_A_hi,
+                self.kinetics._nb_b_hi,
+                self.kinetics._nb_Ea_hi,
+                self.kinetics._nb_A_lo,
+                self.kinetics._nb_b_lo,
+                self.kinetics._nb_Ea_lo,
+                self.kinetics._nb_is_three_body,
+                self.kinetics._nb_is_falloff,
+                self.kinetics._nb_is_reversible,
+                self.kinetics._nb_has_troe,
+                self.kinetics._nb_troe_A,
+                self.kinetics._nb_troe_T3,
+                self.kinetics._nb_troe_T1,
+                self.kinetics._nb_troe_T2,
+                self.kinetics._sp_r_idx,
+                self.kinetics._sp_r_nu,
+                self.kinetics._sp_r_count,
+                self.kinetics._sp_p_idx,
+                self.kinetics._sp_p_nu,
+                self.kinetics._sp_p_count,
+                self.kinetics._sp_net_idx,
+                self.kinetics._sp_net_nu,
+                self.kinetics._sp_net_count,
+                self.kinetics._sp_eff_idx,
+                self.kinetics._sp_eff_delta,
+                self.kinetics._sp_eff_count,
+                self.kinetics._nb_delta_nu,
+                rho,
+                cp,
+                omega_out,
+                hk_out,
+            )
+            return rho, cp
+
+        rho, cp, omega_mass, hk_vals = self.eval_grid_thermo_kinetics_device(T, Y)
+
+        self._copy_to_out(hk_out, hk_vals)
+        self._copy_to_out(omega_out, omega_mass)
+        return self._to_host(rho), self._to_host(cp)
 
     def eval_faces(self, T_face: np.ndarray, Y_face: np.ndarray):
         """
@@ -187,12 +462,21 @@ class NativeSpeciesBackend:
         T_dev = self.xp.asarray(T_face, dtype=float)
         Y_safe = self._safe_Y(Y_face)
 
-        rho = self.thermo.density(T_dev, P, Y_safe)
-        cp_R = self.thermo.cp_R(T_dev)
-        X = self._Y_to_X(Y_safe)
+        if (not self.use_gpu) and bool(getattr(self.problem, "use_numba_transport", True)):
+            fast = self.transport.eval_faces_poly_fast(T_dev, P, Y_safe, self.invW_dev)
+            if fast is not None:
+                return fast
+
+        inv_wmix = self.xp.sum(Y_safe * self.invW_dev[:, None], axis=0)
+        Wmix = 1.0 / self.xp.maximum(inv_wmix, 1e-300)
+        rho = P * Wmix / (R_UNIV * T_dev)
+        X = Y_safe * Wmix[None, :] * self.invW_dev[:, None]
+        if bool(getattr(self.transport, "_has_cond_poly_cpu", np.array([False])).all()):
+            cp_R = None
+        else:
+            cp_R = self.thermo.cp_R(T_dev)
         lam = self.transport.thermal_conductivity(T_dev, X, cp_R)
         Dm = self.transport.mix_diff_coeffs(T_dev, P, X)
-        Wmix = self.thermo.mean_molecular_weight(Y_safe, self.invW_dev)
         return rho, Dm, lam, Wmix
 
     # ------------------------------------------------------------------
@@ -228,6 +512,27 @@ class NativeSpeciesBackend:
             self._to_host(Dm),
             float(np.asarray(self._to_host(cp))),
             float(np.asarray(self._to_host(lam))),
+        )
+
+    def eval_node_thermo_kinetics_into(self, T: float, Y: np.ndarray,
+                                       omega_out: np.ndarray, hk_out: np.ndarray):
+        """Evaluate nodal thermo and kinetics without transport."""
+        T = float(T)
+        P = self.problem.P
+        Y = self._safe_Y(Y)
+
+        rho = self.thermo.density(T, P, Y)
+        cp, hk_vals, g_RT = self.thermo.cp_mass_hk_g_RT(T, Y)
+        self._copy_to_out(hk_out, hk_vals)
+
+        C = rho * Y * self.invW_dev
+        wdot = self.kinetics.net_production_rates(T, C, g_RT)
+        omega_mass = wdot * self.W_dev
+        self._copy_to_out(omega_out, omega_mass)
+
+        return (
+            float(np.asarray(self._to_host(rho))),
+            float(np.asarray(self._to_host(cp))),
         )
 
     # ------------------------------------------------------------------

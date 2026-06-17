@@ -41,7 +41,7 @@ class FreeFlameProblem:
 
         self.species_names = list(gas.species_names)
         self.n_species = gas.n_species
-        self.jacobian_mode = "coloring"
+        self.jacobian_mode = "numba_local"
         self.n_vars_per_point = 2 + self.n_species   # U, T, Y0..YK
 
         self.P = case.P

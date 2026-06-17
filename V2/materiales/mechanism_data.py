@@ -7,6 +7,7 @@ NO Cantera dependency.  Only uses PyYAML + NumPy.
 GPU-ready: every array is float64 and can be sent to CuPy with xp.asarray().
 """
 from __future__ import annotations
+import copy
 import re
 import math
 from dataclasses import dataclass, field
@@ -21,6 +22,8 @@ except ImportError:
     raise ImportError("PyYAML is required.  Install with: pip install pyyaml")
 
 # ── physical constants (SI) ────────────────────────────────────────────────
+_MECHANISM_CACHE: dict[str, "MechanismData"] = {}
+
 R_CGS    = 1.987  # cal/(mol·K)  – for Ea conversion
 R_UNIV   = 8314.46261815324  # J/(kmol·K)  – Cantera convention
 R_SI     = 8.31446261815324  # J/(mol·K)
@@ -265,6 +268,11 @@ def load_mechanism(filepath: str | Path) -> MechanismData:
         else:
             # If still not found, raise the original error
             raise FileNotFoundError(f"[Errno 2] No such file or directory: '{filepath}'")
+
+    cache_key = str(filepath.resolve())
+    cached = _MECHANISM_CACHE.get(cache_key)
+    if cached is not None:
+        return copy.deepcopy(cached)
     
     with open(filepath, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f)
@@ -425,7 +433,7 @@ def load_mechanism(filepath: str | Path) -> MechanismData:
             nu_p[k, j] += nu
     nu_net = nu_p - nu_r
 
-    return MechanismData(
+    mech = MechanismData(
         species_names=species_names,
         n_species=n_sp,
         molecular_weights=molecular_weights,
@@ -445,3 +453,5 @@ def load_mechanism(filepath: str | Path) -> MechanismData:
         nu_products=nu_p,
         nu_net=nu_net,
     )
+    _MECHANISM_CACHE[cache_key] = copy.deepcopy(mech)
+    return mech
