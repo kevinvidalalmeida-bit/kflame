@@ -94,6 +94,7 @@ def _v2_solve(case: FlameCase, profile: bool = True, verbose: bool = False) -> d
     mech_data = load_mechanism(case.mech)
     problem.backend_factory = lambda prob: NativeSpeciesBackend(prob, mech_data=mech_data)
     problem.backend = problem.backend_factory(problem)
+    problem.use_jax = True
     opts = SolveOptions(
         verbose=bool(verbose),
         profile=bool(profile),

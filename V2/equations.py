@@ -196,7 +196,7 @@ def _residual_device(
         F[-1, C_T] = T[-1] - T[-2]
     else:
         T_prof_dev = xp.asarray(T_prof, dtype=float) if T_prof is not None else None
-        F[-1, C_T] = T[-1] - (T_prof_dev[-1] if T_prof_dev is not None else T[-2])
+        F[-1, C_T] = T[-1] - (T_prof_dev[-1] if T_prof is not None else T[-2])
     right_species = Y[:, -1] - Y[:, -2]
     k_exc = xp.argmax(Y[:, -1])
     F[-1, C_Y:C_Y + n_sp] = xp.where(k_idx == k_exc, 1.0 - xp.sum(Y[:, -1]), right_species)
@@ -390,6 +390,12 @@ def residual(
       1 -> Backward Euler
       2 -> BDF2
     """
+    if getattr(problem, "use_jax", False):
+        if not hasattr(problem, "_jax_evaluator"):
+            from residual_jax import JaxEvaluator
+            problem._jax_evaluator = JaxEvaluator(problem)
+        return problem._jax_evaluator.evaluate_residual(x, problem, rdt, x_old, x_older, transient_order)
+
     t_profile = _profile_start(problem)
     residual_backend = _residual_backend(problem)
     if _device_residual_enabled(problem, residual_backend):
@@ -1874,6 +1880,14 @@ def banded_jacobian(fun, x: np.ndarray, problem, eps: float = 1e-5) -> sparse.cs
     - "numba_local" / "batched_local" / "native_local" (production path)
     - "cantera_local" (reference path)
     """
+    if getattr(problem, "use_jax", False):
+        if not hasattr(problem, "_jax_evaluator"):
+            from residual_jax import JaxEvaluator
+            problem._jax_evaluator = JaxEvaluator(problem)
+        # We use JAX for the residual, but compute the Jacobian using batched finite difference 
+        # to avoid O(N^2) dense analytic AD from jacfwd.
+        problem.jacobian_mode = "batched_local"
+
     mode = str(getattr(problem, "jacobian_mode", "cantera_local")).strip().lower()
     if mode in ("numba_local", "batched_local", "native_local"):
         return _banded_jacobian_batched_local(fun, x, problem, eps=eps)

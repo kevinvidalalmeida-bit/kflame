@@ -1,6 +1,8 @@
 """Solver, mesh adaptation, and nonlinear iteration for the 1-D free flame."""
 
 from __future__ import annotations
+import os
+os.environ["JAX_ENABLE_X64"] = "True"
 
 import time
 from dataclasses import dataclass, field
@@ -1011,6 +1013,8 @@ class SolveOptions:
     bootstrap_grid_points: tuple[int, ...] = (12, 24, 48)
     bootstrap_max_grid_points: int = 1000
 
+    use_jax: bool = True
+
     max_total_time_s: float = 300.0
     verbose: bool = True
     profile: bool = False
@@ -1030,8 +1034,44 @@ class DomainTooNarrowError(RuntimeError):
 # ---------------------------------------------------------------------------
 def _make_steady_fun(problem):
     """Cierre que llama a residual(x, problem, rdt=0)."""
-    def fun(x, prob):
+    def fun(x, prob=problem):
         return residual(x, prob, rdt=0.0, x_old=None)
+        
+    if getattr(problem, "use_jax", False):
+        if not hasattr(problem, "_jax_evaluator"):
+            from residual_jax import JaxEvaluator
+            problem._jax_evaluator = JaxEvaluator(problem)
+            
+        import jax
+        import jax.numpy as jnp
+        
+        # Determine fixed/dev parameters statically for vmap
+        z = problem.z
+        T_in = float(problem.T_in)
+        Y_in = jnp.asarray(problem.Y_in)
+        j_fixed = int(problem.j_fixed) if problem.j_fixed is not None else -1
+        j_fixed_arg = jnp.array(j_fixed) if j_fixed != -1 else None
+        T_fixed_point = float(problem.T_fixed_point) if hasattr(problem, 'T_fixed_point') else 0.0
+        T_prof_dev = jnp.asarray(problem.T_profile_fixed) if getattr(problem, 'T_profile_fixed', None) is not None else None
+        solve_energy = bool(problem.solve_energy)
+        
+        compiled_res = problem._jax_evaluator.compiled_residual
+        # vmap over axis 0 of x
+        vmap_res = jax.jit(jax.vmap(
+            compiled_res,
+            in_axes=(0, None, None, None, None, None, None, None, None, None, None, None, None),
+            out_axes=0
+        ), static_argnames=["solve_energy", "use_bdf2"])
+        
+        def evaluate_batch(x_batch):
+            res_batch = vmap_res(
+                jnp.asarray(x_batch), z, T_in, Y_in, j_fixed_arg, T_fixed_point, T_prof_dev, solve_energy,
+                0.0, None, None, None, False
+            )
+            return np.asarray(res_batch)
+            
+        fun.evaluate_batch = evaluate_batch
+
     return fun
 
 
