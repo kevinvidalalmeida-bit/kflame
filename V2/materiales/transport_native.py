@@ -23,6 +23,114 @@ from pathlib import Path
 PI = math.pi
 EPSILON_0 = 8.854187817e-12  # vacuum permittivity [F/m]
 
+try:
+    from numba import njit, prange
+except Exception:  # pragma: no cover - optional acceleration
+    njit = None
+    prange = range
+
+
+if njit is not None:
+    @njit(cache=True)
+    def _eval_faces_poly_numba_core(T, Y, P, invW, mw, cond_poly, diff_poly):
+        n_sp = Y.shape[0]
+        n_faces = Y.shape[1]
+        rho = np.empty(n_faces, dtype=np.float64)
+        Dm = np.empty((n_sp, n_faces), dtype=np.float64)
+        lam = np.empty(n_faces, dtype=np.float64)
+        Wmix = np.empty(n_faces, dtype=np.float64)
+
+        for m in range(n_faces):
+            X = np.empty(n_sp, dtype=np.float64)
+            cond = np.empty(n_sp, dtype=np.float64)
+            inv_wmix = 0.0
+            for k in range(n_sp):
+                inv_wmix += Y[k, m] * invW[k]
+            wm = 1.0 / max(inv_wmix, 1.0e-300)
+            Wmix[m] = wm
+            rho[m] = P * wm / (R_UNIV * T[m])
+
+            for k in range(n_sp):
+                X[k] = Y[k, m] * wm * invW[k]
+
+            logT = math.log(T[m])
+            sqrtT = math.sqrt(T[m])
+            TsqrtT = T[m] * sqrtT
+
+            sum1 = 0.0
+            sum2 = 0.0
+            for k in range(n_sp):
+                poly = (
+                    cond_poly[k, 0]
+                    + logT * (
+                        cond_poly[k, 1]
+                        + logT * (
+                            cond_poly[k, 2]
+                            + logT * (
+                                cond_poly[k, 3] + logT * cond_poly[k, 4]
+                            )
+                        )
+                    )
+                )
+                ck = sqrtT * poly
+                cond[k] = ck
+                xk = max(X[k], 1.0e-300)
+                sum1 += xk * ck
+                sum2 += xk / max(ck, 1.0e-300)
+
+            lam[m] = 0.5 * (sum1 + 1.0 / max(sum2, 1.0e-300))
+
+            for k in range(n_sp):
+                sumd = 0.0
+                for j in range(n_sp):
+                    if j == k:
+                        continue
+                    poly = (
+                        diff_poly[k, j, 0]
+                        + logT * (
+                            diff_poly[k, j, 1]
+                            + logT * (
+                                diff_poly[k, j, 2]
+                                + logT * (
+                                    diff_poly[k, j, 3] + logT * diff_poly[k, j, 4]
+                                )
+                            )
+                        )
+                    )
+                    bdiff = TsqrtT * poly
+                    sumd += max(X[j], 1.0e-300) / max(bdiff, 1.0e-300)
+
+                poly_diag = (
+                    diff_poly[k, k, 0]
+                    + logT * (
+                        diff_poly[k, k, 1]
+                        + logT * (
+                            diff_poly[k, k, 2]
+                            + logT * (
+                                diff_poly[k, k, 3] + logT * diff_poly[k, k, 4]
+                            )
+                        )
+                    )
+                )
+                diag_bdiff = TsqrtT * poly_diag
+                if sumd <= 0.0:
+                    Dm[k, m] = diag_bdiff / P
+                else:
+                    Dm[k, m] = (
+                        wm - max(X[k], 1.0e-300) * mw[k]
+                    ) / (P * wm * max(sumd, 1.0e-300))
+
+        return rho, Dm, lam, Wmix
+else:
+    _eval_faces_poly_numba_core = None
+
+
+def _host_array(arr):
+    """Return a NumPy view/copy for one-time CPU preprocessing."""
+    if hasattr(arr, "get"):
+        return arr.get()
+    return np.asarray(arr)
+
 # Load pre-exported Cantera transport polynomials (ln(T) basis)
 _TRANSPORT_POLY_FILE = Path(__file__).parent / "cantera_transport_poly_coeffs.json"
 try:
@@ -66,12 +174,12 @@ class NativeTransport:
         _del_p = np.zeros((n, n))
 
         # Perform the pair mixing rules in NumPy (it's one-time init)
-        eps_cpu = np.asarray(mech.well_depth)
-        sig_cpu = np.asarray(mech.diameter)
-        dip_cpu = np.asarray(mech.dipole)
-        alp_cpu = np.asarray(mech.polarizability)
+        eps_cpu = np.asarray(_host_array(mech.well_depth), dtype=float)
+        sig_cpu = np.asarray(_host_array(mech.diameter), dtype=float)
+        dip_cpu = np.asarray(_host_array(mech.dipole), dtype=float)
+        alp_cpu = np.asarray(_host_array(mech.polarizability), dtype=float)
         pol_cpu = dip_cpu > 0.0
-        mw_cpu = np.asarray(mech.molecular_weights)
+        mw_cpu = np.asarray(_host_array(mech.molecular_weights), dtype=float)
 
         for i in range(n):
             for j in range(i, n):
@@ -130,8 +238,10 @@ class NativeTransport:
         n = self.n_sp
         visc_cpu = np.zeros((n, 5), dtype=float)
         cond_cpu = np.zeros((n, 5), dtype=float)
+        diff_cpu = np.zeros((n, n, 5), dtype=float)
         has_visc = np.zeros(n, dtype=bool)
         has_cond = np.zeros(n, dtype=bool)
+        has_diff = np.zeros((n, n), dtype=bool)
 
         if self._has_transport_poly:
             species_data = _CANTERA_TRANSPORT_POLY.get("species", {})
@@ -150,12 +260,45 @@ class NativeTransport:
                     cond_cpu[i, :] = np.asarray(cc[:5], dtype=float)
                     has_cond[i] = True
 
+            diff_data = _CANTERA_TRANSPORT_POLY.get("binary_diff_coeffs", None)
+            if diff_data is not None:
+                try:
+                    diff_arr = np.asarray(diff_data, dtype=float)
+                    if diff_arr.shape[0] >= n and diff_arr.shape[1] >= n and diff_arr.shape[2] >= 5:
+                        diff_cpu[:, :, :] = diff_arr[:n, :n, :5]
+                        has_diff[:, :] = True
+                except (TypeError, ValueError, IndexError):
+                    has_diff[:, :] = False
+
         self._visc_poly = self.xp.asarray(visc_cpu)
         self._cond_poly = self.xp.asarray(cond_cpu)
+        self._diff_poly = self.xp.asarray(diff_cpu)
         self._has_visc_poly_cpu = has_visc
         self._has_cond_poly_cpu = has_cond
+        self._has_diff_poly_cpu = has_diff
         self._has_visc_poly = self.xp.asarray(has_visc)
         self._has_cond_poly = self.xp.asarray(has_cond)
+        self._has_diff_poly = self.xp.asarray(has_diff)
+        self._fast_poly_available = (
+            _eval_faces_poly_numba_core is not None
+            and getattr(self.xp, "__name__", "") == "numpy"
+            and bool(has_cond.all())
+            and bool(has_diff.all())
+        )
+
+    def eval_faces_poly_fast(self, T, P: float, Y: np.ndarray, invW: np.ndarray):
+        """Fast CPU path for face transport using Cantera polynomial fits."""
+        if not self._fast_poly_available:
+            return None
+        return _eval_faces_poly_numba_core(
+            np.asarray(T, dtype=np.float64),
+            np.ascontiguousarray(Y, dtype=np.float64),
+            float(P),
+            np.asarray(invW, dtype=np.float64),
+            np.asarray(self.mw, dtype=np.float64),
+            np.asarray(self._cond_poly, dtype=np.float64),
+            np.asarray(self._diff_poly, dtype=np.float64),
+        )
 
     def _omega_22(self, Tstar):
         return (1.16145 * self.xp.power(Tstar, -0.14874)
@@ -276,7 +419,7 @@ class NativeTransport:
             Phi = factor1**2 / self.xp.sqrt(8.0 * (1.0 + 1.0 / mw_ratio))
             denom = Phi @ X
             Xsafe = self.xp.maximum(X, self._tiny)
-            return float(self.xp.sum((Xsafe * visc_k) / self.xp.maximum(denom, self._tiny)))
+            return self.xp.sum((Xsafe * visc_k) / self.xp.maximum(denom, self._tiny))
 
     # ------------------------------------------------------------------
     #  Pure-species thermal conductivity (Empirical Cantera polynomials)
@@ -395,9 +538,9 @@ class NativeTransport:
             sum2 = self.xp.sum(Xsafe * 1.0 / self.xp.maximum(cond_k, 1e-300), axis=0)
             return 0.5 * (sum1 + 1.0 / self.xp.maximum(sum2, 1e-300))
         else:
-            sum1 = float(self.xp.sum(Xsafe * cond_k))
-            sum2 = float(self.xp.sum(Xsafe * 1.0 / self.xp.maximum(cond_k, 1e-300)))
-            return 0.5 * (sum1 + 1.0 / max(sum2, 1e-300))
+            sum1 = self.xp.sum(Xsafe * cond_k)
+            sum2 = self.xp.sum(Xsafe * 1.0 / self.xp.maximum(cond_k, 1e-300))
+            return 0.5 * (sum1 + 1.0 / self.xp.maximum(sum2, 1e-300))
 
     # ------------------------------------------------------------------
     #  Binary diffusion coefficients at unit pressure
@@ -408,7 +551,25 @@ class NativeTransport:
         is_grid = self._is_grid(T)
         if not is_grid:
             T_arr = T_arr[None]
-            
+
+        if bool(self._has_diff_poly_cpu.all()):
+            logT = self.xp.log(T_arr)
+            poly = (
+                self._diff_poly[:, :, 0, None]
+                + logT[None, None, :] * (
+                    self._diff_poly[:, :, 1, None]
+                    + logT[None, None, :] * (
+                        self._diff_poly[:, :, 2, None]
+                        + logT[None, None, :] * (
+                            self._diff_poly[:, :, 3, None]
+                            + logT[None, None, :] * self._diff_poly[:, :, 4, None]
+                        )
+                    )
+                )
+            )
+            bdiff = T_arr[None, None, :] * self.xp.sqrt(T_arr)[None, None, :] * poly
+            return bdiff if is_grid else bdiff[:, :, 0]
+
         eps_pair_safe = self.xp.maximum(self._eps_pair, 1e-100)
         Tstar_pair = T_arr[None, None, :] / eps_pair_safe[:, :, None]
         om11_val = self._omega_11(Tstar_pair)
@@ -443,7 +604,7 @@ class NativeTransport:
             Wmix_b = Wmix[None, :]
             mw_b = self.mw[:, None]
         else:
-            Wmix = float(self.xp.sum(X * self.mw))
+            Wmix = self.xp.sum(X * self.mw)
             sum2 = (inv_bdiff * mask) @ Xsafe
             diag_bdiff = self.xp.diag(bdiff)
             Wmix_b = Wmix
@@ -466,11 +627,9 @@ class NativeTransport:
             X = YW / self.xp.maximum(YW.sum(axis=0)[None, :], 1e-300)
         else:
             YW = Y * invW
-            X = YW / max(YW.sum(), 1e-300)
+            X = YW / self.xp.maximum(YW.sum(), 1e-300)
             
         mu  = self.viscosity(T, X)
         lam = self.thermal_conductivity(T, X, cp_R)
         Dm  = self.mix_diff_coeffs(T, P, X)
         return mu, lam, Dm, X
-
-

@@ -7,6 +7,7 @@ NO Cantera dependency.  Only uses PyYAML + NumPy.
 GPU-ready: every array is float64 and can be sent to CuPy with xp.asarray().
 """
 from __future__ import annotations
+import copy
 import re
 import math
 from dataclasses import dataclass, field
@@ -21,6 +22,8 @@ except ImportError:
     raise ImportError("PyYAML is required.  Install with: pip install pyyaml")
 
 # ── physical constants (SI) ────────────────────────────────────────────────
+_MECHANISM_CACHE: dict[str, "MechanismData"] = {}
+
 R_CGS    = 1.987  # cal/(mol·K)  – for Ea conversion
 R_UNIV   = 8314.46261815324  # J/(kmol·K)  – Cantera convention
 R_SI     = 8.31446261815324  # J/(mol·K)
@@ -28,10 +31,10 @@ AVOGADRO = 6.02214076e23
 BOLTZMANN = 1.380649e-23
 ONE_ATM  = 101325.0
 
-# ── atomic weights (IUPAC 2016) ────────────────────────────────────────────
+# ── atomic weights aligned with Cantera defaults ────────────────────────────
 _ATOMIC_WEIGHTS: dict[str, float] = {
-    "H": 1.00794,  "He": 4.002602, "C": 12.011,   "N": 14.007,
-    "O": 15.999,   "F": 18.998403, "Ne": 20.1797,  "Ar": 39.948,
+    "H": 1.008,    "He": 4.002602, "C": 12.011,   "N": 14.007,
+    "O": 15.999,   "F": 18.998403, "Ne": 20.1797,  "Ar": 39.950,
     "S": 32.06,    "Cl": 35.45,    "P": 30.973761,
 }
 
@@ -265,6 +268,11 @@ def load_mechanism(filepath: str | Path) -> MechanismData:
         else:
             # If still not found, raise the original error
             raise FileNotFoundError(f"[Errno 2] No such file or directory: '{filepath}'")
+
+    cache_key = str(filepath.resolve())
+    cached = _MECHANISM_CACHE.get(cache_key)
+    if cached is not None:
+        return copy.deepcopy(cached)
     
     with open(filepath, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f)
@@ -418,12 +426,14 @@ def load_mechanism(filepath: str | Path) -> MechanismData:
     nu_p = np.zeros((n_sp, n_rxn))
     for j, rxn in enumerate(reactions):
         for k, nu in zip(rxn.reactant_indices, rxn.reactant_stoich):
-            nu_r[k, j] = nu
+            # Accumulate in case a species appears multiple times
+            # (e.g. "CH2 + CH2" instead of "2 CH2").
+            nu_r[k, j] += nu
         for k, nu in zip(rxn.product_indices, rxn.product_stoich):
-            nu_p[k, j] = nu
+            nu_p[k, j] += nu
     nu_net = nu_p - nu_r
 
-    return MechanismData(
+    mech = MechanismData(
         species_names=species_names,
         n_species=n_sp,
         molecular_weights=molecular_weights,
@@ -443,3 +453,5 @@ def load_mechanism(filepath: str | Path) -> MechanismData:
         nu_products=nu_p,
         nu_net=nu_net,
     )
+    _MECHANISM_CACHE[cache_key] = copy.deepcopy(mech)
+    return mech

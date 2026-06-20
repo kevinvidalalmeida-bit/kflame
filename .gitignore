@@ -1,6 +1,7 @@
 # Python
 __pycache__/
 *.py[cod]
+.ruff_cache/
 
 # Virtual environments
 .venv/
@@ -16,3 +17,9 @@ Thumbs.db
 # Project-specific heavy / generated folders
 no_esencial/cantera-main/
 no_esencial/outputs/
+comparison_runs/
+V2/comparison_runs/
+FGM/resultados/
+debug_dump.pkl
+merge_solver.py
+merge_equations.py

@@ -82,6 +82,60 @@ class NativeThermo:
         res = h - s
         return res[:, 0] if is_scalar else res
 
+    def cp_mass_hk_g_RT(self, T, Y: np.ndarray):
+        """
+        Fused NASA-7 evaluation for cp_mix, h_k and g_k/(R*T).
+        """
+        T_arr, is_scalar = self._to_1d(T)
+        c = self._get_coefs(T_arr)
+        T_mat = T_arr[:, None]
+        logT = self.xp.log(T_mat)
+
+        cp_R_ns = (
+            c[:, :, 0]
+            + T_mat * (
+                c[:, :, 1]
+                + T_mat * (
+                    c[:, :, 2]
+                    + T_mat * (c[:, :, 3] + T_mat * c[:, :, 4])
+                )
+            )
+        )
+        h_RT_ns = (
+            c[:, :, 0]
+            + T_mat * (
+                c[:, :, 1] / 2.0
+                + T_mat * (
+                    c[:, :, 2] / 3.0
+                    + T_mat * (c[:, :, 3] / 4.0 + T_mat * c[:, :, 4] / 5.0)
+                )
+            )
+            + c[:, :, 5] / T_mat
+        )
+        s_R_ns = (
+            c[:, :, 0] * logT
+            + T_mat * (
+                c[:, :, 1]
+                + T_mat * (
+                    c[:, :, 2] / 2.0
+                    + T_mat * (c[:, :, 3] / 3.0 + T_mat * c[:, :, 4] / 4.0)
+                )
+            )
+            + c[:, :, 6]
+        )
+
+        cp_R = cp_R_ns.T
+        h_RT = h_RT_ns.T
+        g_RT = (h_RT_ns - s_R_ns).T
+        hk = h_RT * R_UNIV * T_arr[None, :]
+
+        if Y.ndim == 1:
+            cp_mass = self.xp.sum(Y * cp_R[:, 0] * R_UNIV * self.invW)
+            return cp_mass, hk[:, 0], g_RT[:, 0]
+
+        cp_mass = self.xp.sum(Y * cp_R * R_UNIV * self.invW[:, None], axis=0)
+        return cp_mass, hk, g_RT
+
     # ------------------------------------------------------------------
     #  Dimensional quantities (per-species, molar basis)
     # ------------------------------------------------------------------
@@ -114,7 +168,7 @@ class NativeThermo:
             invW = self.invW
         if Y.ndim == 1:
             inv_Wmix = self.xp.sum(Y * invW)
-            return float(1.0 / max(inv_Wmix, 1e-300))
+            return 1.0 / self.xp.maximum(inv_Wmix, 1e-300)
         else:
             inv_Wmix = self.xp.sum(Y * invW[:, None], axis=0)
             return 1.0 / self.xp.maximum(inv_Wmix, 1e-300)
@@ -124,7 +178,7 @@ class NativeThermo:
         T_arr, is_scalar = self._to_1d(T)
         Wmix = self.mean_molecular_weight(Y, self.invW)  # (N,) or scalar
         res = P * Wmix / (R_UNIV * T_arr)
-        return float(res[0]) if is_scalar else res
+        return res[0] if is_scalar else res
 
     def Y_to_X(self, Y: np.ndarray) -> np.ndarray:
         """Mass fractions → mole fractions."""
@@ -146,7 +200,7 @@ class NativeThermo:
         """cp_mix  [J/(kg·K)] = Σ Y_k · cp_k / W_k  (mass-weighted)."""
         cp_k = self.cp_R(T) * R_UNIV  # (n_sp,) or (n_sp, N)
         if Y.ndim == 1:
-            return float(self.xp.sum(Y * cp_k * self.invW))
+            return self.xp.sum(Y * cp_k * self.invW)
         else:
             return self.xp.sum(Y * cp_k * self.invW[:, None], axis=0)
 
@@ -154,6 +208,6 @@ class NativeThermo:
         """cp_mix  [J/(kmol·K)] = Σ X_k · cp_k."""
         cp_k = self.cp_R(T) * R_UNIV
         if X.ndim == 1:
-            return float(self.xp.sum(X * cp_k))
+            return self.xp.sum(X * cp_k)
         else:
             return self.xp.sum(X * cp_k, axis=0)

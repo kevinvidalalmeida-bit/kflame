@@ -14,7 +14,7 @@ from __future__ import annotations
 import numpy as np
 import cantera as ct
 
-from mesh import initial_grid
+from solver import initial_grid
 from state import pack_state, C_Y
 
 
@@ -41,6 +41,7 @@ class FreeFlameProblem:
 
         self.species_names = list(gas.species_names)
         self.n_species = gas.n_species
+        self.jacobian_mode = "numba_local"
         self.n_vars_per_point = 2 + self.n_species   # U, T, Y0..YK
 
         self.P = case.P
@@ -116,7 +117,7 @@ class FreeFlameProblem:
         # Bounds por componente (C_U=0, C_T=1, C_Y=2..)
         self.T_lower_bound = 200.0
         self.T_upper_bound = 2.0 * float(gas.max_temp)
-        self.Y_lower_bound = -1e-7
+        self.Y_lower_bound = -1e-7  # Cantera: lo=-1e-7 para todas las especies
 
         # Gas auxiliar para normalización
         self._reset_gas = ct.Solution(case.mech)
@@ -173,12 +174,7 @@ class FreeFlameProblem:
 
         x_r = x.reshape(n_pts, nv)
 
-        # Clip de T
-        T = x_r[:, 1]
-        T[:] = np.where(np.isfinite(T), T, self.T_in)
-        T[:] = np.clip(T, self.T_lower_bound, self.T_upper_bound)
-
-        # Normalizar Y
+        # Normalizar Y, igual que Flow1D::resetBadValues.
         Y = x_r[:, C_Y:].T.copy()   # (n_sp, n_pts)
         Y = self._sanitize_Y(Y)
         x_r[:, C_Y:] = Y.T
