@@ -1,14 +1,25 @@
 """Solver, mesh adaptation, and nonlinear iteration for the 1-D free flame."""
 
 from __future__ import annotations
+
 import os
-os.environ["JAX_ENABLE_X64"] = "True"
+
+# The linear algebra path factors many small dense blocks. On this workload,
+# OpenBLAS thread management costs more than it saves; respect an explicit
+# user setting but default to one BLAS thread for reproducible timings.
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+# The fused thermo/kinetics kernel is parallel over grid points. Production
+# flamelets are small (typically 12--100 points), so the default 24-thread
+# pool adds synchronization overhead. Keep an explicit user setting intact;
+# callers with large grids can opt into a larger pool through the environment.
+os.environ.setdefault("NUMBA_NUM_THREADS", "4")
 
 import time
 from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
+from scipy.sparse.linalg import LinearOperator, gmres
 
 from equations import (
     build_jacobian_steady,
@@ -21,7 +32,20 @@ from species_backend import SpeciesBackend
 from state import build_transient_mask, interpolate_state, pack_state, unpack_state
 
 try:
+    import numba as _numba
     from numba import njit
+    # ``problem.py`` can import this module after another dependency has
+    # already initialized Numba, so the environment variable alone is not
+    # sufficient. Apply the requested pool size explicitly as well.
+    try:
+        _requested_numba_threads = int(os.environ.get("NUMBA_NUM_THREADS", "4"))
+        _max_numba_threads = int(getattr(_numba.config, "NUMBA_NUM_THREADS", 1))
+        _numba.set_num_threads(
+            max(1, min(_requested_numba_threads, max(1, _max_numba_threads)))
+        )
+    except Exception:
+        # A malformed optional thread override must not disable Numba itself.
+        pass
 except Exception:  # pragma: no cover - optional acceleration
     njit = None
 
@@ -136,6 +160,29 @@ def _history_timed_out(history: list[dict]) -> bool:
     return False
 
 
+def _history_last_number(history: list[dict], key: str) -> float:
+    for item in reversed(history):
+        if key not in item:
+            continue
+        try:
+            value = float(item[key])
+        except (TypeError, ValueError):
+            continue
+        if np.isfinite(value):
+            return value
+    return float("nan")
+
+
+def _remember_newton_metrics(problem, history: list[dict]) -> tuple[float, float]:
+    step_norm = _history_last_number(history, "s1")
+    residual_inf = _history_last_number(history, "normF")
+    if np.isfinite(step_norm):
+        problem.last_weighted_step_norm = float(step_norm)
+    if np.isfinite(residual_inf):
+        problem.last_newton_residual_inf = float(residual_inf)
+    return float(step_norm), float(residual_inf)
+
+
 def _make_backend(problem):
     factory = getattr(problem, "backend_factory", None)
     if factory is not None:
@@ -144,11 +191,7 @@ def _make_backend(problem):
     current = getattr(problem, "backend", None)
     if current is not None:
         cls = current.__class__
-        use_gpu = bool(getattr(current, "use_gpu", False))
-        try:
-            return cls(problem, use_gpu=use_gpu)
-        except TypeError:
-            return cls(problem)
+        return cls(problem)
 
     return SpeciesBackend(problem)
 
@@ -594,6 +637,9 @@ def bound_step_limit(x0: np.ndarray, step0: np.ndarray, problem) -> tuple[float,
 class JacobianState:
     J: object = None
     lu: object = None
+    # Last exact factorization. A recycled GMRES state never replaces this
+    # safety-net preconditioner.
+    direct_lu: object = None
     ss_diag: np.ndarray = field(default_factory=lambda: np.empty(0))
     age: int = 10000
     n_evals: int = 0
@@ -605,8 +651,7 @@ class JacobianState:
 
 
 def _transient_alpha(transient_order: int, x_older: np.ndarray | None) -> float:
-    use_bdf2 = int(transient_order) >= 2 and x_older is not None
-    return 1.5 if use_bdf2 else 1.0
+    return 1.0
 
 
 def _build_linear_model(steady_fun, x: np.ndarray, problem,
@@ -638,8 +683,10 @@ def _update_linear_model_transient(jac_state: JacobianState, mask: np.ndarray,
     """
     Cantera MultiJac::updateTransient equivalent.
 
-    Keep the steady finite-difference Jacobian and only refresh the transient
-    diagonal/factorization when the timestep changes.
+    Keep the steady finite-difference Jacobian and refresh its transient
+    diagonal when the timestep changes. In ``recycled_gmres`` mode, a previous
+    exact block factorization is reused as a preconditioner; an inexact solve
+    falls back to a fresh LU in ``_solve_newton_linear``.
     """
     if jac_state.J is None or jac_state.ss_diag.size == 0:
         raise RuntimeError("No steady Jacobian available for transient update.")
@@ -652,13 +699,145 @@ def _update_linear_model_transient(jac_state: JacobianState, mask: np.ndarray,
     j_t.setdiag(diag)
     if getattr(problem, "_profile", None) is not None:
         setattr(j_t, "_profile_problem", problem)
-    lu = factorize(j_t)
-    if isinstance(lu, dict):
-        lu["profile_problem"] = problem
     jac_state.J = j_t
-    jac_state.lu = lu
+    linear_mode = str(getattr(problem, "transient_linear_solver", "direct")).lower()
+    can_recycle = (
+        linear_mode == "recycled_gmres"
+        and float(rdt_curr) > 0.0
+        and jac_state.last_rdt is not None
+        and float(jac_state.last_rdt) > 0.0
+        and jac_state.direct_lu is not None
+        and _jacobian_supports_matvec(j_t)
+    )
+    if can_recycle:
+        jac_state.lu = {
+            "method": "recycled_gmres",
+            "J": j_t,
+            "preconditioner": jac_state.direct_lu,
+        }
+        stats = getattr(problem, "_recycled_gmres_stats", None)
+        if stats is not None:
+            stats["transient_updates_reused"] += 1
+    else:
+        lu = factorize(j_t)
+        if isinstance(lu, dict):
+            lu["profile_problem"] = problem
+        jac_state.lu = lu
+        jac_state.direct_lu = lu
     jac_state.last_rdt = float(rdt_curr)
     _profile_record(problem, "linear_model_transient_update", t_profile)
+
+
+def _jacobian_supports_matvec(jmat) -> bool:
+    """Whether a Jacobian has an efficient matrix-vector product."""
+    return bool(
+        (hasattr(jmat, "n_blocks") and hasattr(jmat, "diag"))
+        or hasattr(jmat, "dot")
+        or hasattr(jmat, "__matmul__")
+    )
+
+
+def _jacobian_matvec(jmat, vector: np.ndarray) -> np.ndarray:
+    """Matrix-vector product without materializing a block-tridiagonal CSC."""
+    v = np.asarray(vector, dtype=float)
+    if hasattr(jmat, "n_blocks") and hasattr(jmat, "block_size"):
+        n_blocks = int(jmat.n_blocks)
+        block_size = int(jmat.block_size)
+        v_blocks = v.reshape(n_blocks, block_size)
+        out = np.einsum("bij,bj->bi", jmat.diag, v_blocks, optimize=True)
+        if n_blocks > 1:
+            out[1:] += np.einsum(
+                "bij,bj->bi", jmat.lower, v_blocks[:-1], optimize=True
+            )
+            out[:-1] += np.einsum(
+                "bij,bj->bi", jmat.upper, v_blocks[1:], optimize=True
+            )
+        return out.ravel()
+    return np.asarray(jmat @ v, dtype=float)
+
+
+def _solve_newton_linear(jac_state: JacobianState, rhs: np.ndarray, problem) -> np.ndarray:
+    """Solve a Newton system, optionally recycling an exact LU in GMRES."""
+    linear_state = jac_state.lu
+    if not (isinstance(linear_state, dict)
+            and linear_state.get("method") == "recycled_gmres"):
+        return solve_linear(linear_state, rhs)
+
+    jmat = linear_state["J"]
+    preconditioner = linear_state["preconditioner"]
+    n = int(jmat.shape[0])
+    stats = getattr(problem, "_recycled_gmres_stats", None)
+
+    # If the recent recycled probes repeatedly needed the exact fallback,
+    # avoid launching another doomed GMRES. We still factorize the current
+    # matrix exactly, so this branch preserves the numerical result.
+    adaptive = bool(getattr(problem, "recycled_gmres_adaptive", False))
+    probe_failures = max(1, int(getattr(problem, "recycled_gmres_probe_failures", 3)))
+    consecutive_failures = (
+        int(stats.get("gmres_consecutive_failures", 0))
+        if stats is not None else 0
+    )
+    if adaptive and consecutive_failures >= probe_failures:
+        if stats is not None:
+            stats["gmres_skipped"] += 1
+            stats["adaptive_exact_rebuilds"] += 1
+        direct_lu = factorize(jmat)
+        if isinstance(direct_lu, dict):
+            direct_lu["profile_problem"] = problem
+        jac_state.lu = direct_lu
+        jac_state.direct_lu = direct_lu
+        return solve_linear(direct_lu, rhs)
+
+    iterations = [0]
+
+    def _count_iteration(_):
+        iterations[0] += 1
+
+    t_profile = _profile_start(problem)
+    try:
+        operator = LinearOperator(
+            (n, n), matvec=lambda v: _jacobian_matvec(jmat, v), dtype=np.float64
+        )
+        preconditioner_op = LinearOperator(
+            (n, n), matvec=lambda v: solve_linear(preconditioner, v), dtype=np.float64
+        )
+        restart = max(1, int(getattr(problem, "recycled_gmres_restart", 4)))
+        maxiter = max(1, int(getattr(problem, "recycled_gmres_maxiter", 1)))
+        rtol = max(1.0e-12, float(getattr(problem, "recycled_gmres_rtol", 1.0e-8)))
+        step, info = gmres(
+            operator,
+            np.asarray(rhs, dtype=float),
+            M=preconditioner_op,
+            rtol=rtol,
+            atol=0.0,
+            restart=restart,
+            maxiter=maxiter,
+            callback=_count_iteration,
+            callback_type="pr_norm",
+        )
+    finally:
+        _profile_record(problem, "linear_gmres_preconditioned", t_profile)
+
+    if stats is not None:
+        stats["gmres_solves"] += 1
+        stats["gmres_iterations"] += int(iterations[0])
+
+    if int(info) == 0 and np.all(np.isfinite(step)):
+        if stats is not None:
+            stats["gmres_consecutive_failures"] = 0
+        return np.asarray(step, dtype=float)
+
+    # Conservative safety net: discard the inexact state and solve the exact
+    # current transient matrix before the Newton/damping decision is made.
+    if stats is not None:
+        stats["gmres_fallbacks"] += 1
+        stats["gmres_consecutive_failures"] += 1
+    direct_lu = factorize(jmat)
+    if isinstance(direct_lu, dict):
+        direct_lu["profile_problem"] = problem
+    jac_state.lu = direct_lu
+    jac_state.direct_lu = direct_lu
+    return solve_linear(direct_lu, rhs)
 
 
 # ---------------------------------------------------------------------------
@@ -679,6 +858,8 @@ def newton_solve(
     tol: float = 1.0,
     jac_eps: float = 1e-5,
     alpha_min: float = 1e-10,
+    damping_mode: str = "step_norm",
+    damping_residual_reduction: float = 1.0e-3,
     verbose: bool = False,
     jac_state: JacobianState | None = None,
     deadline: float | None = None,
@@ -719,7 +900,9 @@ def newton_solve(
     force_new_jac = jac_state.J is None or jac_state.lu is None
     n_jac_reeval = 0
     status = -1
-    f_reusable = None
+    damping_mode = str(damping_mode).strip().lower()
+    residual_damping = damping_mode in ("residual", "residual_norm", "inexact")
+    residual_reduction = float(np.clip(damping_residual_reduction, 0.0, 0.5))
 
     for it in range(max_iter):
         if deadline is not None and time.perf_counter() > deadline:
@@ -735,6 +918,7 @@ def newton_solve(
                 )
                 jac_state.J = j_t
                 jac_state.lu = lu
+                jac_state.direct_lu = lu
                 jac_state.ss_diag = ss_diag
                 jac_state.age = 0
                 jac_state.n_evals += 1
@@ -759,17 +943,14 @@ def newton_solve(
             rdt_changed = False
 
         # MultiNewton::step equivalent
-        if f_reusable is not None:
-            f = f_reusable
-        else:
-            f = full_fun(x)
+        f = full_fun(x)
         if not np.all(np.isfinite(f)):
             history.append({"iter": it, "status": "nonfinite_F"})
             status = -5
             break
 
         try:
-            step0 = solve_linear(jac_state.lu, -f)
+            step0 = _solve_newton_linear(jac_state, -f, problem)
         except Exception as exc:
             history.append({"iter": it, "status": "linear_solve_fail", "error": str(exc)})
             force_new_jac = True
@@ -815,11 +996,10 @@ def newton_solve(
 
         alpha = min(fbound, 1.0)
 
-        # MultiNewton::dampStep equivalent
+        # Cantera's MultiNewton::dampStep contraction test.
         damp_ok = False
         x1 = x.copy()
         s1 = float("inf")
-        c_armijo = 1e-4
 
         t_damp = _profile_start(problem)
         for _ in range(max_damp_iter):
@@ -843,34 +1023,49 @@ def newton_solve(
                 alpha /= damp_factor
                 continue
 
-            normf_try = float(np.linalg.norm(f_try, ord=np.inf))
-
-            # Sufficient decrease condition (Armijo) or if alpha is 1.0
-            if normf_try <= normf * (1.0 - c_armijo * alpha) or alpha == 1.0:
-                try:
-                    step1 = solve_linear(jac_state.lu, -f_try)
-                except Exception:
-                    alpha /= damp_factor
-                    continue
-
-                if not np.all(np.isfinite(step1)):
-                    alpha /= damp_factor
-                    continue
-
-                s1_try = weighted_norm(step1, x_try, problem, rdt=rdt)
-                if s1_try < 1.0 or s1_try < s0:
+            if residual_damping:
+                # The trial residual is already available. Avoid an extra
+                # linear solve just to estimate the next correction; the next
+                # Newton iteration computes that correction exactly.
+                normf_try = float(np.linalg.norm(f_try, ord=np.inf))
+                residual_ok = (
+                    normf <= 1.0e-30
+                    or normf_try < normf * (1.0 - residual_reduction)
+                )
+                if residual_ok:
                     damp_ok = True
                     x1 = x_try
-                    s1 = s1_try
+                    # Diagnostic predictor only. A damped trial continues
+                    # with a fresh Newton correction on the next iteration.
+                    s1 = alpha * s0
                     break
+
+            try:
+                step1 = _solve_newton_linear(jac_state, -f_try, problem)
+            except Exception:
+                alpha /= damp_factor
+                continue
+
+            if not np.all(np.isfinite(step1)):
+                alpha /= damp_factor
+                continue
+
+            s1_try = weighted_norm(step1, x_try, problem, rdt=rdt)
+            if s1_try < 1.0 or s1_try < s0:
+                damp_ok = True
+                x1 = x_try
+                s1 = s1_try
+                break
 
             alpha /= damp_factor
         _profile_record(problem, "newton_damping", t_damp)
 
         if damp_ok:
             x = x1
-            f_reusable = f_try
-            converged = bool(s1 < tol)
+            if residual_damping:
+                converged = bool(alpha >= 1.0 - 1.0e-14 and s1 < tol)
+            else:
+                converged = bool(s1 < tol)
             history.append({
                 "iter": it,
                 "status": "ok" if converged else "step",
@@ -896,7 +1091,6 @@ def newton_solve(
             status = 0
 
         else:
-            f_reusable = None
             history.append({
                 "iter": it,
                 "status": "no_damp",
@@ -941,7 +1135,7 @@ Replica la estructura de Sim1D::solve() de Cantera:
 SteadyStateSystem::solve() (en numerics/SteadyStateSystem.cpp) implementa:
   for each cycle:
       intento Newton estacionario   -> newton_solve(rdt=0)
-      si falla -> time steps: BE de arranque y luego BDF2
+      si falla -> time steps Euler implÃ­cito (BE)
       si falla -> reduce dt y reintenta
   hasta converger o agotar max_steps
 
@@ -971,11 +1165,13 @@ class SolveOptions:
     steady_max_jac_age: int | None = None
     transient_max_jac_age: int | None = None
     max_damp_iter: int = 7
+    damp_factor: float = float(np.sqrt(2.0))
     tol: float = 1.0          # norma ponderada del paso (igual que Cantera)
     jac_eps: float = 1e-5
     jac_abs_perturb: float = 1e-10
     jac_threshold: float = 0.0
     jacobian_mode: str = "numba_local"
+    precompute_jacobian_thermo: bool = True
     alpha_min: float = 1e-10
 
     # Time-stepping (híbrido)
@@ -989,31 +1185,55 @@ class SolveOptions:
     time_step_sequence: tuple[int, ...] = (20,)
     transient_max_iter: int = 50
     max_time_step_count: int = 500
-    transient_scheme: str = "be"
     reset_bad_after_failures: int = 3
+    # ``recycled_gmres`` reuses the last exact transient LU as a
+    # preconditioner when the BE timestep changes. It always falls back to
+    # an exact factorization if GMRES misses this small iteration budget.
+    transient_linear_solver: str = "direct"  # "direct" | "recycled_gmres"
+    recycled_gmres_rtol: float = 1e-8
+    recycled_gmres_restart: int = 4
+    recycled_gmres_maxiter: int = 1
+    # Probe recycled GMRES a few times, then skip probes that repeatedly fall
+    # back to an exact factorization. The exact fallback remains unchanged.
+    recycled_gmres_adaptive: bool = False
+    recycled_gmres_probe_failures: int = 3
+
+    # Optional inexact damping for warm starts and continuation chains.
+    damping_mode: str = "step_norm"  # "step_norm" | "residual"
+    damping_residual_reduction: float = 1.0e-3
 
     # Refinamiento (defaults de Refiner::setCriteria)
     refine_grid: bool = True
     max_refine_passes: int = 6
+    # A capped refinement loop is useful for fast screening, but it must not
+    # be reported as a mesh-converged solution in a certified calculation.
+    require_grid_convergence: bool = False
     refine_ratio: float = 10.0
     refine_slope: float = 0.8
     refine_curve: float = 0.8
     refine_prune: float = -0.1
     refine_grid_min: float = 1e-10
     refine_max_points: int = 500
+    refine_Finf_limit: float = 10.0
+    final_Finf_limit: float | None = None
+    accept_residual_converged: bool = False
+    accept_initial_residual_converged: bool = False
+    acceptance_criterion: str = "residual"  # "residual" | "cantera" | "combined"
+    weighted_step_norm_limit: float | None = None
+    residual_guard_inf: float | None = None
 
     # Auto-expansion of domain (mimics FreeFlame.solve(auto=True))
     domain_auto_expand: bool = True
     max_domain_expansions: int = 12
     domain_expand_factor: float = 2.0
     domain_edge_slope_tol: float = 0.02
+    domain_edge_strict_mode: bool = True
 
     # Auto bootstrap on fixed grids (mirrors Cantera _onedim auto path)
     auto_bootstrap_grids: bool = True
     bootstrap_grid_points: tuple[int, ...] = (12, 24, 48)
     bootstrap_max_grid_points: int = 1000
-
-    use_jax: bool = True
+    restart_insert_anchor: bool = False
 
     max_total_time_s: float = 300.0
     verbose: bool = True
@@ -1034,44 +1254,8 @@ class DomainTooNarrowError(RuntimeError):
 # ---------------------------------------------------------------------------
 def _make_steady_fun(problem):
     """Cierre que llama a residual(x, problem, rdt=0)."""
-    def fun(x, prob=problem):
+    def fun(x, prob):
         return residual(x, prob, rdt=0.0, x_old=None)
-        
-    if getattr(problem, "use_jax", False):
-        if not hasattr(problem, "_jax_evaluator"):
-            from residual_jax import JaxEvaluator
-            problem._jax_evaluator = JaxEvaluator(problem)
-            
-        import jax
-        import jax.numpy as jnp
-        
-        # Determine fixed/dev parameters statically for vmap
-        z = problem.z
-        T_in = float(problem.T_in)
-        Y_in = jnp.asarray(problem.Y_in)
-        j_fixed = int(problem.j_fixed) if problem.j_fixed is not None else -1
-        j_fixed_arg = jnp.array(j_fixed) if j_fixed != -1 else None
-        T_fixed_point = float(problem.T_fixed_point) if hasattr(problem, 'T_fixed_point') else 0.0
-        T_prof_dev = jnp.asarray(problem.T_profile_fixed) if getattr(problem, 'T_profile_fixed', None) is not None else None
-        solve_energy = bool(problem.solve_energy)
-        
-        compiled_res = problem._jax_evaluator.compiled_residual
-        # vmap over axis 0 of x
-        vmap_res = jax.jit(jax.vmap(
-            compiled_res,
-            in_axes=(0, None, None, None, None, None, None, None, None, None, None, None, None),
-            out_axes=0
-        ), static_argnames=["solve_energy", "use_bdf2"])
-        
-        def evaluate_batch(x_batch):
-            res_batch = vmap_res(
-                jnp.asarray(x_batch), z, T_in, Y_in, j_fixed_arg, T_fixed_point, T_prof_dev, solve_energy,
-                0.0, None, None, None, False
-            )
-            return np.asarray(res_batch)
-            
-        fun.evaluate_batch = evaluate_batch
-
     return fun
 
 
@@ -1095,6 +1279,17 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
     problem.jacobian_abs_perturb = float(getattr(opts, "jac_abs_perturb", 1e-10))
     problem.jacobian_threshold = float(getattr(opts, "jac_threshold", 0.0))
     problem.jacobian_mode = str(getattr(opts, "jacobian_mode", "numba_local"))
+    problem.precompute_jacobian_thermo = bool(getattr(opts, "precompute_jacobian_thermo", False))
+    problem.transient_linear_solver = str(
+        getattr(opts, "transient_linear_solver", "direct")
+    ).strip().lower()
+    problem.recycled_gmres_rtol = float(getattr(opts, "recycled_gmres_rtol", 1e-8))
+    problem.recycled_gmres_restart = int(getattr(opts, "recycled_gmres_restart", 4))
+    problem.recycled_gmres_maxiter = int(getattr(opts, "recycled_gmres_maxiter", 1))
+    problem.recycled_gmres_adaptive = bool(getattr(opts, "recycled_gmres_adaptive", False))
+    problem.recycled_gmres_probe_failures = int(
+        getattr(opts, "recycled_gmres_probe_failures", 3)
+    )
 
     steady_fun = _make_steady_fun(problem)
     jac: JacobianState | None = None
@@ -1111,6 +1306,7 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
         if opts.transient_max_jac_age is not None
         else int(opts.max_jac_age)
     )
+    damp_factor = max(1.01, float(getattr(opts, "damp_factor", np.sqrt(2.0))))
 
     # Time-step schedule m_steps; if exhausted, repeat last entry.
     raw_steps = tuple(int(v) for v in getattr(opts, "time_step_sequence", (10,)))
@@ -1141,6 +1337,29 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
             })
             return x, False, history
 
+        if bool(getattr(opts, "accept_initial_residual_converged", False)):
+            Finf = _residual_inf(problem, x)
+            Finf_limit = _final_residual_limit(opts)
+            residual_ok = (not np.isfinite(Finf_limit)) or Finf <= Finf_limit
+            if residual_ok:
+                if steady_callback is not None:
+                    steady_callback(x)
+                history.append(
+                    {
+                        "cycle": attempt,
+                        "phase": "initial_residual_accept",
+                        "ok": True,
+                        "Finf": float(Finf),
+                        "Finf_limit": float(Finf_limit),
+                    }
+                )
+                if opts.verbose:
+                    print(
+                        f"  [ciclo {attempt}] Semilla aceptada por residual  "
+                        f"||F||inf={Finf:.4e} <= {Finf_limit:.4e}"
+                    )
+                return x, True, history
+
         # ---- Intentar Newton estacionario ----
         x_ss, ok_ss, hist_ss, jac = newton_solve(
             steady_fun, x, problem,
@@ -1148,13 +1367,17 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
             max_iter=opts.steady_max_iter,
             max_jac_age=ss_jac_age,
             max_damp_iter=opts.max_damp_iter,
+            damp_factor=damp_factor,
             tol=opts.tol,
             jac_eps=opts.jac_eps,
             alpha_min=opts.alpha_min,
+            damping_mode=getattr(opts, "damping_mode", "step_norm"),
+            damping_residual_reduction=getattr(opts, "damping_residual_reduction", 1.0e-3),
             verbose=opts.verbose,
             jac_state=jac,
             deadline=deadline,
         )
+        weighted_step_norm, newton_Finf = _remember_newton_metrics(problem, hist_ss)
         history.append(
             {
                 "cycle": attempt,
@@ -1162,6 +1385,8 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                 "ok": ok_ss,
                 "steps": len(hist_ss),
                 "last_status": hist_ss[-1].get("status") if hist_ss else None,
+                "weighted_step_norm": weighted_step_norm,
+                "newton_Finf": newton_Finf,
             }
         )
 
@@ -1172,6 +1397,29 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                 Finf = float(np.linalg.norm(residual(x_ss, problem), ord=np.inf))
                 print(f"  [ciclo {attempt}] Estacionario OK  ||F||inf={Finf:.4e}")
             return x_ss, True, history
+
+        if bool(getattr(opts, "accept_residual_converged", False)):
+            Finf = _residual_inf(problem, x_ss)
+            Finf_limit = _final_residual_limit(opts)
+            residual_ok = (not np.isfinite(Finf_limit)) or Finf <= Finf_limit
+            if residual_ok:
+                if steady_callback is not None:
+                    steady_callback(x_ss)
+                history.append(
+                    {
+                        "cycle": attempt,
+                        "phase": "steady_residual_accept",
+                        "ok": True,
+                        "Finf": float(Finf),
+                        "Finf_limit": float(Finf_limit),
+                    }
+                )
+                if opts.verbose:
+                    print(
+                        f"  [ciclo {attempt}] Aceptado por residual  "
+                        f"||F||inf={Finf:.4e} <= {Finf_limit:.4e}"
+                    )
+                return x_ss, True, history
 
         if opts.verbose:
             print(f"  [ciclo {attempt}] Estacionario FALLO -> time-stepping")
@@ -1198,10 +1446,8 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                 break
 
             rdt = 1.0 / dt_try
-            scheme_mode = str(getattr(opts, "transient_scheme", "be")).strip().lower()
-            use_bdf2 = scheme_mode in ("bdf2", "be-bdf2", "mixed") and x_older is not None
-            transient_order = 2 if use_bdf2 else 1
-            scheme = "BDF2" if use_bdf2 else "BE"
+            transient_order = 1
+            scheme = "BE"
             jac_evals_before = int(jac.n_evals) if jac is not None else 0
 
             x_ts, ok_ts, hist_ts, jac = newton_solve(
@@ -1211,13 +1457,17 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                 max_iter=opts.transient_max_iter,
                 max_jac_age=ts_jac_age,
                 max_damp_iter=opts.max_damp_iter,
+                damp_factor=damp_factor,
                 tol=opts.tol,
                 jac_eps=opts.jac_eps,
                 alpha_min=opts.alpha_min,
+                damping_mode=getattr(opts, "damping_mode", "step_norm"),
+                damping_residual_reduction=getattr(opts, "damping_residual_reduction", 1.0e-3),
                 verbose=opts.verbose,
                 jac_state=jac,
                 deadline=deadline,
             )
+            weighted_step_norm, newton_Finf = _remember_newton_metrics(problem, hist_ts)
             jac_evals_after = int(jac.n_evals) if jac is not None else jac_evals_before
 
             history.append(
@@ -1231,6 +1481,8 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                     "jac_evals_before": jac_evals_before,
                     "jac_evals_after": jac_evals_after,
                     "last_status": hist_ts[-1].get("status") if hist_ts else None,
+                    "weighted_step_norm": weighted_step_norm,
+                    "newton_Finf": newton_Finf,
                 }
             )
 
@@ -1239,7 +1491,7 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                 x_prev = x_old
                 x = x_ts
                 x_old = x_ts
-                x_older = x_prev if scheme_mode in ("bdf2", "be-bdf2", "mixed") else None
+                x_older = None
                 n_done += 1
                 nsteps_total += 1
 
@@ -1254,6 +1506,25 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                 if opts.verbose:
                     Finf = float(np.linalg.norm(residual(x, problem), ord=np.inf))
                     print(f"    ts {scheme} OK  dt={dt:.2e}  ||F||inf={Finf:.4e}")
+
+                if bool(getattr(opts, "accept_residual_converged", False)):
+                    Finf = _residual_inf(problem, x)
+                    Finf_limit = _final_residual_limit(opts)
+                    residual_ok = (not np.isfinite(Finf_limit)) or Finf <= Finf_limit
+                    if residual_ok:
+                        if steady_callback is not None:
+                            steady_callback(x)
+                        history.append(
+                            {
+                                "cycle": attempt,
+                                "phase": "transient_residual_accept",
+                                "ok": True,
+                                "Finf": float(Finf),
+                                "Finf_limit": float(Finf_limit),
+                                "nsteps_total": int(nsteps_total),
+                            }
+                        )
+                        return x, True, history
 
                 if nsteps_total >= nsteps_max:
                     history.append(
@@ -1323,6 +1594,76 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
 # ---------------------------------------------------------------------------
 #  Refinamiento (Sim1D::refine)
 # ---------------------------------------------------------------------------
+def _residual_inf(problem, x: np.ndarray) -> float:
+    return float(np.linalg.norm(residual(x, problem), ord=np.inf))
+
+
+def _final_residual_limit(opts: SolveOptions) -> float:
+    limit = getattr(opts, "final_Finf_limit", None)
+    if limit is None:
+        limit = getattr(opts, "refine_Finf_limit", 10.0)
+    return float(limit)
+
+
+def _weighted_step_limit(opts: SolveOptions) -> float:
+    limit = getattr(opts, "weighted_step_norm_limit", None)
+    if limit is None:
+        limit = getattr(opts, "tol", 1.0)
+    return float(limit)
+
+
+def _residual_guard_limit(opts: SolveOptions) -> float:
+    limit = getattr(opts, "residual_guard_inf", None)
+    if limit is None:
+        return float("inf")
+    return float(limit)
+
+
+def _acceptance_criterion(opts: SolveOptions) -> str:
+    criterion = str(getattr(opts, "acceptance_criterion", "residual")).strip().lower()
+    if criterion in ("weighted", "weighted_step", "cantera_like"):
+        return "cantera"
+    if criterion in ("weighted_residual", "strict"):
+        return "combined"
+    if criterion not in ("residual", "cantera", "combined"):
+        return "residual"
+    return criterion
+
+
+def _acceptance_status(problem, x: np.ndarray, opts: SolveOptions) -> dict[str, Any]:
+    Finf = _residual_inf(problem, x)
+    Finf_limit = _final_residual_limit(opts)
+    residual_ok = (not np.isfinite(Finf_limit)) or Finf <= Finf_limit
+
+    weighted_step_norm = float(getattr(problem, "last_weighted_step_norm", float("nan")))
+    weighted_limit = _weighted_step_limit(opts)
+    weighted_ok = np.isfinite(weighted_step_norm) and weighted_step_norm <= weighted_limit
+
+    guard_limit = _residual_guard_limit(opts)
+    guard_ok = (not np.isfinite(guard_limit)) or Finf <= guard_limit
+
+    criterion = _acceptance_criterion(opts)
+    if criterion == "cantera":
+        accepted = weighted_ok and guard_ok
+    elif criterion == "combined":
+        accepted = weighted_ok and residual_ok
+    else:
+        accepted = residual_ok
+
+    return {
+        "criterion": criterion,
+        "accepted": bool(accepted),
+        "Finf": float(Finf),
+        "Finf_limit": float(Finf_limit),
+        "residual_accepted": bool(residual_ok),
+        "weighted_step_norm": float(weighted_step_norm),
+        "weighted_step_norm_limit": float(weighted_limit),
+        "weighted_step_accepted": bool(weighted_ok),
+        "residual_guard_inf": float(guard_limit),
+        "residual_guard_accepted": bool(guard_ok),
+    }
+
+
 def _refine_and_solve(
     problem,
     x_ss: np.ndarray,
@@ -1371,6 +1712,20 @@ def _refine_and_solve(
 
         if not changed:
             info["reason"] = "grid_converged"
+            accept_info = _acceptance_status(problem, x_ss, opts)
+            info["Finf_after"] = accept_info["Finf"]
+            info["Finf_limit"] = accept_info["Finf_limit"]
+            info["residual_accepted"] = accept_info["residual_accepted"]
+            info["weighted_step_norm"] = accept_info["weighted_step_norm"]
+            info["weighted_step_norm_limit"] = accept_info["weighted_step_norm_limit"]
+            info["weighted_step_accepted"] = accept_info["weighted_step_accepted"]
+            info["residual_guard_inf"] = accept_info["residual_guard_inf"]
+            info["residual_guard_accepted"] = accept_info["residual_guard_accepted"]
+            info["acceptance_criterion"] = accept_info["criterion"]
+            info["final_accepted"] = accept_info["accepted"]
+            if not bool(accept_info["accepted"]):
+                log.append(info)
+                return x_ss, False, log
             if opts.verbose:
                 print("no new points needed in flame")
             log.append(info)
@@ -1410,12 +1765,57 @@ def _refine_and_solve(
         info["solve_ok"] = ok
         info["solve_timeout"] = _history_timed_out(hist_ref)
         info["last_status"] = _history_last_status(hist_ref)
-        info["Finf_after"] = float(np.linalg.norm(
-            residual(x_try, problem), ord=np.inf))
+        accept_info = _acceptance_status(problem, x_try, opts)
+        info["Finf_after"] = accept_info["Finf"]
+        info["Finf_limit"] = accept_info["Finf_limit"]
+        info["residual_accepted"] = accept_info["residual_accepted"]
+        info["weighted_step_norm"] = accept_info["weighted_step_norm"]
+        info["weighted_step_norm_limit"] = accept_info["weighted_step_norm_limit"]
+        info["weighted_step_accepted"] = accept_info["weighted_step_accepted"]
+        info["residual_guard_inf"] = accept_info["residual_guard_inf"]
+        info["residual_guard_accepted"] = accept_info["residual_guard_accepted"]
+        info["acceptance_criterion"] = accept_info["criterion"]
+        info["final_accepted"] = accept_info["accepted"]
         log.append(info)
 
         if ok:
             x_ss = x_try
+            # If the selected final criterion is still not satisfied despite
+            # Newton convergence, force a few additional solve attempts.
+            max_resolves = 3
+            for _resolv in range(max_resolves):
+                if bool(info.get("final_accepted", False)):
+                    break
+                if deadline and time.perf_counter() > deadline:
+                    break
+                if opts.verbose:
+                    print(
+                        f"  Refine pass {pass_idx}: criterio final no aceptado "
+                        f"(Finf={info['Finf_after']:.2e}, "
+                        f"wstep={info['weighted_step_norm']:.2e}) -> re-solving"
+                    )
+                _, T_re, _ = unpack_state(x_ss, problem.n_points, problem.n_species)
+                problem.setup_fixed_temperature(T_profile=T_re)
+                x_re, ok_re, hist_re = _hybrid_newton(
+                    problem, x_ss, opts,
+                    label=f"Re-solve pass {pass_idx} (Finf too high)",
+                    steady_callback=width_check, deadline=deadline)
+                if ok_re:
+                    x_ss = x_re
+                    accept_info = _acceptance_status(problem, x_ss, opts)
+                    info["Finf_after"] = accept_info["Finf"]
+                    info["Finf_limit"] = accept_info["Finf_limit"]
+                    info["residual_accepted"] = accept_info["residual_accepted"]
+                    info["weighted_step_norm"] = accept_info["weighted_step_norm"]
+                    info["weighted_step_norm_limit"] = accept_info["weighted_step_norm_limit"]
+                    info["weighted_step_accepted"] = accept_info["weighted_step_accepted"]
+                    info["residual_guard_inf"] = accept_info["residual_guard_inf"]
+                    info["residual_guard_accepted"] = accept_info["residual_guard_accepted"]
+                    info["acceptance_criterion"] = accept_info["criterion"]
+                    info["final_accepted"] = accept_info["accepted"]
+                    info["re_solved"] = True
+                else:
+                    break
         else:
             # Restaurar último steady (como Sim1D hace con m_xlast_ss)
             if opts.verbose:
@@ -1429,6 +1829,14 @@ def _refine_and_solve(
             info["restored"] = True
             return x_last_ss, not bool(info.get("solve_timeout", False)), log
 
+    log.append({
+        "reason": "max_refine_passes_reached",
+        "grid_converged": False,
+        "max_refine_passes": int(opts.max_refine_passes),
+        "n_points": int(problem.n_points),
+    })
+    if bool(getattr(opts, "require_grid_convergence", False)):
+        return x_ss, False, log
     return x_ss, True, log
 
 
@@ -1574,13 +1982,13 @@ def _solve_refine_energy_on(
     return x_ref, bool(ok_ref), report
 
 
-def _domain_too_narrow(problem, x: np.ndarray, slope_tol: float = 0.02) -> tuple[bool, dict[str, float]]:
+def _domain_too_narrow(problem, x: np.ndarray, slope_tol: float = 0.02, strict_mode: bool = False) -> tuple[bool, dict[str, float]]:
     """
     Mimic Cantera FreeFlame.solve(auto=True) width check:
       mRef = (T[-1]-T[0]) / (x[-1]-x[0])
       mLeft = (T[1]-T[0]) / (x[1]-x[0]) / mRef
-      mRight = (T[-3]-T[-1]) / (x[-3]-x[-1]) / mRef
-      too_narrow if mLeft > tol or mRight > tol
+      mRight = (T[-3]-T[-1]) / (x[-3]-x[-1]) / mRef (if strict_mode)
+      or (T[-2]-T[-1]) / (x[-2]-x[-1]) / mRef (if not strict_mode, like Cantera)
     """
     z = np.asarray(problem.z, dtype=float)
     n = int(z.size)
@@ -1607,7 +2015,12 @@ def _domain_too_narrow(problem, x: np.ndarray, slope_tol: float = 0.02) -> tuple
         return False, metrics
 
     m_left = float(abs((T[1] - T[0]) / (z[1] - z[0]) / m_ref))
-    m_right = float(abs((T[-3] - T[-1]) / (z[-3] - z[-1]) / m_ref))
+
+    if strict_mode:
+        m_right = float(abs((T[-3] - T[-1]) / (z[-3] - z[-1]) / m_ref))
+    else:
+        m_right = float(abs((T[-2] - T[-1]) / (z[-2] - z[-1]) / m_ref))
+
     metrics["m_left"] = m_left
     metrics["m_right"] = m_right
 
@@ -1674,8 +2087,14 @@ def _bootstrap_grid_sequence(problem, opts: SolveOptions, restart_mode: bool) ->
     return out or [n0]
 
 
-def _seed_state_on_fixed_grid(problem, x: np.ndarray | None, n_points: int,
-                              opts: SolveOptions, use_initial_guess: bool) -> np.ndarray:
+def _seed_state_on_fixed_grid(
+    problem,
+    x: np.ndarray | None,
+    n_points: int,
+    opts: SolveOptions,
+    use_initial_guess: bool,
+    insert_anchor: bool = True,
+) -> np.ndarray:
     """
     Prepare state on a fixed grid for auto bootstrap stage.
     """
@@ -1696,7 +2115,11 @@ def _seed_state_on_fixed_grid(problem, x: np.ndarray | None, n_points: int,
             x_new = np.asarray(x, dtype=float).copy()
 
     x_new = problem.reset_bad_values(x_new)
-    x_new = _apply_fixed_temperature_anchor(problem, x_new, T_target=problem.anchor_T)
+    if insert_anchor:
+        x_new = _apply_fixed_temperature_anchor(problem, x_new, T_target=problem.anchor_T)
+    else:
+        _, T_eff, _ = unpack_state(x_new, problem.n_points, problem.n_species)
+        problem.setup_fixed_temperature(T_profile=T_eff)
     return x_new
 
 
@@ -1840,6 +2263,18 @@ def solve_free_flame(
         problem._profile = {}
     elif hasattr(problem, "_profile"):
         delattr(problem, "_profile")
+    if str(getattr(opts, "transient_linear_solver", "direct")).strip().lower() == "recycled_gmres":
+        problem._recycled_gmres_stats = {
+            "gmres_solves": 0,
+            "gmres_iterations": 0,
+            "gmres_fallbacks": 0,
+            "gmres_skipped": 0,
+            "adaptive_exact_rebuilds": 0,
+            "gmres_consecutive_failures": 0,
+            "transient_updates_reused": 0,
+        }
+    elif hasattr(problem, "_recycled_gmres_stats"):
+        delattr(problem, "_recycled_gmres_stats")
 
     if problem.backend is None:
         _refresh_backend(problem)
@@ -1882,8 +2317,19 @@ def solve_free_flame(
                 # Keep and propagate the latest state unless there is no seed yet.
                 # This preserves the post-expansion solution path like Cantera.
                 use_initial_guess = (x_work is None)
+                insert_anchor = (
+                    use_initial_guess
+                    or not restart_mode
+                    or bool(getattr(opts, "restart_insert_anchor", False))
+                )
                 x_work = _seed_state_on_fixed_grid(
-                    problem, x_work, n_grid, opts, use_initial_guess=use_initial_guess)
+                    problem,
+                    x_work,
+                    n_grid,
+                    opts,
+                    use_initial_guess=use_initial_guess,
+                    insert_anchor=insert_anchor,
+                )
                 report.setdefault("grid_attempts", []).append(
                     {
                         "expand_pass": int(expand_pass),
@@ -1896,7 +2342,7 @@ def solve_free_flame(
 
                 def width_check(x_state: np.ndarray, stage_mode: str) -> None:
                     narrow, metrics = _domain_too_narrow(
-                        problem, x_state, slope_tol=slope_tol)
+                        problem, x_state, slope_tol=slope_tol, strict_mode=opts.domain_edge_strict_mode)
                     m = dict(metrics)
                     m["expand_pass"] = int(expand_pass)
                     m["grid_pass"] = int(grid_pass)
@@ -1991,20 +2437,61 @@ def solve_free_flame(
 
     if x is None:
         x = _seed_state_on_fixed_grid(
-            problem, None, int(problem.n_points), opts, use_initial_guess=True)
+            problem,
+            None,
+            int(problem.n_points),
+            opts,
+            use_initial_guess=True,
+            insert_anchor=True,
+        )
+
+    accept_info = _acceptance_status(problem, x, opts)
+    Finf_final = float(accept_info["Finf"])
+    Finf_limit = float(accept_info["Finf_limit"])
+    final_accepted = bool(accept_info["accepted"])
+    residual_accepted = bool(accept_info["residual_accepted"])
+    grid_required = bool(getattr(opts, "require_grid_convergence", False))
+    if grid_required and not bool(solved):
+        # A small Newton step alone is not a certificate of discretization
+        # accuracy when refinement terminated by an imposed pass limit.
+        report["grid_convergence_required"] = True
+        report["grid_converged"] = False
+        final_accepted = False
+    elif grid_required:
+        report["grid_convergence_required"] = True
+        report["grid_converged"] = True
+    if bool(solved) and not final_accepted:
+        report["solved_before_residual_check"] = True
+        solved = False
+    elif (not bool(solved)) and residual_accepted and bool(
+        getattr(opts, "accept_residual_converged", False)
+    ) and not grid_required:
+        report["solved_by_residual_check"] = True
+        solved = True
 
     report["n_points_final"] = int(problem.n_points)
     report["solved"] = bool(solved)
     report["total_time_s"] = float(time.perf_counter() - t_start)
-    report["Finf_final"] = float(np.linalg.norm(
-        residual(x, problem), ord=np.inf))
+    report["Finf_final"] = Finf_final
+    report["Finf_limit"] = Finf_limit
+    report["residual_accepted"] = bool(residual_accepted)
+    report["weighted_step_norm_final"] = float(accept_info["weighted_step_norm"])
+    report["weighted_step_norm_limit"] = float(accept_info["weighted_step_norm_limit"])
+    report["weighted_step_accepted"] = bool(accept_info["weighted_step_accepted"])
+    report["residual_guard_inf"] = float(accept_info["residual_guard_inf"])
+    report["residual_guard_accepted"] = bool(accept_info["residual_guard_accepted"])
+    report["acceptance_criterion"] = str(accept_info["criterion"])
+    report["final_accepted"] = bool(final_accepted)
     if bool(getattr(opts, "profile", False)):
         report["profile"] = _profile_snapshot(getattr(problem, "_profile", {}))
+    if hasattr(problem, "_recycled_gmres_stats"):
+        report["recycled_gmres"] = dict(problem._recycled_gmres_stats)
 
     if opts.verbose:
         print(f"\n{'='*60}")
         print(f"  Resuelto: {solved}  n_pts={problem.n_points}"
               f"  ||F||inf={report['Finf_final']:.4e}"
+              f"  wstep={report['weighted_step_norm_final']:.4e}"
               f"  t={report['total_time_s']:.1f}s")
         print(f"{'='*60}")
 

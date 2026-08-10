@@ -82,6 +82,15 @@ def parse_phi_values(args: argparse.Namespace) -> np.ndarray:
     return np.linspace(float(args.phi_min), float(args.phi_max), int(args.n_phi))
 
 
+def parse_z_values(args: argparse.Namespace) -> np.ndarray:
+    if args.z_values.strip():
+        vals = [float(v.strip()) for v in args.z_values.split(",") if v.strip()]
+        return np.array(sorted(vals), dtype=float)
+    if args.n_z < 2:
+        return np.array([float(args.z_min)], dtype=float)
+    return np.linspace(float(args.z_min), float(args.z_max), int(args.n_z))
+
+
 # ---------------------------------------------------------------------------
 # Fracción de mezcla de Bilger  <<<  NUEVA FUNCIÓN
 # ---------------------------------------------------------------------------
@@ -101,6 +110,49 @@ def compute_bilger_Z(phi: float, args: argparse.Namespace) -> float:
     # basis='mass' → fracción de mezcla másica (estándar en FGM)
     Z = float(gas.mixture_fraction(args.fuel, args.oxidizer, basis="mass"))
     return Z
+
+
+def invert_bilger_Z_to_phi(
+    Z_target: float,
+    args: argparse.Namespace,
+    *,
+    phi_lo: float,
+    phi_hi: float,
+    tol: float = 1e-10,
+    max_iter: int = 80,
+) -> float:
+    """
+    Invertir Z(phi) para una mezcla premezclada:
+      dado Z objetivo, encontrar phi tal que compute_bilger_Z(phi)=Z.
+    """
+    if not (0.0 <= Z_target <= 1.0):
+        raise ValueError(f"Z objetivo fuera de [0,1]: {Z_target}")
+
+    # Evitar extremos exactos (phi->0 o phi->inf).
+    zt = float(np.clip(Z_target, 1e-12, 1.0 - 1e-12))
+    plo = max(float(phi_lo), 1e-12)
+    phi = max(float(phi_hi), plo * 1.001)
+
+    z_lo = compute_bilger_Z(plo, args)
+    z_hi = compute_bilger_Z(phi, args)
+    if not (z_lo <= zt <= z_hi):
+        raise ValueError(
+            "Z objetivo no alcanzable con el bracket de phi actual. "
+            f"Z_target={zt:.6f}, Z(phi_lo={plo:.3e})={z_lo:.6f}, "
+            f"Z(phi_hi={phi:.3e})={z_hi:.6f}"
+        )
+
+    for _ in range(int(max_iter)):
+        pm = float(np.sqrt(plo * phi))  # bisección en escala log(phi)
+        zm = compute_bilger_Z(pm, args)
+        if abs(zm - zt) <= float(tol):
+            return pm
+        if zm < zt:
+            plo = pm
+        else:
+            phi = pm
+
+    return 0.5 * (plo + phi)
 
 
 # ---------------------------------------------------------------------------
@@ -435,6 +487,17 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--n-phi",      type=int,   default=13)
     p.add_argument("--phi-values", type=str,   default="",
                    help="Lista manual separada por comas. Ignora phi-min/max/n-phi.")
+    p.add_argument("--use-z-grid", action="store_true",
+                   help="Barrer por Z objetivo en lugar de phi.")
+    p.add_argument("--z-min",      type=float, default=0.03)
+    p.add_argument("--z-max",      type=float, default=0.08)
+    p.add_argument("--n-z",        type=int,   default=13)
+    p.add_argument("--z-values",   type=str,   default="",
+                   help="Lista manual de Z separada por comas. Ignora z-min/max/n-z.")
+    p.add_argument("--phi-bracket-min", type=float, default=1e-4,
+                   help="Límite inferior de phi para invertir Z->phi.")
+    p.add_argument("--phi-bracket-max", type=float, default=1e3,
+                   help="Límite superior de phi para invertir Z->phi.")
 
     # Refinamiento Cantera
     p.add_argument("--ratio",             type=float, default=3.0)
@@ -477,7 +540,25 @@ def main() -> None:
     args = build_argparser().parse_args()
     t_global0 = time.perf_counter()
 
-    phi_vals = parse_phi_values(args)
+    z_mode = bool(args.use_z_grid or args.z_values.strip())
+    if z_mode:
+        z_targets = parse_z_values(args)
+        phi_vals = np.array(
+            [
+                invert_bilger_Z_to_phi(
+                    Z_target=float(z),
+                    args=args,
+                    phi_lo=float(args.phi_bracket_min),
+                    phi_hi=float(args.phi_bracket_max),
+                )
+                for z in z_targets
+            ],
+            dtype=float,
+        )
+    else:
+        phi_vals = parse_phi_values(args)
+        z_targets = np.array([compute_bilger_Z(phi, args) for phi in phi_vals], dtype=float)
+
     progress_weights = parse_progress_weights(args.progress_species)
     indicator_species = parse_species_list(args.indicator_species)
 
@@ -492,8 +573,11 @@ def main() -> None:
     print("=" * 70)
     print(f"Cantera version : {ct.__version__}")
     print(f"Output          : {out_dir.resolve()}")
+    print(f"mode            : {'Z-grid' if z_mode else 'phi-grid'}")
     print(f"phis            : {phi_vals}")
     Z_preview = [compute_bilger_Z(phi, args) for phi in phi_vals]
+    if z_mode:
+        print(f"Z target        : {[f'{z:.4f}' for z in z_targets]}")
     print(f"Z (Bilger)      : {[f'{z:.4f}' for z in Z_preview]}")
     print(f"Z_st (phi=1)    : {compute_bilger_Z(1.0, args):.6f}")
 
@@ -503,7 +587,11 @@ def main() -> None:
     used_progress_species: list[str] = []
 
     for i, phi in enumerate(phi_vals, start=1):
-        print(f"\n[{i}/{len(phi_vals)}] Solving phi={phi:.4f}  Z={Z_preview[i-1]:.4f} ...")
+        z_tag = z_targets[i - 1] if z_mode else Z_preview[i - 1]
+        print(
+            f"\n[{i}/{len(phi_vals)}] Solving phi={phi:.4f}  "
+            f"Z_target={z_tag:.4f} ..."
+        )
         rec, prev_solution = solve_flame_cantera(
             phi=float(phi), args=args,
             prev_solution=prev_solution,
@@ -558,6 +646,8 @@ def main() -> None:
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "cantera_version": ct.__version__,
         "args": vars(args),
+        "mode": "Z-grid" if z_mode else "phi-grid",
+        "z_targets": [float(z) for z in z_targets],
         "n_species": len(species_names),
         "species_names": species_names,
         "used_progress_species": used_progress_species,
