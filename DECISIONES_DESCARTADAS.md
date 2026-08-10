@@ -98,3 +98,40 @@ Tambien se probaron dos rutas experimentales nuevas y quedaron desactivadas:
 
 Ambas quedan disponibles solo como opciones experimentales para futuras
 pruebas, no como camino de produccion.
+
+## Comparacion estricta FGM: misma malla y convergencia (2026-08-10)
+
+Se repitio un barrido GRI30, CH4/aire, phi = 0.9, 1.0 y 1.1 con width =
+0.03 m, transporte mixture-averaged, los mismos criterios base
+(ratio=3, slope=0.08, curve=0.12, prune=0.01) y el mismo refinamiento tight
+(ratio=2.5, slope=0.04, curve=0.08, prune=0.003). En ambos casos se exigio
+convergencia de malla y se uso el criterio de aceptacion cantera.
+
+| Ruta | Total | Tiempos por phi | Nodos finales |
+| --- | ---: | --- | --- |
+| Cantera | 18.72 s | 10.24 / 2.95 / 4.63 s | 261 / 267 / 280 |
+| V2 frio, sin cache | 50.82 s | 42.65 / 2.22 / 4.83 s | 267 / 276 / 291 |
+
+Las velocidades de llama de V2 fueron 0.338924, 0.378937 y 0.382446 m/s,
+frente a 0.338613, 0.378519 y 0.381789 m/s de Cantera; la diferencia maxima
+relativa fue aproximadamente 0.17 %. Los tres flamelets V2 fueron aceptados,
+con residual bruto inferior a 1e4 y norma ponderada del paso inferior a 1.
+
+La causa de la diferencia temporal esta localizada en el primer flamelet
+frio: una vez disponible una semilla V2 convergida, resolver en la malla final
+de Cantera tomo 1.53 s en total para los tres casos. Esto es una medicion del
+solver sobre una semilla ya certificada, no una comparacion end-to-end.
+
+La ruta de produccion para barridos repetidos es la cache persistente
+`output-root/_v2_seed_cache` y el paralelismo automatico. Con las mismas
+opciones estrictas, despues de generar las tres semillas V2, el barrido
+paralelo de tres procesos tomo 6.1 s, con los mismos nodos y aceptacion. Ese
+tiempo no debe presentarse como una comparacion fria: representa el escenario
+real de regenerar o explorar una tabla FGM despues del primer barrido.
+
+Tambien se probaron 12 y 24 nodos iniciales. En una llama aislada 12 nodos
+parecio reducir el tiempo, pero en el barrido completo subio a 58.4 s; 24
+nodos tambien empeoro el arranque. Se conserva 8 como default para no cambiar
+la trayectoria validada. No se agrega ninguna semilla de Cantera al cache V2,
+porque eso ocultaria el coste real del arranque y no seria una comparacion
+honesta de los solvers.

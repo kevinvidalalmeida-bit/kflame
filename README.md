@@ -61,3 +61,11 @@ puede modificarse con `NUMBA_NUM_THREADS` o, en FGM, con
 Las variantes medidas y descartadas están registradas en
 [`DECISIONES_DESCARTADAS.md`](DECISIONES_DESCARTADAS.md). No deben volver a
 añadirse sin una validación end-to-end de FGM reproducible.
+
+Para barridos FGM repetidos, el generador conserva las semillas V2 aceptadas
+en `output-root/_v2_seed_cache` y activa automaticamente procesos paralelos
+cuando todas las semillas del barrido ya existen. Es la ruta recomendada para
+produccion: mantiene la misma malla y criterio de convergencia, y evita pagar
+el bootstrap frio en cada regeneracion. La comparacion estricta fria y sus
+limitaciones estan documentadas en
+[`DECISIONES_DESCARTADAS.md`](DECISIONES_DESCARTADAS.md).
