@@ -47,11 +47,12 @@ Ese directorio contiene:
 Los perfiles, cachés, respaldos, binarios compilados y scripts de ensayo se
 eliminaron del árbol de trabajo. La ruta de producción usa Newton amortiguado
 tipo Cantera, Euler implícito (BE), Jacobiano block-tridiagonal y
-SciPy/LAPACK. En el generador FGM, los cambios de paso BE reutilizan la ultima
-LU exacta como precondicionador GMRES; ante fallo se vuelve automaticamente a
-una factorizacion exacta.
-El generador FGM usa por defecto `block_tridiag + recycled_gmres`; GMRES prueba
-cuatro iteraciones con la LU anterior y se vuelve a LU exacta cuando no basta.
+SciPy/LAPACK. En el generador FGM, la ruta fría usa por defecto
+`block_tridiag + direct` y desactiva los grids fijos intermedios; esto evita
+resolver y refinar varias veces la misma llama. `recycled_gmres` sigue
+disponible explícitamente para continuaciones donde resulte beneficioso.
+La opción `--auto-bootstrap-grids` conserva el bootstrap 12/24/48 para
+diagnóstico y reproducibilidad histórica.
 Para evitar sobre-hilos en los bloques densos pequenos, V2 fija
 `OPENBLAS_NUM_THREADS=1` si el usuario no lo define. En corridas FGM
 secuenciales y en V2, el kernel de quimica usa 4 hilos de Numba por defecto;

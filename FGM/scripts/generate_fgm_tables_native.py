@@ -356,6 +356,7 @@ def make_solve_options(args: argparse.Namespace) -> SolveOptions:
     opts.precompute_jacobian_thermo = bool(args.precompute_jacobian_thermo)
     opts.max_refine_passes = int(args.max_refine_passes)
     opts.require_grid_convergence = bool(args.require_grid_convergence)
+    opts.auto_bootstrap_grids = bool(args.auto_bootstrap_grids)
     opts.restart_insert_anchor = bool(args.restart_insert_anchor)
     return opts
 
@@ -985,16 +986,16 @@ def build_argparser() -> argparse.ArgumentParser:
                    help="Criterio de damping: norma del paso (por defecto) o contraccion del residual; este ultimo es experimental.")
     p.add_argument("--damping-residual-reduction", type=float, default=1.0e-3,
                    help="Reduccion relativa minima del residual para aceptar un trial en modo residual.")
-    p.add_argument("--continuation-max-jac-age", type=int, default=40,
-                   help="Edad del Jacobiano con una semilla convergida; 0 conserva --max-jac-age.")
+    p.add_argument("--continuation-max-jac-age", type=int, default=20,
+                   help="Edad del Jacobiano con una semilla convergida; 20 es el valor validado en el barrido FGM frio; 0 conserva --max-jac-age.")
     p.add_argument("--jac-threshold", type=float, default=0.0,
                    help="Umbral para descartar entradas pequenas del Jacobiano.")
     p.add_argument("--jacobian-mode", type=str, default="block_tridiag",
                    choices=("numba_local", "banded_lapack", "block_tridiag", "cantera_local"),
                    help="Backend del Jacobiano usado por el solver V2.")
-    p.add_argument("--transient-linear-solver", type=str, default="recycled_gmres",
+    p.add_argument("--transient-linear-solver", type=str, default="direct",
                    choices=("direct", "recycled_gmres"),
-                   help="En BE: prueba 4 iteraciones con la ultima LU como precondicionador GMRES; ante fallo vuelve a LU exacta.")
+                   help="En BE: LU directa por defecto; recycled_gmres queda disponible para continuaciones donde la sonda resulte util.")
     p.add_argument("--precompute-jacobian-thermo", action=argparse.BooleanOptionalAction,
                    default=True,
                    help="Precalcula termoquimica perturbada de todo el Jacobiano block_tridiag.")
@@ -1008,6 +1009,9 @@ def build_argparser() -> argparse.ArgumentParser:
                    help="Amortiguamiento del predictor secante en phi.")
     p.add_argument("--restart-insert-anchor", action="store_true",
                    help="Inserta un punto exacto de ancla de T tambien en reinicios.")
+    p.add_argument("--auto-bootstrap-grids", action=argparse.BooleanOptionalAction,
+                   default=False,
+                   help="Activa los grids fijos intermedios 12/24/48 antes del refinamiento adaptativo; es una ruta diagnostica mas lenta en FGM frio.")
     p.add_argument("--seed-profile-npz", type=str, default="",
                    help="Perfil .npz para sembrar el primer flamelet (raw profile o comparison_data).")
     p.add_argument("--seed-profile-source", type=str, default="auto",

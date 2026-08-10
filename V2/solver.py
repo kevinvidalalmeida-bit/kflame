@@ -1229,8 +1229,10 @@ class SolveOptions:
     domain_edge_slope_tol: float = 0.02
     domain_edge_strict_mode: bool = True
 
-    # Auto bootstrap on fixed grids (mirrors Cantera _onedim auto path)
-    auto_bootstrap_grids: bool = True
+    # Optional coarse bootstrap on fixed grids. For the production flamelet
+    # path, adaptive refinement directly from the initial grid is faster and
+    # avoids solving the same flame repeatedly on intermediate grids.
+    auto_bootstrap_grids: bool = False
     bootstrap_grid_points: tuple[int, ...] = (12, 24, 48)
     bootstrap_max_grid_points: int = 1000
     restart_insert_anchor: bool = False

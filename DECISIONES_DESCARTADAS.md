@@ -13,7 +13,7 @@ CH4/aire, 300 K, 1 atm y transporte mixture-averaged.
 | Jacobiano químico analítico experimental | El microbenchmark redujo el ensamblado, pero una continuación real requirió 39.35 s frente a 20.77 s de diferencias finitas. | Eliminado. |
 | BDF2 / BE-BDF2 pseudo-transitorio | La llama fría completa tomó 64.68 s frente a 57.79 s con Euler implícito (BE). | Eliminado; BE es el único esquema expuesto. |
 | Damping Armijo | Mejoró un bootstrap aislado, pero la llama completa subió a 60.30 s frente a 57.79 s. | Eliminado; se mantiene el damping estilo Cantera. |
-| Vida fija de Jacobiano = 80 | Phi=1.1 desde semilla fue rápido, pero phi=1->1.3 y la cadena hasta phi=1.3 no convergieron en 60 s. | No usar globalmente; continuación conservadora con edad 40. |
+| Vida fija de Jacobiano = 80 | Phi=1.1 desde semilla fue rápido, pero phi=1->1.3 y la cadena hasta phi=1.3 no convergieron en 60 s. | No usar globalmente; FGM usa edad 20 y la ruta histórica conserva 40. |
 | GPU/CuPy | Las transferencias CPU-GPU superaron el ahorro: Jacobiano CPU 0.153 s frente a GPU 0.219 s. | Eliminado; la ruta de produccion es solo CPU. |
 | Reaplicar isoterma persistente de anclaje | El anclaje actual ya conserva T=781.381 K. Forzarlo de nuevo dio la misma malla, 136 pasos y el mismo residual, con 37.18 s frente a 36.43 s. | Sin cambio; no acelera. |
 | Detector por residual precondicionado GMRES | Tras cuatro iteraciones, el residual precondicionado era bajo incluso en llamadas que fallaban la convergencia real; no activo ningun corte util. | Eliminado; usar una sonda fija de 4 iteraciones. |
@@ -27,8 +27,8 @@ CH4/aire, 300 K, 1 atm y transporte mixture-averaged.
   con una sonda de 4 iteraciones y regreso automatico a LU exacta.
 - Newton amortiguado compatible con Cantera y pseudo-transitorio Euler
   implícito (BE).
-- Continuación por perfiles y predictor secante; `max_jac_age=40` solo para
-  semillas convergidas.
+- Continuación por perfiles y predictor secante; `max_jac_age=20` para FGM
+  frío y 40 solo en la ruta histórica de semillas convergidas.
 - `OPENBLAS_NUM_THREADS=1` para los bloques densos pequeños.
 - Arranque de 12 nodos como opción validada para la FGM fría; conservar 8
   cuando se requiera reproducibilidad histórica.
@@ -48,13 +48,12 @@ los dos ultimos flamelets usaron el perfil y la malla del anterior.
 | block_tridiag + LU reciclada/GMRES | 19.65 s |
 | Cantera | 17.24 s |
 
-Se mantiene `block_tridiag + recycled_gmres` como predeterminado del
-generador: es 29.7 % mas rapido que la mejor alternativa V2 medida, aunque
-todavia 14.0 % mas lento que Cantera en este barrido. La sonda GMRES de cuatro
-iteraciones redujo la corrida V2 de 20.40 s a 17.83 s frente a un limite de
-doce iteraciones, sin cambio material de la solucion. En continuidad, phi=1.0
-y phi=1.1 usaron una sola malla, sin expansion del dominio y sin cambios de
-refinamiento; no se repitio bootstrap ni remallado.
+Ese cuadro conserva la comparacion historica entre backends V2. La sonda GMRES
+de cuatro iteraciones redujo aquella corrida V2 de 20.40 s a 17.83 s frente a
+un limite de doce iteraciones, sin cambio material de la solucion. La nueva
+ruta fria validada mas abajo usa LU directa: en el primer flamelet las sondas
+GMRES fallaban y despues se reconstruia la LU exacta, por lo que el coste de la
+sonda no se amortizaba.
 
 Esta seleccion es de rendimiento entre backends V2. La velocidad de llama V2
 difirio de Cantera entre 3.7 % y 4.7 % en este mallado, por lo que no constituye
@@ -135,3 +134,29 @@ nodos tambien empeoro el arranque. Se conserva 8 como default para no cambiar
 la trayectoria validada. No se agrega ninguna semilla de Cantera al cache V2,
 porque eso ocultaria el coste real del arranque y no seria una comparacion
 honesta de los solvers.
+
+## Optimizacion del arranque frio V2 (2026-08-10)
+
+El perfil del arranque mostro que el bootstrap anterior refinaba cada malla
+intermedia y repetia el ciclo solve/refine. Se cambio la ruta de produccion a
+refinamiento adaptativo directo desde la malla inicial de 8 nodos y LU directa
+para BE. Los grids 12/24/48 y `recycled_gmres` permanecen como opciones
+explicitas, no se eliminaron.
+
+Con el mismo caso y criterios estrictos de la tabla anterior, el comando real
+del generador obtuvo:
+
+| Ruta | Tiempo de flamelets | Nodos | Su [m/s] |
+| --- | ---: | --- | --- |
+| Cantera | 18.72 s | 261 / 267 / 280 | 0.338613 / 0.378519 / 0.381789 |
+| V2 optimizado frio | 18.52 s | 247 / 256 / 268 | 0.338981 / 0.378772 / 0.381947 |
+
+Los tres flamelets V2 fueron aceptados con convergencia de malla, residual
+guardado y norma ponderada dentro de los limites. El runtime end-to-end de
+construccion de la tabla fue 19.7 s, incluyendo la interpolacion FGM. La
+diferencia de Su maxima fue aproximadamente 0.11 %.
+
+La misma configuracion con las tres semillas persistentes y paralelismo
+automatico termino en 5.8 s. Por tanto, V2 queda practicamente equiparado a
+Cantera en la primera generacion y claramente por delante en regeneraciones
+repetidas, sin usar perfiles de Cantera como semillas.
