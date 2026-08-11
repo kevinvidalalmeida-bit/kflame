@@ -160,3 +160,31 @@ La misma configuracion con las tres semillas persistentes y paralelismo
 automatico termino en 5.8 s. Por tanto, V2 queda practicamente equiparado a
 Cantera en la primera generacion y claramente por delante en regeneraciones
 repetidas, sin usar perfiles de Cantera como semillas.
+
+## Experimentos HPC adicionales descartados (2026-08-10)
+
+Se repitio el barrido estricto de tres flamelets con la configuracion actual
+(GRI30, CH4/aire, 300 K, 1 atm, width=0.03 m, malla inicial de 8 puntos,
+convergencia de malla obligatoria y criterio `cantera`). El baseline de esta
+sesion fue 20.62 s de flamelets y 21.9 s end-to-end; la variacion respecto a
+la medicion anterior se debe al arranque/JIT y a la carga de la maquina.
+
+| Experimento | Tiempo end-to-end | Resultado | Decision |
+| --- | ---: | --- | --- |
+| `parallel-cold`, 3 procesos, 4 hilos/proceso | 42.1 s | 3/3 aceptados | Eliminar |
+| `parallel-cold`, 3 procesos, 1 hilo/proceso | 50.1 s | 3/3 aceptados | Eliminar |
+| Sin precomputacion termoquimica del Jacobiano | 25.3 s | 3/3 aceptados | Mantener precomputacion |
+| `recycled_gmres` en BE | 26.2 s | 3/3 aceptados | Mantener LU directa |
+| `banded_lapack` | 48.9 s | 3/3 aceptados | Mantener `block_tridiag` |
+| BDF2 adaptativo experimental | 28.2 s | 3/3 aceptados | Eliminar |
+| Reutilizacion de buffers del residual | 27.0 s | 3/3 aceptados | Eliminar |
+
+Todos los experimentos descartados fueron retirados del codigo despues de la
+prueba. Ninguno se activa por defecto ni debe reintroducirse sin una nueva
+comparacion end-to-end.
+
+La afinacion del camino cacheado se comparo con una instantanea identica de
+las tres semillas V2: 2 workers terminaron en 5.8 s, 3 workers con 4 hilos
+Numba por proceso en 4.1 s y 3 workers con 1 hilo en 4.4 s. Se conserva la
+configuracion automatica actual: para tres flamelets resuelve con 3 workers y
+reparte 4 hilos de Numba por proceso en esta maquina.
