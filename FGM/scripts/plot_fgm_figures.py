@@ -6,8 +6,8 @@ y genera figuras estilo Fig. 8 en espacio (Z, c):
 
   (a) Y_sp1 vs c por flamelet (líneas coloreadas, rojo = no-monótono)
   (b) Y_sp2 vs c por flamelet
-  (c) HRR tabulado en espacio (c, Z) — heatmap
-  (d) HRR tabulado en espacio (c, Z) — heatmap (misma tabla, segunda especie)
+  (c) HRR tabulado en espacio (Z, c) — heatmap
+  (d) HRR tabulado en espacio (Z, c) — heatmap (misma tabla, segunda especie)
 
 NOTA: paneles izquierdos requieren raw_profiles/ (--save-raw-profiles en el generador).
       paneles derechos solo requieren fgm_table.npz.
@@ -161,7 +161,7 @@ def plot_species_profiles(
 
 
 # ---------------------------------------------------------------------------
-# Panel C / D: HRR en espacio (c, Z)
+# Panel C / D: HRR en espacio (Z, c)
 # ---------------------------------------------------------------------------
 
 def plot_hrr_heatmap_ZC(
@@ -170,15 +170,22 @@ def plot_hrr_heatmap_ZC(
     label: str = "1",
     cmap_name: str = "jet",
     log_scale: bool = False,
+    normalize_z: bool = False,
 ) -> None:
     """
     Heatmap de HRR.
-    Eje X = c  (variable de progreso)
-    Eje Y = Z  (fracción de mezcla de Bilger)
+    Eje X = Z  (fracción de mezcla de Bilger)
+    Eje Y = c  (variable de progreso)
     """
     if "Z_grid" in table:
         y_axis = np.asarray(table["Z_grid"], dtype=float)
-        y_label = "$Z$"
+        if normalize_z:
+            z_min = float(y_axis.min())
+            z_span = max(float(y_axis.max() - z_min), 1.0e-300)
+            y_axis = (y_axis - z_min) / z_span
+            y_label = "$Z_{norm}$"
+        else:
+            y_label = "$Z$"
     else:
         y_axis = np.asarray(table["phi_grid"], dtype=float)
         y_label = r"$\phi$"
@@ -187,22 +194,23 @@ def plot_hrr_heatmap_ZC(
     c_grid = np.asarray(table["c_grid"], dtype=float)
     Q = np.clip(np.asarray(table["qdot"], dtype=float), 0.0, None)
 
-    C, Y_ax = np.meshgrid(c_grid, y_axis)
+    Z_ax, C_ax = np.meshgrid(y_axis, c_grid)
+    Q_plot = Q.T
 
-    if log_scale and np.any(Q > 0):
-        norm = mcolors.LogNorm(vmin=max(Q[Q > 0].min(), 1.0), vmax=Q.max())
+    if log_scale and np.any(Q_plot > 0):
+        norm = mcolors.LogNorm(vmin=max(Q_plot[Q_plot > 0].min(), 1.0), vmax=Q_plot.max())
     else:
-        norm = mcolors.Normalize(vmin=0.0, vmax=Q.max())
+        norm = mcolors.Normalize(vmin=0.0, vmax=Q_plot.max())
 
-    pcm = ax.pcolormesh(C, Y_ax, Q, cmap=cmap_name, norm=norm, shading="gouraud")
+    pcm = ax.pcolormesh(Z_ax, C_ax, Q_plot, cmap=cmap_name, norm=norm, shading="gouraud")
     cbar = plt.colorbar(pcm, ax=ax)
     cbar.set_label(r"HRR $[\mathrm{J\,m^{-3}\,s^{-1}}]$", fontsize=8)
     cbar.ax.tick_params(labelsize=7)
 
-    ax.set_xlabel("$c$",   fontsize=11)
-    ax.set_ylabel(y_label, fontsize=11)
-    ax.set_xlim(c_grid.min(), c_grid.max())
-    ax.set_ylim(y_axis.min(), y_axis.max())
+    ax.set_xlabel(y_label, fontsize=11)
+    ax.set_ylabel("$c$",   fontsize=11)
+    ax.set_xlim(y_axis.min(), y_axis.max())
+    ax.set_ylim(c_grid.min(), c_grid.max())
 
 
 # ---------------------------------------------------------------------------
@@ -216,6 +224,7 @@ def make_figure(
     log_scale: bool,
     out_name: str,
     dpi: int,
+    normalize_z: bool = False,
 ) -> None:
     table = load_table(run_dir)
     recs  = load_raw_profiles(run_dir)
@@ -239,17 +248,19 @@ def make_figure(
         ax.text(0.97, 0.97, lbl, transform=ax.transAxes,
                 ha="right", va="top", fontsize=10, fontweight="bold")
 
-    y_sym = "Z" if "Z_grid" in table else r"\phi"
+    y_sym = "Z_{norm}" if ("Z_grid" in table and normalize_z) else ("Z" if "Z_grid" in table else r"\phi")
 
     ax_a.set_title(f"Flamelet profiles — $Y_1$ ($\\mathrm{{{sp1}}}$)", fontsize=9)
     ax_b.set_title(f"Flamelet profiles — $Y_2$ ($\\mathrm{{{sp2}}}$)", fontsize=9)
-    ax_c.set_title(f"Tabulated HRR in $(c,{y_sym})$ — $\\mathcal{{Y}}_1$", fontsize=9)
-    ax_d.set_title(f"Tabulated HRR in $(c,{y_sym})$ — $\\mathcal{{Y}}_2$", fontsize=9)
+    ax_c.set_title(f"Tabulated HRR in $({y_sym},c)$ — $\\mathcal{{Y}}_1$", fontsize=9)
+    ax_d.set_title(f"Tabulated HRR in $({y_sym},c)$ — $\\mathcal{{Y}}_2$", fontsize=9)
 
     plot_species_profiles(ax_a, recs, sp1, label="1", n_skip=n_skip, cmap_name="Blues")
     plot_species_profiles(ax_b, recs, sp2, label="2", n_skip=n_skip, cmap_name="Blues")
-    plot_hrr_heatmap_ZC(ax_c, table, label="1", cmap_name="jet", log_scale=log_scale)
-    plot_hrr_heatmap_ZC(ax_d, table, label="2", cmap_name="jet", log_scale=log_scale)
+    plot_hrr_heatmap_ZC(ax_c, table, label="1", cmap_name="jet", log_scale=log_scale,
+                        normalize_z=normalize_z)
+    plot_hrr_heatmap_ZC(ax_d, table, label="2", cmap_name="jet", log_scale=log_scale,
+                        normalize_z=normalize_z)
 
     out_path = run_dir / out_name
     fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
@@ -261,10 +272,15 @@ def make_figure(
 # Extra: Su vs Z
 # ---------------------------------------------------------------------------
 
-def plot_su_Z(run_dir: Path, dpi: int) -> None:
+def plot_su_Z(run_dir: Path, dpi: int, normalize_z: bool = False) -> None:
     table = load_table(run_dir)
     if "Z_grid" in table:
-        x, xlabel, fname = table["Z_grid"], "$Z$  (Bilger)", "Su_Z.pdf"
+        x = np.asarray(table["Z_grid"], dtype=float)
+        if normalize_z:
+            x = (x - x.min()) / max(float(x.max() - x.min()), 1.0e-300)
+            xlabel, fname = "$Z_{norm}$", "Su_Znorm.pdf"
+        else:
+            xlabel, fname = "$Z$  (Bilger)", "Su_Z.pdf"
     else:
         x, xlabel, fname = table["phi_grid"], r"$\phi$", "Su_phi.pdf"
 
@@ -273,6 +289,7 @@ def plot_su_Z(run_dir: Path, dpi: int) -> None:
     ax.set_xlabel(xlabel, fontsize=12)
     ax.set_ylabel("$S_u$  [cm/s]", fontsize=12)
     ax.set_title("Laminar flame speed", fontsize=10)
+    ax.set_xlim(float(np.min(x)), float(np.max(x)))
     ax.grid(True, lw=0.4, alpha=0.5)
     out = run_dir / fname
     fig.savefig(out, dpi=dpi, bbox_inches="tight")
@@ -306,7 +323,64 @@ def plot_c_grid(run_dir: Path, dpi: int) -> None:
     fig.tight_layout()
     out = run_dir / "c_grid_distribution.pdf"
     fig.savefig(out, dpi=dpi, bbox_inches="tight")
+    out_png = run_dir / "c_grid_distribution.png"
+    fig.savefig(out_png, dpi=dpi, bbox_inches="tight")
     print(f"c_grid guardado: {out.resolve()}")
+    print(f"c_grid guardado: {out_png.resolve()}")
+    plt.close(fig)
+
+
+def plot_c_vs_Z_domain(run_dir: Path, dpi: int, normalize_z: bool = False) -> None:
+    """Figura simple del espacio tabulado (Z, c) sin variables físicas."""
+    table = load_table(run_dir)
+    c_grid = np.asarray(table["c_grid"], dtype=float)
+
+    if "Z_grid" in table:
+        z_axis = np.asarray(table["Z_grid"], dtype=float)
+        z_axis_plot = z_axis
+        if normalize_z:
+            z_axis_plot = (z_axis - z_axis.min()) / max(float(z_axis.max() - z_axis.min()), 1.0e-300)
+            x_label = "$Z_{norm}$"
+            out_base = "C_vs_Znorm_domain"
+        else:
+            x_label = "$Z$  (Bilger)"
+            out_base = "C_vs_Z_domain"
+    else:
+        z_axis = np.asarray(table["phi_grid"], dtype=float)
+        z_axis_plot = z_axis
+        x_label = r"$\phi$"
+        out_base = "C_vs_phi_domain"
+
+    x = np.repeat(z_axis_plot, c_grid.size)
+    y = np.tile(c_grid, z_axis.size)
+
+    fig, ax = plt.subplots(figsize=(5.8, 4.2))
+    ax.scatter(x, y, s=10, color="#1a6faf", alpha=0.65, edgecolors="none")
+    ax.set_xlabel(x_label, fontsize=11)
+    ax.set_ylabel("$c$", fontsize=11)
+    ax.set_ylim(c_grid.min(), c_grid.max())
+    ax.set_xlim(float(z_axis_plot.min()), float(z_axis_plot.max()))
+    ax.set_title("Tabla FGM en espacio $(Z,c)$", fontsize=10)
+    ax.grid(True, lw=0.35, alpha=0.5)
+
+    txt = (
+        f"n_Z = {z_axis.size}\n"
+        f"n_c = {c_grid.size}\n"
+        f"Z: [{z_axis.min():.4f}, {z_axis.max():.4f}]"
+    )
+    ax.text(
+        0.98, 0.02, txt, transform=ax.transAxes,
+        ha="right", va="bottom", fontsize=8,
+        bbox=dict(boxstyle="round", fc="white", ec="0.7", alpha=0.9),
+    )
+
+    fig.tight_layout()
+    out_pdf = run_dir / f"{out_base}.pdf"
+    out_png = run_dir / f"{out_base}.png"
+    fig.savefig(out_pdf, dpi=dpi, bbox_inches="tight")
+    fig.savefig(out_png, dpi=dpi, bbox_inches="tight")
+    print(f"C vs Z guardado: {out_pdf.resolve()}")
+    print(f"C vs Z guardado: {out_png.resolve()}")
     plt.close(fig)
 
 
@@ -324,6 +398,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--n-skip", type=int, default=1,
                    help="Graficar 1 de cada n_skip perfiles (paneles izquierdos).")
     p.add_argument("--log-scale", action="store_true")
+    p.add_argument("--normalize-z", action="store_true",
+                   help="Grafica Z normalizado a [0, 1] en lugar de Z Bilger absoluto.")
     p.add_argument("--out", type=str, default="fig8_ZC.pdf")
     p.add_argument("--dpi", type=int, default=200)
     p.add_argument("--no-extras", action="store_true")
@@ -336,10 +412,11 @@ def main() -> None:
     if not run_dir.exists():
         raise FileNotFoundError(f"run-dir no existe: {run_dir}")
     make_figure(run_dir, args.sp1, args.sp2, args.n_skip,
-                args.log_scale, args.out, args.dpi)
+                args.log_scale, args.out, args.dpi, normalize_z=args.normalize_z)
     if not args.no_extras:
-        plot_su_Z(run_dir, args.dpi)
+        plot_su_Z(run_dir, args.dpi, normalize_z=args.normalize_z)
         plot_c_grid(run_dir, args.dpi)
+        plot_c_vs_Z_domain(run_dir, args.dpi, normalize_z=args.normalize_z)
 
 
 if __name__ == "__main__":

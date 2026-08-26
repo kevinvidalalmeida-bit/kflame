@@ -7,12 +7,11 @@ Provides the exact same interface as SpeciesBackend but uses:
   - transport_native.py → mixture-averaged transport (Neufeld collision integrals)
   - kinetics_native.py  → full chemical kinetics (Arrhenius/3-body/Troe)
 
-ZERO Cantera dependency.  GPU-ready via CuPy.
+ZERO Cantera dependency. CPU backend via NumPy and Numba.
 """
 from __future__ import annotations
 import math
 import numpy as np
-from pathlib import Path
 
 from mechanism_data import MechanismData, load_mechanism, R_UNIV
 from thermo_native import NativeThermo
@@ -27,6 +26,49 @@ except Exception:  # pragma: no cover - optional acceleration
 
 if njit is not None:
     @njit(cache=True)
+    def _eval_thermo_sparse_numba_core(
+        T_arr, Y, P, nasa_lo, nasa_hi, nasa_tmid, invW,
+        rho_out, cp_out, hk_out,
+    ):
+        """NASA thermo and ideal-gas density, without reaction kinetics."""
+        n_sp = Y.shape[0]
+        n_pts = Y.shape[1]
+
+        for m in range(n_pts):
+            T = T_arr[m]
+            inv_wmix = 0.0
+            for k in range(n_sp):
+                inv_wmix += Y[k, m] * invW[k]
+            if inv_wmix < 1.0e-300:
+                inv_wmix = 1.0e-300
+
+            rho = P / (R_UNIV * T * inv_wmix)
+            rho_out[m] = rho
+
+            cp_mix = 0.0
+            for k in range(n_sp):
+                c = nasa_hi[k] if T > nasa_tmid[k] else nasa_lo[k]
+                cp_R = (
+                    c[0]
+                    + T * (c[1] + T * (c[2] + T * (c[3] + T * c[4])))
+                )
+                h_RT = (
+                    c[0]
+                    + T * (
+                        c[1] / 2.0
+                        + T * (
+                            c[2] / 3.0
+                            + T * (c[3] / 4.0 + T * c[4] / 5.0)
+                        )
+                    )
+                    + c[5] / T
+                )
+                hk_out[k, m] = h_RT * R_UNIV * T
+                cp_mix += Y[k, m] * cp_R * R_UNIV * invW[k]
+
+            cp_out[m] = cp_mix
+
+    @njit(cache=True, parallel=True)
     def _eval_thermo_kinetics_sparse_numba_core(
         T_arr, Y, P, nasa_lo, nasa_hi, nasa_tmid, W, invW,
         A_hi, b_hi, Ea_hi, A_lo, b_lo, Ea_lo,
@@ -40,7 +82,9 @@ if njit is not None:
         n_pts = Y.shape[1]
         n_rxn = A_hi.shape[0]
 
-        for m in range(n_pts):
+        for m in prange(n_pts):
+            # Per-node work arrays are intentionally local: this kernel is
+            # embarrassingly parallel over grid/perturbation points.
             logC = np.empty(n_sp, dtype=np.float64)
             g_RT = np.empty(n_sp, dtype=np.float64)
             T = T_arr[m]
@@ -102,6 +146,8 @@ if njit is not None:
             c_factor = 101325.0 / (R_UNIV * T)
 
             for r in range(n_rxn):
+                # T**b * exp(-Ea / RT) as one exponential. ``logT`` is already
+                # required by the NASA polynomials above for this grid point.
                 kf = A_hi[r] * math.exp(b_hi[r] * logT - Ea_hi[r] * inv_RT)
 
                 rf_exp = 0.0
@@ -184,6 +230,7 @@ if njit is not None:
                     k = net_idx[r, ii]
                     omega_out[k, m] += net_nu[r, ii] * q * W[k]
 else:
+    _eval_thermo_sparse_numba_core = None
     _eval_thermo_kinetics_sparse_numba_core = None
 
 
@@ -201,33 +248,16 @@ class NativeSpeciesBackend:
     All thermo, transport, and kinetics are evaluated natively.
     """
 
-    def __init__(self, problem, mech_data: MechanismData | None = None, use_gpu: bool = False):
+    def __init__(self, problem, mech_data: MechanismData | None = None):
         self.problem = problem
         self.backend_kind = "native"
-        self.use_gpu = bool(use_gpu)
         P = problem.P
-        if self.use_gpu:
-            try:
-                import cupy as cp
-            except ImportError:
-                self.use_gpu = False
-                self.xp = np
-                self._cp = None
-            else:
-                self.xp = cp
-                self._cp = cp
-        else:
-            self.xp = np
-            self._cp = None
-        self._is_gpu = self.use_gpu
+        self.xp = np
 
         # Load mechanism if not provided
         if mech_data is None:
             mech_path = problem.case.mech
             mech_data = load_mechanism(mech_path)
-
-        # Move to GPU if requested
-        mech_data.to_device(self.use_gpu)
 
         self.mech = mech_data
         self.mech.pressure = P
@@ -242,11 +272,8 @@ class NativeSpeciesBackend:
                 getattr(problem, "use_sparse_numba_kinetics", True)
             )
 
-        # Convenience aliases:
-        # - public `W` / `invW` stay on CPU for solver compatibility
-        # - internal `*_dev` stay on current device (NumPy/CuPy)
-        self.W = np.asarray(self._to_host(mech_data.molecular_weights), dtype=float)
-        self.invW = np.asarray(self._to_host(mech_data.inv_molecular_weights), dtype=float)
+        self.W = np.asarray(mech_data.molecular_weights, dtype=float)
+        self.invW = np.asarray(mech_data.inv_molecular_weights, dtype=float)
         self.W_dev = self.xp.asarray(self.W)
         self.invW_dev = self.xp.asarray(self.invW)
         self.n_species = mech_data.n_species
@@ -275,24 +302,16 @@ class NativeSpeciesBackend:
         if bool(getattr(self.problem, "assume_finite_y", False)):
             return Y
         finite = self.xp.all(self.xp.isfinite(Y))
-        if self._is_gpu:
-            finite = bool(self._cp.asnumpy(finite))
-        else:
-            finite = bool(finite)
+        finite = bool(finite)
         if not finite:
             raise ValueError("Se detectaron fracciones másicas no finitas.")
         return Y
 
     def _to_host(self, arr):
-        if self._is_gpu:
-            return self._cp.asnumpy(arr)
         return np.asarray(arr)
 
     def _copy_to_out(self, out: np.ndarray, arr):
-        if self._is_gpu:
-            out[:] = self._cp.asnumpy(arr)
-        else:
-            out[:] = arr
+        out[:] = arr
 
     def _Y_to_X(self, Y: np.ndarray) -> np.ndarray:
         """Mass fractions → mole fractions."""
@@ -309,11 +328,11 @@ class NativeSpeciesBackend:
     # ------------------------------------------------------------------
     #  eval_grid_into  (Full Grid Vectorization)
     # ------------------------------------------------------------------
-    def eval_grid_device(self, T: np.ndarray, Y: np.ndarray):
+    def eval_grid_native(self, T: np.ndarray, Y: np.ndarray):
         """
-        Evaluate all nodal properties on the active array backend.
+        Evaluate all nodal properties on the CPU backend.
 
-        Returns device arrays when CuPy is enabled:
+        Returns NumPy arrays:
         (rho, Dm, cp, lam, omega_mass, hk).
         """
         P = self.problem.P
@@ -334,11 +353,11 @@ class NativeSpeciesBackend:
 
         return rho, Dm, cp, lam, omega_mass, hk_vals
 
-    def eval_grid_thermo_kinetics_device(self, T: np.ndarray, Y: np.ndarray):
+    def eval_grid_thermo_kinetics_native(self, T: np.ndarray, Y: np.ndarray):
         """
         Evaluate nodal thermo and kinetics on the active array backend.
 
-        Returns device arrays when CuPy is enabled:
+        Returns NumPy arrays:
         (rho, cp, omega_mass, hk).
         """
         P = self.problem.P
@@ -364,7 +383,7 @@ class NativeSpeciesBackend:
         omega_out is (n_sp, N), hk_out is (n_sp, N).
         Returns (rho, Dm, cp, lam).
         """
-        rho, Dm, cp, lam, omega_mass, hk_vals = self.eval_grid_device(T, Y)
+        rho, Dm, cp, lam, omega_mass, hk_vals = self.eval_grid_native(T, Y)
         self._copy_to_out(hk_out, hk_vals)
         self._copy_to_out(omega_out, omega_mass)
         return self._to_host(rho), self._to_host(Dm), self._to_host(cp), self._to_host(lam)
@@ -379,8 +398,7 @@ class NativeSpeciesBackend:
         production rates need to be refreshed.
         """
         if (
-            not self.use_gpu
-            and _eval_thermo_kinetics_sparse_numba_core is not None
+            _eval_thermo_kinetics_sparse_numba_core is not None
             and bool(getattr(self.problem, "use_fused_numba_thermo_kinetics", True))
             and getattr(self.kinetics, "_sparse_numba_available", False)
         ):
@@ -436,10 +454,49 @@ class NativeSpeciesBackend:
             )
             return rho, cp
 
-        rho, cp, omega_mass, hk_vals = self.eval_grid_thermo_kinetics_device(T, Y)
+        rho, cp, omega_mass, hk_vals = self.eval_grid_thermo_kinetics_native(T, Y)
 
         self._copy_to_out(hk_out, hk_vals)
         self._copy_to_out(omega_out, omega_mass)
+        return self._to_host(rho), self._to_host(cp)
+
+    def eval_grid_thermo_only_into(self, T: np.ndarray, Y: np.ndarray,
+                                   hk_out: np.ndarray):
+        """Evaluate density, mixture heat capacity and species enthalpies.
+
+        This is used by the local finite-difference Jacobian once the chemical
+        source derivative is supplied analytically.  It deliberately omits
+        kinetics, which otherwise dominates the cost of one Jacobian build.
+        """
+        if _eval_thermo_sparse_numba_core is not None:
+            T_work = np.asarray(T, dtype=np.float64).reshape(-1)
+            Y_work = np.ascontiguousarray(self._safe_Y(Y), dtype=np.float64)
+            if Y_work.ndim == 1:
+                Y_work = np.ascontiguousarray(Y_work[:, None], dtype=np.float64)
+            if Y_work.shape[1] != T_work.size:
+                raise ValueError("T and Y sizes do not match for thermodynamic evaluation.")
+
+            rho = np.empty(T_work.size, dtype=np.float64)
+            cp = np.empty(T_work.size, dtype=np.float64)
+            _eval_thermo_sparse_numba_core(
+                T_work,
+                Y_work,
+                self._P_float,
+                self._nb_nasa_lo,
+                self._nb_nasa_hi,
+                self._nb_nasa_tmid,
+                self.invW,
+                rho,
+                cp,
+                hk_out,
+            )
+            return rho, cp
+
+        T_dev = self.xp.asarray(T, dtype=float)
+        Y_safe = self._safe_Y(Y)
+        rho = self.thermo.density(T_dev, self.problem.P, Y_safe)
+        cp, hk_vals, _g_rt = self.thermo.cp_mass_hk_g_RT(T_dev, Y_safe)
+        self._copy_to_out(hk_out, hk_vals)
         return self._to_host(rho), self._to_host(cp)
 
     def eval_faces(self, T_face: np.ndarray, Y_face: np.ndarray):
@@ -448,21 +505,21 @@ class NativeSpeciesBackend:
         T_face is (N-1,), Y_face is (n_sp, N-1).
         Returns (rho_f, Dm_f, lam_f, Wmix_f).
         """
-        rho, Dm, lam, Wmix = self.eval_faces_device(T_face, Y_face)
+        rho, Dm, lam, Wmix = self.eval_faces_native(T_face, Y_face)
         return self._to_host(rho), self._to_host(Dm), self._to_host(lam), self._to_host(Wmix)
 
-    def eval_faces_device(self, T_face: np.ndarray, Y_face: np.ndarray):
+    def eval_faces_native(self, T_face: np.ndarray, Y_face: np.ndarray):
         """
         Evaluate face transport properties on the active array backend.
 
-        Returns device arrays when CuPy is enabled:
+        Returns NumPy arrays:
         (rho_f, Dm_f, lam_f, Wmix_f).
         """
         P = self.problem.P
         T_dev = self.xp.asarray(T_face, dtype=float)
         Y_safe = self._safe_Y(Y_face)
 
-        if (not self.use_gpu) and bool(getattr(self.problem, "use_numba_transport", True)):
+        if bool(getattr(self.problem, "use_numba_transport", True)):
             fast = self.transport.eval_faces_poly_fast(T_dev, P, Y_safe, self.invW_dev)
             if fast is not None:
                 return fast

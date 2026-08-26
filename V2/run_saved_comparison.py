@@ -3,10 +3,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
+
+# Must be set before NumPy/SciPy are imported. The V2 block solver uses many
+# small dense factorizations, where OpenBLAS thread management is overhead.
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+# Keep the standalone comparison on the same small-grid Numba default as V2.
+# An explicit NUMBA_NUM_THREADS value still takes precedence.
+os.environ.setdefault("NUMBA_NUM_THREADS", "4")
 
 import cantera as ct
 import numpy as np
@@ -48,12 +56,18 @@ def _default_case() -> FlameCase:
     )
 
 
-def _cantera_solve(case: FlameCase, loglevel: int = 0) -> dict:
+def _cantera_solve(case: FlameCase, loglevel: int = 0, prev_ct_data: dict | None = None) -> dict:
     gas = ct.Solution(case.mech)
     gas.TP = case.T_in, case.P
     gas.set_equivalence_ratio(case.phi, case.fuel, case.oxidizer)
 
-    flame = ct.FreeFlame(gas, width=case.width)
+    if prev_ct_data is not None:
+        z_old = prev_ct_data["z"]
+        old_width = float(z_old[-1] - z_old[0])
+        flame = ct.FreeFlame(gas, width=old_width)
+    else:
+        flame = ct.FreeFlame(gas, width=case.width)
+
     flame.transport_model = case.transport_model
     if hasattr(flame, "flux_gradient_basis"):
         flame.flux_gradient_basis = str(case.flux_gradient_basis)
@@ -66,6 +80,15 @@ def _cantera_solve(case: FlameCase, loglevel: int = 0) -> dict:
         prune=case.prune,
     )
 
+    if prev_ct_data is not None:
+        z_old = prev_ct_data["z"]
+        # Normalize locs for Cantera set_profile (0.0 to 1.0)
+        z_rel = (z_old - z_old[0]) / (z_old[-1] - z_old[0])
+        flame.set_profile("T", z_rel, prev_ct_data["T"])
+        flame.set_profile("velocity", z_rel, prev_ct_data["u"])
+        for k, sp in enumerate(gas.species_names):
+            flame.set_profile(sp, z_rel, prev_ct_data["Y"][k])
+
     t0 = time.perf_counter()
     flame.solve(loglevel=int(loglevel), auto=True)
     elapsed = time.perf_counter() - t0
@@ -77,11 +100,17 @@ def _cantera_solve(case: FlameCase, loglevel: int = 0) -> dict:
         "T": np.asarray(flame.T, dtype=float),
         "Y": np.asarray(flame.Y, dtype=float),
         "Su": float(flame.velocity[0]),
+        "width": float(flame.grid[-1] - flame.grid[0]),
         "n_points": int(flame.flame.n_points),
     }
 
 
-def _v2_solve(case: FlameCase, profile: bool = True, verbose: bool = False) -> dict:
+def _v2_solve(
+    case: FlameCase,
+    profile: bool = True,
+    verbose: bool = False,
+    prev_v2_data: dict | None = None,
+) -> dict:
     materials_dir = Path(__file__).resolve().parent / "materiales"
     mat_path = str(materials_dir)
     if mat_path not in sys.path:
@@ -97,6 +126,7 @@ def _v2_solve(case: FlameCase, profile: bool = True, verbose: bool = False) -> d
     opts = SolveOptions(
         verbose=bool(verbose),
         profile=bool(profile),
+        jacobian_mode="block_tridiag",
         refine_ratio=case.ratio,
         refine_slope=case.slope,
         refine_curve=case.curve,
@@ -104,8 +134,17 @@ def _v2_solve(case: FlameCase, profile: bool = True, verbose: bool = False) -> d
         max_total_time_s=300.0,
     )
 
+    if prev_v2_data is not None:
+        x0 = prev_v2_data["x"]
+        z0 = prev_v2_data["z"]
+        problem.z = z0.copy()
+        problem.n_points = len(z0)
+        problem.width = float(z0[-1] - z0[0])
+    else:
+        x0 = None
+
     t0 = time.perf_counter()
-    x_sol, ok, report = solve_free_flame(problem, options=opts)
+    x_sol, ok, report = solve_free_flame(problem, options=opts, x0=x0)
     elapsed = time.perf_counter() - t0
     u, T, Y = unpack_state(x_sol, problem.n_points, problem.n_species)
 
@@ -121,6 +160,7 @@ def _v2_solve(case: FlameCase, profile: bool = True, verbose: bool = False) -> d
         "Su": float(u[0]),
         "n_points": int(problem.n_points),
         "width": float(problem.width),
+        "x": x_sol,
     }
 
 
@@ -144,17 +184,26 @@ def _write_profiles(path: Path, z: np.ndarray, u: np.ndarray, T: np.ndarray) -> 
 
 def run(
     output_root: Path,
+    case: FlameCase | None = None,
     loglevel: int = 0,
     max_products: int = 6,
     verbose_ours: bool = False,
-) -> Path:
-    case = _default_case()
+    prev_ct_data: dict | None = None,
+    prev_v2_data: dict | None = None,
+) -> tuple[Path, dict, dict]:
+    if case is None:
+        case = _default_case()
     timestamp = datetime.now().strftime("run_%Y%m%d_%H%M%S")
     run_dir = output_root / timestamp
     run_dir.mkdir(parents=True, exist_ok=False)
 
-    cantera = _cantera_solve(case, loglevel=loglevel)
-    ours = _v2_solve(case, profile=True, verbose=verbose_ours)
+    cantera = _cantera_solve(case, loglevel=loglevel, prev_ct_data=prev_ct_data)
+    ours = _v2_solve(
+        case,
+        profile=True,
+        verbose=verbose_ours,
+        prev_v2_data=prev_v2_data,
+    )
 
     z_ct = cantera["z"]
     z_ours = ours["z"]
@@ -181,6 +230,7 @@ def run(
         "cantera": {
             "time_s": cantera["time_s"],
             "n_points": cantera["n_points"],
+            "width": cantera["width"],
             "Su": cantera["Su"],
         },
         "v2": {
@@ -226,8 +276,8 @@ def run(
     _write_profiles(run_dir / "profiles_cantera.csv", cantera["z"], cantera["u"], cantera["T"])
     _write_profiles(run_dir / "profiles_ours.csv", ours["z"], ours["u"], ours["T"])
 
-    generate_clean_plots(run_dir, max_products=max_products, align_domains=True)
-    return run_dir
+    generate_clean_plots(run_dir, max_products=max_products, align_domains=False)
+    return run_dir, cantera, ours
 
 
 def main() -> None:
@@ -247,7 +297,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    run_dir = run(
+    run_dir, _, _ = run(
         args.output_root,
         loglevel=args.loglevel,
         max_products=args.max_products,

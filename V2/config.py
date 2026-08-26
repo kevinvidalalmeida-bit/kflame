@@ -18,6 +18,7 @@ class FlameCase:
     transport_model: str = "mixture-averaged"
     flux_gradient_basis: str = "molar"    # "molar" | "mass"
     soret_enabled: bool = False
+    outlet_species_bc: str = "zero_gradient"  # "zero_gradient" | "cantera_flux"
 
     # Malla inicial
     cantera_seed_grid: bool = True
@@ -29,7 +30,7 @@ class FlameCase:
     ratio: float = 10.0
     slope: float = 0.8
     curve: float = 0.8
-    prune: float = -0.1
+    prune: float = 0.05
 
     # Qué perfiles se usan para refinar
     refine_with_u: bool = True

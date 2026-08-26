@@ -10,7 +10,7 @@ Implements the same model as Cantera's MixTransport / GasTransport:
 Uses Neufeld et al. (1972) correlations for collision integrals Ω^(1,1)*
 and Ω^(2,2)* instead of tabulated Monchick-Mason data.  Accuracy: <0.5%.
 
-NO Cantera dependency.  GPU-ready (pure NumPy arrays).
+NO Cantera dependency. CPU NumPy arrays.
 """
 from __future__ import annotations
 import math
@@ -24,10 +24,9 @@ PI = math.pi
 EPSILON_0 = 8.854187817e-12  # vacuum permittivity [F/m]
 
 try:
-    from numba import njit, prange
+    from numba import njit
 except Exception:  # pragma: no cover - optional acceleration
     njit = None
-    prange = range
 
 
 if njit is not None:
@@ -39,10 +38,10 @@ if njit is not None:
         Dm = np.empty((n_sp, n_faces), dtype=np.float64)
         lam = np.empty(n_faces, dtype=np.float64)
         Wmix = np.empty(n_faces, dtype=np.float64)
+        X = np.empty(n_sp, dtype=np.float64)
+        cond = np.empty(n_sp, dtype=np.float64)
 
         for m in range(n_faces):
-            X = np.empty(n_sp, dtype=np.float64)
-            cond = np.empty(n_sp, dtype=np.float64)
             inv_wmix = 0.0
             for k in range(n_sp):
                 inv_wmix += Y[k, m] * invW[k]
@@ -143,7 +142,7 @@ except FileNotFoundError:
 class NativeTransport:
     """
     Mixture-averaged transport for ideal gas.
-    Supports CuPy (GPU) or NumPy (CPU) based on `xp`.
+    Uses NumPy arrays on CPU.
     """
 
     def __init__(self, mech: MechanismData, xp=None):
@@ -215,7 +214,7 @@ class NativeTransport:
                     _del_p[i, j] = _del_p[j, i] = (0.5 * d_ij**2
                         / (4 * PI * EPSILON_0 * eps_ij * BOLTZMANN * sigma_ij**3))
 
-        # Upload pairs to device
+        # Pair coefficients stored as contiguous NumPy arrays.
         self._reduced_mass = self.xp.asarray(_red_mass)
         self._eps_pair = self.xp.asarray(_eps_p)
         self._sigma_pair = self.xp.asarray(_sig_p)

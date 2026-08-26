@@ -21,12 +21,12 @@ from state import pack_state, C_Y
 def _transition_profile(z, width, left, right, locs=(0.0, 0.3, 0.5, 1.0)):
     xi = np.asarray(z, dtype=float) / width
     _, x1, x2, _ = locs
-    out = np.where(
-        xi <= x1, left,
-        np.where(xi >= x2, right,
-                 left + (xi - x1) / (x2 - x1) * (right - left))
-    )
-    return out
+
+    center = 0.5 * (x1 + x2)
+    thickness = (x2 - x1) / 3.0
+
+    smooth_factor = 0.5 * (1.0 + np.tanh((xi - center) / thickness))
+    return left + smooth_factor * (right - left)
 
 
 class FreeFlameProblem:
@@ -77,6 +77,9 @@ class FreeFlameProblem:
         self.flux_gradient_basis = str(getattr(case, "flux_gradient_basis",
                                                "molar")).strip().lower()
         self.soret_enabled = bool(getattr(case, "soret_enabled", False))
+        self.outlet_species_bc = str(
+            getattr(case, "outlet_species_bc", "zero_gradient")
+        ).strip().lower()
 
         # ---- Opciones de refinamiento ----
         self.refine_with_u = bool(getattr(case, "refine_with_u", True))

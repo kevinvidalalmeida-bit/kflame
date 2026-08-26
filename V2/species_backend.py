@@ -10,7 +10,6 @@ class SpeciesBackend:
     def __init__(self, problem):
         self.problem = problem
         self.backend_kind = "cantera"
-        self.use_gpu = False
         self.gas = ct.Solution(problem.case.mech)
         self.W = np.asarray(self.gas.molecular_weights, dtype=float)
         self.invW = 1.0 / self.W

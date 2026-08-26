@@ -2,7 +2,7 @@
 thermo_native.py – NASA-7 polynomial thermodynamics for ideal gas.
 
 Evaluates cp, h, s, and derived quantities for all species simultaneously
-using vectorized NumPy.  GPU-ready: swap np → cupy.
+using vectorized NumPy on CPU.
 
 NO Cantera dependency.
 """

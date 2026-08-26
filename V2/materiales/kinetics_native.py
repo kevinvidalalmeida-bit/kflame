@@ -1,5 +1,5 @@
 """
-kinetics_native.py – Chemical kinetics for ideal gas mixtures.
+kinetics_native.py - Chemical kinetics for ideal gas mixtures.
 
 Supports:
   - Elementary Arrhenius reactions
@@ -9,21 +9,20 @@ Supports:
 Evaluates forward/reverse rate constants and net production rates
 for all species simultaneously.
 
-NO Cantera dependency.  GPU-ready (pure NumPy).
+NO Cantera dependency. CPU NumPy/Numba implementation.
 """
 from __future__ import annotations
 import math
 import numpy as np
-from mechanism_data import MechanismData, ReactionData, R_UNIV
+from mechanism_data import MechanismData, R_UNIV
 
-# R_UNIV = 8314.46261815324 J/(kmol·K)
+# R_UNIV = 8314.46261815324 J/(kmol*K)
 
 
 try:
-    from numba import njit, prange
+    from numba import njit
 except Exception:  # pragma: no cover - optional acceleration
     njit = None
-    prange = range
 
 
 if njit is not None:
@@ -38,9 +37,9 @@ if njit is not None:
         n_pts = C.shape[1]
         n_rxn = A_hi.shape[0]
         out = np.zeros((n_sp, n_pts), dtype=np.float64)
+        logC = np.empty(n_sp, dtype=np.float64)
 
         for m in range(n_pts):
-            logC = np.empty(n_sp, dtype=np.float64)
             T = T_arr[m]
             c_factor = 101325.0 / (R_UNIV * T)
             inv_RT = 1.0 / (R_UNIV * T)
@@ -55,6 +54,8 @@ if njit is not None:
                 logC[k] = math.log(c)
 
             for r in range(n_rxn):
+                # T**b * exp(-Ea / RT) as one exponential. This is algebraically
+                # identical and avoids the generic floating-point power routine.
                 kf = A_hi[r] * math.exp(b_hi[r] * logT - Ea_hi[r] * inv_RT)
 
                 delta_g = 0.0
@@ -140,9 +141,9 @@ if njit is not None:
         n_pts = C.shape[1]
         n_rxn = A_hi.shape[0]
         out = np.zeros((n_sp, n_pts), dtype=np.float64)
+        logC = np.empty(n_sp, dtype=np.float64)
 
         for m in range(n_pts):
-            logC = np.empty(n_sp, dtype=np.float64)
             T = T_arr[m]
             c_factor = 101325.0 / (R_UNIV * T)
             inv_RT = 1.0 / (R_UNIV * T)
@@ -242,16 +243,17 @@ if njit is not None:
                     out[k, m] += net_nu[r, ii] * q
 
         return out
+
+
 else:
     _net_production_rates_numba_core = None
     _net_production_rates_sparse_numba_core = None
 
 
 class NativeKinetics:
-    """Evaluate net production rates ẇ_k [kmol/(m³·s)] for all species."""
+    """Evaluate net production rates [kmol/(m^3*s)] for all species."""
 
     def __init__(self, mech: MechanismData, xp=None):
-        import numpy as np
         self.xp = xp if xp is not None else np
         
         self.mech = mech
@@ -287,8 +289,6 @@ class NativeKinetics:
         """Pack per-reaction data into contiguous arrays."""
         nr = self.n_rxn
         nsp = self.n_sp
-        import numpy as np # Use local numpy to extract lists, then cast to self.xp
-        
         # Arrhenius high-P
         self.A_hi   = self.xp.asarray([r.A for r in self.mech.reactions])
         self.b_hi   = self.xp.asarray([r.b for r in self.mech.reactions])
@@ -312,7 +312,7 @@ class NativeKinetics:
         self.troe_T1 = self.xp.asarray([r.troe_T1 for r in self.mech.reactions])
         self.troe_T2 = self.xp.asarray([r.troe_T2 for r in self.mech.reactions])
 
-        # Efficiencies matrix (n_rxn, n_sp) — 1.0 default for non-3body
+        # Efficiencies matrix (n_rxn, n_sp); 1.0 is the non-3body default.
         eff = np.ones((nr, nsp))
         for j, r in enumerate(self.mech.reactions):
             if r.efficiencies is not None:
@@ -397,9 +397,6 @@ class NativeKinetics:
             self._sp_eff_delta[j, :len(idx)] = eff[j, idx] - 1.0
 
     # ------------------------------------------------------------------
-    #  Arrhenius rate constant
-    # ------------------------------------------------------------------
-    # ------------------------------------------------------------------
     #  Grid Vectorization Helpers
     # ------------------------------------------------------------------
     def _is_grid(self, T):
@@ -410,8 +407,7 @@ class NativeKinetics:
     # ------------------------------------------------------------------
     @staticmethod
     def _arrhenius(A: float, b: float, Ea: float, T: float) -> float:
-        """k = A · T^b · exp(-Ea / (R·T))."""
-        import math
+        """Return ``A * T**b * exp(-Ea / (R*T))``."""
         return A * T**b * math.exp(-Ea / (R_UNIV * T))
 
     def _arrhenius_vec(self, A: np.ndarray, b: np.ndarray, Ea: np.ndarray, T) -> np.ndarray:
@@ -429,11 +425,11 @@ class NativeKinetics:
         """
         Kc_j for each reaction j.
         """
-        # Δg_RT = Σ ν_net_k · g_RT_k  for each reaction
+        # delta_g/RT = sum(nu_net_k * g_RT_k) for each reaction.
         # self.nu_net.T is (n_rxn, n_sp). g_RT is (n_sp,) or (n_sp, N).
         delta_g_RT = self.nu_net.T @ g_RT   # (n_rxn,) or (n_rxn, N)
 
-        # Δν = sum of net stoich for each reaction
+        # delta_nu = sum of net stoichiometric coefficients per reaction.
         delta_nu = self.nu_net.sum(axis=0)   # (n_rxn,)
 
         # Clip to avoid overflow
@@ -512,17 +508,17 @@ class NativeKinetics:
     # ------------------------------------------------------------------
     def net_production_rates(self, T, C: np.ndarray, g_RT: np.ndarray) -> np.ndarray:
         """
-        Compute ẇ_k [kmol/(m³·s)] for each species.
+        Compute net production rates [kmol/(m^3*s)] for each species.
 
         Parameters
         ----------
         T : temperature [K] (scalar or 1D array)
-        C : species concentrations [kmol/m³], shape (n_sp,) or (n_sp, N)
-        g_RT : Gibbs g_k / (R·T), shape (n_sp,) or (n_sp, N)
+        C : species concentrations [kmol/m^3], shape (n_sp,) or (n_sp, N)
+        g_RT : Gibbs g_k / (R*T), shape (n_sp,) or (n_sp, N)
 
         Returns
         -------
-        wdot : net production rates [kmol/(m³·s)], shape (n_sp,) or (n_sp, N)
+        wdot : net production rates [kmol/(m^3*s)], shape (n_sp,) or (n_sp, N)
         """
         if self._use_sparse_numba:
             C_arr = np.asarray(C, dtype=np.float64)
@@ -617,29 +613,29 @@ class NativeKinetics:
         Csafe = self.xp.maximum(C, 0.0)
         is_grid = self._is_grid(T)
 
-        # ── Forward rate constants ─────────────────────────────────────
+        # Forward rate constants
         kf = self._arrhenius_vec(self.A_hi, self.b_hi, self.Ea_hi, T)
 
-        # ── Reverse rate constants via equilibrium ─────────────────────
+        # Reverse rate constants via equilibrium
         Kc = self.equilibrium_constants(g_RT, T)
         
         rev_mask = self.is_reversible[:, None] if is_grid else self.is_reversible
         kr = self.xp.where(rev_mask, kf / self.xp.maximum(Kc, 1e-300), 0.0)
 
-        # ── Forward / reverse rates of progress ────────────────────────
+        # Forward and reverse rates of progress
         logC = self.xp.log(self.xp.maximum(Csafe, 1e-300))
         
         Rf = self.xp.exp(self.nu_r.T @ logC) * kf
         Rr = self.xp.where(rev_mask, self.xp.exp(self.nu_p.T @ logC) * kr, 0.0)
 
-        # ── Three-body enhancement ─────────────────────────────────────
+        # Three-body enhancement
         M = self.third_body_conc(Csafe)
 
         tb_mask = self.is_three_body[:, None] if is_grid else self.is_three_body
         Rf = self.xp.where(tb_mask, Rf * M, Rf)
         Rr = self.xp.where(tb_mask, Rr * M, Rr)
 
-        # ── Falloff ───────────────────────────────────────────────────
+        # Falloff
         fo_mask = self.is_falloff[:, None] if is_grid else self.is_falloff
         if self.xp.any(self.is_falloff):
             k0 = self._arrhenius_vec(self.A_lo, self.b_lo, self.Ea_lo, T)
@@ -666,10 +662,10 @@ class NativeKinetics:
                 kr_falloff = kf_falloff / self.xp.maximum(Kc, 1e-300)
                 Rr = self.xp.where(rev_fo_mask, kr_falloff * (Rr / self.xp.maximum(kr, 1e-300)), Rr)
 
-        # ── Net rate of progress ───────────────────────────────────────
+        # Net rate of progress
         q = Rf - Rr
 
-        # ── Species production rates ───────────────────────────────────
+        # Species production rates
         wdot = self.nu_net @ q   # (n_sp, n_rxn) @ (n_rxn, N) -> (n_sp, N)
 
         return wdot

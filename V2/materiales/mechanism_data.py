@@ -4,15 +4,13 @@ species, thermodynamic, transport, and kinetic data into plain NumPy arrays.
 
 NO Cantera dependency.  Only uses PyYAML + NumPy.
 
-GPU-ready: every array is float64 and can be sent to CuPy with xp.asarray().
+CPU-oriented: mechanism arrays are stored as float64 NumPy arrays.
 """
 from __future__ import annotations
 import copy
 import re
-import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 
@@ -115,23 +113,6 @@ class MechanismData:
     # pressure, reference
     pressure: float = ONE_ATM
     ref_pressure: float = ONE_ATM
-
-    def to_device(self, gpu: bool = True):
-        """Move all arrays to CuPy (GPU) or back to NumPy (CPU)."""
-        if gpu:
-            try:
-                import cupy as xp
-            except ImportError:
-                print("Warning: CuPy not found. Staying on NumPy (CPU).")
-                import numpy as xp
-        else:
-            import numpy as xp
-
-        for k, v in self.__dict__.items():
-            # Check if it's a numpy/cupy array (has shape and dtype) but not a list
-            if hasattr(v, "shape") and hasattr(v, "dtype") and not isinstance(v, list):
-                setattr(self, k, xp.asarray(v))
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 #  Unit conversions used by gri30.yaml
