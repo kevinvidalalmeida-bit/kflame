@@ -353,9 +353,6 @@ def make_solve_options(args: argparse.Namespace) -> SolveOptions:
     opts.transient_linear_solver = str(
         getattr(args, "transient_linear_solver", "recycled_gmres")
     )
-    opts.pseudo_transient_mode = str(
-        getattr(args, "pseudo_transient_mode", "auto")
-    )
     opts.precompute_jacobian_thermo = bool(args.precompute_jacobian_thermo)
     opts.max_refine_passes = int(args.max_refine_passes)
     opts.require_grid_convergence = bool(args.require_grid_convergence)
@@ -999,9 +996,6 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--transient-linear-solver", type=str, default="direct",
                    choices=("direct", "recycled_gmres"),
                    help="En BE: LU directa por defecto; recycled_gmres queda disponible para continuaciones donde la sonda resulte util.")
-    p.add_argument("--pseudo-transient-mode", type=str, default="auto",
-                   choices=("auto", "fully_implicit", "linear_ser"),
-                   help="Fallback no lineal: PTC-SER con rescate BE (auto), BE totalmente implicito o PTC-SER puro.")
     p.add_argument("--precompute-jacobian-thermo", action=argparse.BooleanOptionalAction,
                    default=True,
                    help="Precalcula termoquimica perturbada de todo el Jacobiano block_tridiag.")
@@ -1101,7 +1095,7 @@ def main() -> None:
     print(
         "solver          : "
         f"initial_grid={args.initial_grid_points}, "
-        f"transient={args.pseudo_transient_mode}, "
+        "transient=PTC-SER/BE-fallback, "
         f"damp={args.damping_mode}/{args.damp_factor:g}, "
         f"linear=block_thomas_lapack/{args.transient_linear_solver}"
     )

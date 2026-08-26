@@ -49,7 +49,7 @@ eliminaron del árbol de trabajo. La ruta de producción usa Newton amortiguado
 tipo Cantera, continuación pseudo-transitoria PTC-SER con rescate BE,
 Jacobiano block-tridiagonal y SciPy/LAPACK. En cada paso PTC se hace una sola
 corrección lineal y el paso temporal se adapta con la reducción del residual;
-si esa corrección falla, el modo `auto` vuelve al Euler implícito totalmente
+si esa corrección falla, el solver vuelve al Euler implícito totalmente
 convergido. En el generador FGM, la ruta fría usa por defecto
 `block_tridiag + direct` y desactiva los grids fijos intermedios; esto evita
 resolver y refinar varias veces la misma llama. `recycled_gmres` sigue
@@ -62,11 +62,9 @@ secuenciales y en V2, el kernel de quimica usa 4 hilos de Numba por defecto;
 puede modificarse con `NUMBA_NUM_THREADS` o, en FGM, con
 `--numba-kinetics-threads`.
 
-El modo robusto y rápido es `--pseudo-transient-mode auto`. Para reproducir
-la ruta anterior se puede usar `--pseudo-transient-mode fully_implicit`; el
-modo `linear_ser` desactiva el rescate BE y se conserva para diagnóstico.
-Estas opciones están disponibles tanto en el generador FGM como en
-`V2/run_saved_comparison.py`.
+PTC-SER con rescate BE es la única ruta pseudo-transitoria expuesta. Los
+selectores de métodos usados durante la evaluación se retiraron después de
+validar la configuración final.
 
 Las variantes medidas y descartadas están registradas en
 [`DECISIONES_DESCARTADAS.md`](DECISIONES_DESCARTADAS.md). No deben volver a

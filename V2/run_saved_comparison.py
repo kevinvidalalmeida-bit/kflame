@@ -110,7 +110,6 @@ def _v2_solve(
     profile: bool = True,
     verbose: bool = False,
     prev_v2_data: dict | None = None,
-    pseudo_transient_mode: str = "auto",
 ) -> dict:
     materials_dir = Path(__file__).resolve().parent / "materiales"
     mat_path = str(materials_dir)
@@ -129,7 +128,6 @@ def _v2_solve(
         profile=bool(profile),
         jacobian_mode="block_tridiag",
         transient_linear_solver="recycled_gmres",
-        pseudo_transient_mode=str(pseudo_transient_mode),
         refine_ratio=case.ratio,
         refine_slope=case.slope,
         refine_curve=case.curve,
@@ -193,7 +191,6 @@ def run(
     verbose_ours: bool = False,
     prev_ct_data: dict | None = None,
     prev_v2_data: dict | None = None,
-    pseudo_transient_mode: str = "auto",
 ) -> tuple[Path, dict, dict]:
     if case is None:
         case = _default_case()
@@ -207,7 +204,6 @@ def run(
         profile=True,
         verbose=verbose_ours,
         prev_v2_data=prev_v2_data,
-        pseudo_transient_mode=pseudo_transient_mode,
     )
 
     z_ct = cantera["z"]
@@ -241,7 +237,6 @@ def run(
         "v2": {
             "ok": ours["ok"],
             "time_s": ours["time_s"],
-            "pseudo_transient_mode": str(pseudo_transient_mode),
             "n_points": ours["n_points"],
             "width": ours["width"],
             "Su": ours["Su"],
@@ -297,12 +292,6 @@ def main() -> None:
     parser.add_argument("--loglevel", type=int, default=0, help="Cantera solve loglevel.")
     parser.add_argument("--max-products", type=int, default=6)
     parser.add_argument(
-        "--pseudo-transient-mode",
-        choices=("auto", "fully_implicit", "linear_ser"),
-        default="auto",
-        help="V2 nonlinear fallback: robust PTC-SER auto mode, legacy BE, or pure PTC-SER.",
-    )
-    parser.add_argument(
         "--verbose-ours",
         action="store_true",
         help="Print detailed progress from the V2 solver.",
@@ -314,7 +303,6 @@ def main() -> None:
         loglevel=args.loglevel,
         max_products=args.max_products,
         verbose_ours=args.verbose_ours,
-        pseudo_transient_mode=args.pseudo_transient_mode,
     )
     print(run_dir.resolve())
 

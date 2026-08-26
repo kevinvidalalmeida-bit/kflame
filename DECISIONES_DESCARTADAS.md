@@ -206,16 +206,16 @@ y actualiza el paso con switched evolution relaxation (SER):
 dt_(n+1) = clip(1.1 dt_n ||F(x_n)|| / ||F(x_(n+1))||).
 ```
 
-El modo de producción `auto` intenta primero PTC-SER y usa el BE totalmente
-implícito anterior después de una corrección rechazada. Los modos
-`fully_implicit` y `linear_ser` permiten reproducir cada trayectoria por
-separado.
+La ruta de producción intenta primero PTC-SER y usa el BE totalmente
+implícito anterior después de una corrección rechazada. Es la única ruta
+expuesta; los selectores experimentales se retiraron después de validar el
+resultado final.
 
 Con GRI30, CH4/aire, 300 K, 1 atm, malla inicial de 8 puntos, refinamiento
 estricto, convergencia de malla obligatoria, criterio `cantera` y caché
 desactivada, se obtuvo:
 
-| Barrido | Modo anterior | PTC-SER / auto | Reducción end-to-end | Resultado |
+| Barrido | Modo anterior | PTC-SER final | Reducción end-to-end | Resultado |
 | --- | ---: | ---: | ---: | --- |
 | phi = 0.9, 1.0, 1.1 | 22.54 s | 12.89 s | 42.8 % | 3/3 aceptados; 247 / 256 / 268 nodos |
 | phi = 0.7, 0.875, 1.05, 1.225, 1.4 | 212.7 s | 139.3 s | 34.5 % | 5/5 aceptados; mallas idénticas |
@@ -228,9 +228,9 @@ liberación de calor. En el barrido amplio fue 1.52e-10 m/s, 0.533 K y 0.098 %,
 respectivamente; coinciden aceptación, forma de las tablas y número de nodos.
 
 El comparador principal V2 también conservó 36 nodos, `Su=0.425526 m/s` y
-residual final 4.23: bajó de 17.37 s con `fully_implicit` a 12.64 s con
-`auto` (27.2 %). En esa corrida Cantera tomó 34.62 s, por lo que V2 fue 2.74x
-más rápido.
+residual final 4.23: bajó de 17.37 s con la ruta anterior a 12.64 s con
+PTC-SER (27.2 %). En esa corrida Cantera tomó 34.62 s, por lo que V2 fue
+2.74x más rápido.
 
 La formulación sigue la continuación pseudo-transitoria linealmente implícita
 y el control SER descritos por Kelley y Keyes, y coincide con la estructura
