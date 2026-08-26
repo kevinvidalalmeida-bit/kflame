@@ -1186,6 +1186,15 @@ class SolveOptions:
     transient_max_iter: int = 50
     max_time_step_count: int = 500
     reset_bad_after_failures: int = 3
+    # ``linear_ser`` performs one linearly implicit pseudo-transient
+    # correction per step and adapts dt with switched evolution relaxation
+    # (SER). ``auto`` falls back to the fully implicit inner Newton loop after
+    # a rejected correction; ``fully_implicit`` preserves the legacy path.
+    pseudo_transient_mode: str = "auto"  # "auto" | "fully_implicit" | "linear_ser"
+    pseudo_ser_increment: float = 1.1
+    pseudo_ser_min_factor: float = 0.2
+    pseudo_ser_max_factor: float = 5.0
+    pseudo_ser_residual_growth_limit: float = 10.0
     # ``recycled_gmres`` reuses the last exact transient LU as a
     # preconditioner when the BE timestep changes. It always falls back to
     # an exact factorization if GMRES misses this small iteration budget.
@@ -1324,6 +1333,13 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
     tfactor = float(
         opts.time_step_factor if opts.time_step_factor is not None else opts.time_step_shrink
     )
+    pseudo_mode = str(
+        getattr(opts, "pseudo_transient_mode", "auto")
+    ).strip().lower()
+    if pseudo_mode not in ("auto", "fully_implicit", "linear_ser"):
+        raise ValueError(
+            "pseudo_transient_mode must be 'auto', 'fully_implicit', or 'linear_ser'"
+        )
 
     attempt = 0
 
@@ -1449,46 +1465,99 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
 
             rdt = 1.0 / dt_try
             transient_order = 1
-            scheme = "BE"
+            linear_ser = bool(
+                pseudo_mode == "linear_ser"
+                or (pseudo_mode == "auto" and successive_failures == 0)
+            )
+            scheme = (
+                "PTC-SER"
+                if linear_ser
+                else "BE-fallback" if pseudo_mode == "auto" else "BE"
+            )
             jac_evals_before = int(jac.n_evals) if jac is not None else 0
 
             x_ts, ok_ts, hist_ts, jac = newton_solve(
                 steady_fun, x_old, problem,
                 rdt=rdt, x_old=x_old, x_older=x_older,
                 transient_order=transient_order,
-                max_iter=opts.transient_max_iter,
+                max_iter=1 if linear_ser else opts.transient_max_iter,
                 max_jac_age=ts_jac_age,
                 max_damp_iter=opts.max_damp_iter,
                 damp_factor=damp_factor,
                 tol=opts.tol,
                 jac_eps=opts.jac_eps,
                 alpha_min=opts.alpha_min,
-                damping_mode=getattr(opts, "damping_mode", "step_norm"),
-                damping_residual_reduction=getattr(opts, "damping_residual_reduction", 1.0e-3),
+                # A single-correction PTC step must not spend extra linear
+                # solves estimating a second Newton correction. The
+                # transient residual provides a cheap globalization test.
+                damping_mode=(
+                    "residual"
+                    if linear_ser
+                    else getattr(opts, "damping_mode", "step_norm")
+                ),
+                damping_residual_reduction=(
+                    0.0
+                    if linear_ser
+                    else getattr(opts, "damping_residual_reduction", 1.0e-3)
+                ),
                 verbose=opts.verbose,
                 jac_state=jac,
                 deadline=deadline,
             )
             weighted_step_norm, newton_Finf = _remember_newton_metrics(problem, hist_ts)
             jac_evals_after = int(jac.n_evals) if jac is not None else jac_evals_before
+            last_record = hist_ts[-1] if hist_ts else {}
+            last_status = last_record.get("status")
+            # At the beginning of a pseudo-step x == x_old, so the transient
+            # term is zero and newton_solve's normF is exactly ||F_steady||.
+            # Reusing it avoids one duplicate residual evaluation per step.
+            steady_norm_before = (
+                float(last_record.get("normF", float("nan")))
+                if linear_ser
+                else float("nan")
+            )
+            # ``newton_solve(max_iter=1)`` returns False after an accepted
+            # correction whose Newton tolerance is not yet met. For classic
+            # linearly implicit PTC, that accepted correction *is* the
+            # complete pseudo-time step.
+            ptc_step_ok = bool(
+                linear_ser
+                and last_status in ("step", "ok")
+                and np.all(np.isfinite(x_ts))
+                and np.isfinite(steady_norm_before)
+            )
+            steady_norm_after = _residual_inf(problem, x_ts) if ptc_step_ok else float("nan")
+            if ptc_step_ok:
+                growth_limit = max(
+                    1.0,
+                    float(getattr(opts, "pseudo_ser_residual_growth_limit", 10.0)),
+                )
+                if (
+                    not np.isfinite(steady_norm_after)
+                    or steady_norm_after > growth_limit * max(steady_norm_before, 1.0e-300)
+                ):
+                    ptc_step_ok = False
+            step_ok = bool(ptc_step_ok if linear_ser else ok_ts)
 
             history.append(
                 {
                     "cycle": attempt,
                     "phase": "transient",
-                    "ok": ok_ts,
+                    "ok": step_ok,
                     "dt": dt_try,
                     "scheme": scheme,
                     "steps": len(hist_ts),
                     "jac_evals_before": jac_evals_before,
                     "jac_evals_after": jac_evals_after,
-                    "last_status": hist_ts[-1].get("status") if hist_ts else None,
+                    "last_status": last_status,
                     "weighted_step_norm": weighted_step_norm,
                     "newton_Finf": newton_Finf,
+                    "steady_norm_before": steady_norm_before,
+                    "steady_norm_after": steady_norm_after,
                 }
             )
 
-            if ok_ts:
+            if step_ok:
                 successive_failures = 0
                 x_prev = x_old
                 x = x_ts
@@ -1497,13 +1566,36 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                 n_done += 1
                 nsteps_total += 1
 
+                if linear_ser:
+                    ser_increment = max(
+                        1.0, float(getattr(opts, "pseudo_ser_increment", 1.1))
+                    )
+                    ser_min_factor = max(
+                        1.0e-12,
+                        float(getattr(opts, "pseudo_ser_min_factor", 0.2)),
+                    )
+                    ser_max_factor = max(
+                        ser_min_factor,
+                        float(getattr(opts, "pseudo_ser_max_factor", 5.0)),
+                    )
+                    ser_factor = ser_increment * steady_norm_before / max(
+                        steady_norm_after, 1.0e-300
+                    )
+                    ser_factor = float(
+                        np.clip(
+                            ser_factor,
+                            ser_min_factor,
+                            ser_max_factor,
+                        )
+                    )
+                    dt = dt_try * ser_factor
                 # Cantera only grows the timestep when Newton reused the
                 # existing Jacobian throughout this transient solve.
-                if jac_evals_after == jac_evals_before:
+                elif jac_evals_after == jac_evals_before:
                     dt = dt_try * opts.time_step_grow
                 else:
                     dt = dt_try
-                dt = min(opts.max_time_step, dt)
+                dt = min(opts.max_time_step, max(opts.min_time_step, dt))
 
                 if opts.verbose:
                     Finf = float(np.linalg.norm(residual(x, problem), ord=np.inf))

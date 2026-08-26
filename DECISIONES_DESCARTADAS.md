@@ -11,7 +11,7 @@ CH4/aire, 300 K, 1 atm y transporte mixture-averaged.
 | DLL C++ block-Thomas | El backsolve aislado fue más rápido, pero el FGM completo solo redujo un caso sembrado de 20.05 s a 18.51 s. La LU C++ completa fue 22 % más lenta que LAPACK y dio pasos lineales inestables para el Jacobiano rígido. | Eliminada. Usar SciPy/LAPACK. |
 | Block-Thomas Numba | En continuación certificada tardó 26.55 s frente a 25.07 s con SciPy/LAPACK y terminó en otra malla. | Eliminado. |
 | Jacobiano químico analítico experimental | El microbenchmark redujo el ensamblado, pero una continuación real requirió 39.35 s frente a 20.77 s de diferencias finitas. | Eliminado. |
-| BDF2 / BE-BDF2 pseudo-transitorio | La llama fría completa tomó 64.68 s frente a 57.79 s con Euler implícito (BE). | Eliminado; BE es el único esquema expuesto. |
+| BDF2 / BE-BDF2 pseudo-transitorio | La llama fría completa tomó 64.68 s frente a 57.79 s con Euler implícito (BE). | Eliminado; no confundir con PTC-SER, que mantiene el desplazamiento BE pero evita converger cada subproblema transitorio. |
 | Damping Armijo | Mejoró un bootstrap aislado, pero la llama completa subió a 60.30 s frente a 57.79 s. | Eliminado; se mantiene el damping estilo Cantera. |
 | Vida fija de Jacobiano = 80 | Phi=1.1 desde semilla fue rápido, pero phi=1->1.3 y la cadena hasta phi=1.3 no convergieron en 60 s. | No usar globalmente; FGM usa edad 20 y la ruta histórica conserva 40. |
 | GPU/CuPy | Las transferencias CPU-GPU superaron el ahorro: Jacobiano CPU 0.153 s frente a GPU 0.219 s. | Eliminado; la ruta de produccion es solo CPU. |
@@ -25,8 +25,9 @@ CH4/aire, 300 K, 1 atm y transporte mixture-averaged.
 - Jacobiano block-tridiagonal y factorización/solves SciPy-LAPACK.
 - En cambios consecutivos de paso BE, LU anterior como precondicionador GMRES
   con una sonda de 4 iteraciones y regreso automatico a LU exacta.
-- Newton amortiguado compatible con Cantera y pseudo-transitorio Euler
-  implícito (BE).
+- Newton amortiguado compatible con Cantera y PTC linealmente implícito con
+  SER; regreso automático al pseudo-transitorio BE totalmente convergido si
+  una corrección PTC es rechazada.
 - Continuación por perfiles y predictor secante; `max_jac_age=20` para FGM
   frío y 40 solo en la ruta histórica de semillas convergidas.
 - `OPENBLAS_NUM_THREADS=1` para los bloques densos pequeños.
@@ -188,3 +189,52 @@ las tres semillas V2: 2 workers terminaron en 5.8 s, 3 workers con 4 hilos
 Numba por proceso en 4.1 s y 3 workers con 1 hilo en 4.4 s. Se conserva la
 configuracion automatica actual: para tres flamelets resuelve con 3 workers y
 reparte 4 hilos de Numba por proceso en esta maquina.
+
+## PTC linealmente implícito con SER (2026-08-26)
+
+El cuello matemático del fallback anterior era resolver por Newton hasta
+convergencia cada subproblema de Euler implícito. La ruta nueva aplica una
+sola corrección pseudo-transitoria
+
+```text
+(J_F(x_n) - M/dt_n) s_n = -F(x_n),    x_(n+1) = x_n + s_n
+```
+
+y actualiza el paso con switched evolution relaxation (SER):
+
+```text
+dt_(n+1) = clip(1.1 dt_n ||F(x_n)|| / ||F(x_(n+1))||).
+```
+
+El modo de producción `auto` intenta primero PTC-SER y usa el BE totalmente
+implícito anterior después de una corrección rechazada. Los modos
+`fully_implicit` y `linear_ser` permiten reproducir cada trayectoria por
+separado.
+
+Con GRI30, CH4/aire, 300 K, 1 atm, malla inicial de 8 puntos, refinamiento
+estricto, convergencia de malla obligatoria, criterio `cantera` y caché
+desactivada, se obtuvo:
+
+| Barrido | Modo anterior | PTC-SER / auto | Reducción end-to-end | Resultado |
+| --- | ---: | ---: | ---: | --- |
+| phi = 0.9, 1.0, 1.1 | 22.54 s | 12.89 s | 42.8 % | 3/3 aceptados; 247 / 256 / 268 nodos |
+| phi = 0.7, 0.875, 1.05, 1.225, 1.4 | 212.7 s | 139.3 s | 34.5 % | 5/5 aceptados; mallas idénticas |
+
+En el barrido de tres llamas, el tiempo exclusivo de solver bajó de 21.41 a
+11.75 s (45.1 %). Frente al registro estricto de Cantera de 18.72 s, V2 tarda
+37.2 % menos. La diferencia máxima PTC-SER frente al modo anterior fue
+6.32e-10 m/s en `Su`, 0.564 K en temperatura y 0.117 % del pico global de
+liberación de calor. En el barrido amplio fue 1.52e-10 m/s, 0.533 K y 0.098 %,
+respectivamente; coinciden aceptación, forma de las tablas y número de nodos.
+
+El comparador principal V2 también conservó 36 nodos, `Su=0.425526 m/s` y
+residual final 4.23: bajó de 17.37 s con `fully_implicit` a 12.64 s con
+`auto` (27.2 %). En esa corrida Cantera tomó 34.62 s, por lo que V2 fue 2.74x
+más rápido.
+
+La formulación sigue la continuación pseudo-transitoria linealmente implícita
+y el control SER descritos por Kelley y Keyes, y coincide con la estructura
+de un paso usada por `TSPSEUDO` de PETSc:
+
+- https://repository.lib.ncsu.edu/items/222848f9-65e0-4e5e-9a72-ee1d96d75857
+- https://petsc.org/release/src/ts/impls/pseudo/posindep.c.html
