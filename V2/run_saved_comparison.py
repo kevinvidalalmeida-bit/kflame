@@ -127,7 +127,6 @@ def _v2_solve(
         verbose=bool(verbose),
         profile=bool(profile),
         jacobian_mode="block_tridiag",
-        transient_linear_solver="recycled_gmres",
         refine_ratio=case.ratio,
         refine_slope=case.slope,
         refine_curve=case.curve,

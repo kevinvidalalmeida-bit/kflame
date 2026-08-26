@@ -19,7 +19,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
-from scipy.sparse.linalg import LinearOperator, gmres
 
 from equations import (
     build_jacobian_steady,
@@ -590,9 +589,6 @@ def bound_step_limit(x0: np.ndarray, step0: np.ndarray, problem) -> tuple[float,
 class JacobianState:
     J: object = None
     lu: object = None
-    # Last exact factorization. A recycled GMRES state never replaces this
-    # safety-net preconditioner.
-    direct_lu: object = None
     ss_diag: np.ndarray = field(default_factory=lambda: np.empty(0))
     age: int = 10000
     n_evals: int = 0
@@ -632,10 +628,8 @@ def _update_linear_model_transient(jac_state: JacobianState, mask: np.ndarray,
     """
     Cantera MultiJac::updateTransient equivalent.
 
-    Keep the steady finite-difference Jacobian and refresh its transient
-    diagonal when the timestep changes. In ``recycled_gmres`` mode, a previous
-    exact block factorization is reused as a preconditioner; an inexact solve
-    falls back to a fresh LU in ``_solve_newton_linear``.
+    Keep the steady finite-difference Jacobian, refresh its transient diagonal
+    when the timestep changes, and factorize the current block system.
     """
     if jac_state.J is None or jac_state.ss_diag.size == 0:
         raise RuntimeError("No steady Jacobian available for transient update.")
@@ -649,144 +643,12 @@ def _update_linear_model_transient(jac_state: JacobianState, mask: np.ndarray,
     if getattr(problem, "_profile", None) is not None:
         setattr(j_t, "_profile_problem", problem)
     jac_state.J = j_t
-    linear_mode = str(getattr(problem, "transient_linear_solver", "direct")).lower()
-    can_recycle = (
-        linear_mode == "recycled_gmres"
-        and float(rdt_curr) > 0.0
-        and jac_state.last_rdt is not None
-        and float(jac_state.last_rdt) > 0.0
-        and jac_state.direct_lu is not None
-        and _jacobian_supports_matvec(j_t)
-    )
-    if can_recycle:
-        jac_state.lu = {
-            "method": "recycled_gmres",
-            "J": j_t,
-            "preconditioner": jac_state.direct_lu,
-        }
-        stats = getattr(problem, "_recycled_gmres_stats", None)
-        if stats is not None:
-            stats["transient_updates_reused"] += 1
-    else:
-        lu = factorize(j_t)
-        if isinstance(lu, dict):
-            lu["profile_problem"] = problem
-        jac_state.lu = lu
-        jac_state.direct_lu = lu
+    lu = factorize(j_t)
+    if isinstance(lu, dict):
+        lu["profile_problem"] = problem
+    jac_state.lu = lu
     jac_state.last_rdt = float(rdt_curr)
     _profile_record(problem, "linear_model_transient_update", t_profile)
-
-
-def _jacobian_supports_matvec(jmat) -> bool:
-    """Whether a Jacobian has an efficient matrix-vector product."""
-    return bool(
-        (hasattr(jmat, "n_blocks") and hasattr(jmat, "diag"))
-        or hasattr(jmat, "dot")
-        or hasattr(jmat, "__matmul__")
-    )
-
-
-def _jacobian_matvec(jmat, vector: np.ndarray) -> np.ndarray:
-    """Matrix-vector product without materializing a block-tridiagonal CSC."""
-    v = np.asarray(vector, dtype=float)
-    if hasattr(jmat, "n_blocks") and hasattr(jmat, "block_size"):
-        n_blocks = int(jmat.n_blocks)
-        block_size = int(jmat.block_size)
-        v_blocks = v.reshape(n_blocks, block_size)
-        out = np.einsum("bij,bj->bi", jmat.diag, v_blocks, optimize=True)
-        if n_blocks > 1:
-            out[1:] += np.einsum(
-                "bij,bj->bi", jmat.lower, v_blocks[:-1], optimize=True
-            )
-            out[:-1] += np.einsum(
-                "bij,bj->bi", jmat.upper, v_blocks[1:], optimize=True
-            )
-        return out.ravel()
-    return np.asarray(jmat @ v, dtype=float)
-
-
-def _solve_newton_linear(jac_state: JacobianState, rhs: np.ndarray, problem) -> np.ndarray:
-    """Solve a Newton system, optionally recycling an exact LU in GMRES."""
-    linear_state = jac_state.lu
-    if not (isinstance(linear_state, dict)
-            and linear_state.get("method") == "recycled_gmres"):
-        return solve_linear(linear_state, rhs)
-
-    jmat = linear_state["J"]
-    preconditioner = linear_state["preconditioner"]
-    n = int(jmat.shape[0])
-    stats = getattr(problem, "_recycled_gmres_stats", None)
-
-    # If the recent recycled probes repeatedly needed the exact fallback,
-    # avoid launching another doomed GMRES. We still factorize the current
-    # matrix exactly, so this branch preserves the numerical result.
-    adaptive = bool(getattr(problem, "recycled_gmres_adaptive", False))
-    probe_failures = max(1, int(getattr(problem, "recycled_gmres_probe_failures", 3)))
-    consecutive_failures = (
-        int(stats.get("gmres_consecutive_failures", 0))
-        if stats is not None else 0
-    )
-    if adaptive and consecutive_failures >= probe_failures:
-        if stats is not None:
-            stats["gmres_skipped"] += 1
-            stats["adaptive_exact_rebuilds"] += 1
-        direct_lu = factorize(jmat)
-        if isinstance(direct_lu, dict):
-            direct_lu["profile_problem"] = problem
-        jac_state.lu = direct_lu
-        jac_state.direct_lu = direct_lu
-        return solve_linear(direct_lu, rhs)
-
-    iterations = [0]
-
-    def _count_iteration(_):
-        iterations[0] += 1
-
-    t_profile = _profile_start(problem)
-    try:
-        operator = LinearOperator(
-            (n, n), matvec=lambda v: _jacobian_matvec(jmat, v), dtype=np.float64
-        )
-        preconditioner_op = LinearOperator(
-            (n, n), matvec=lambda v: solve_linear(preconditioner, v), dtype=np.float64
-        )
-        restart = max(1, int(getattr(problem, "recycled_gmres_restart", 4)))
-        maxiter = max(1, int(getattr(problem, "recycled_gmres_maxiter", 1)))
-        rtol = max(1.0e-12, float(getattr(problem, "recycled_gmres_rtol", 1.0e-8)))
-        step, info = gmres(
-            operator,
-            np.asarray(rhs, dtype=float),
-            M=preconditioner_op,
-            rtol=rtol,
-            atol=0.0,
-            restart=restart,
-            maxiter=maxiter,
-            callback=_count_iteration,
-            callback_type="pr_norm",
-        )
-    finally:
-        _profile_record(problem, "linear_gmres_preconditioned", t_profile)
-
-    if stats is not None:
-        stats["gmres_solves"] += 1
-        stats["gmres_iterations"] += int(iterations[0])
-
-    if int(info) == 0 and np.all(np.isfinite(step)):
-        if stats is not None:
-            stats["gmres_consecutive_failures"] = 0
-        return np.asarray(step, dtype=float)
-
-    # Conservative safety net: discard the inexact state and solve the exact
-    # current transient matrix before the Newton/damping decision is made.
-    if stats is not None:
-        stats["gmres_fallbacks"] += 1
-        stats["gmres_consecutive_failures"] += 1
-    direct_lu = factorize(jmat)
-    if isinstance(direct_lu, dict):
-        direct_lu["profile_problem"] = problem
-    jac_state.lu = direct_lu
-    jac_state.direct_lu = direct_lu
-    return solve_linear(direct_lu, rhs)
 
 
 # ---------------------------------------------------------------------------
@@ -858,7 +720,6 @@ def newton_solve(
                 )
                 jac_state.J = j_t
                 jac_state.lu = lu
-                jac_state.direct_lu = lu
                 jac_state.ss_diag = ss_diag
                 jac_state.age = 0
                 jac_state.n_evals += 1
@@ -890,7 +751,7 @@ def newton_solve(
             break
 
         try:
-            step0 = _solve_newton_linear(jac_state, -f, problem)
+            step0 = solve_linear(jac_state.lu, -f)
         except Exception as exc:
             history.append({"iter": it, "status": "linear_solve_fail", "error": str(exc)})
             force_new_jac = True
@@ -979,9 +840,11 @@ def newton_solve(
                     # with a fresh Newton correction on the next iteration.
                     s1 = alpha * s0
                     break
+                alpha /= damp_factor
+                continue
 
             try:
-                step1 = _solve_newton_linear(jac_state, -f_try, problem)
+                step1 = solve_linear(jac_state.lu, -f_try)
             except Exception:
                 alpha /= damp_factor
                 continue
@@ -1096,18 +959,6 @@ class SolveOptions:
     transient_max_iter: int = 50
     max_time_step_count: int = 500
     reset_bad_after_failures: int = 3
-    # ``recycled_gmres`` reuses the last exact transient LU as a
-    # preconditioner when the BE timestep changes. It always falls back to
-    # an exact factorization if GMRES misses this small iteration budget.
-    transient_linear_solver: str = "direct"  # "direct" | "recycled_gmres"
-    recycled_gmres_rtol: float = 1e-8
-    recycled_gmres_restart: int = 4
-    recycled_gmres_maxiter: int = 1
-    # Probe recycled GMRES a few times, then skip probes that repeatedly fall
-    # back to an exact factorization. The exact fallback remains unchanged.
-    recycled_gmres_adaptive: bool = False
-    recycled_gmres_probe_failures: int = 3
-
     # Refinamiento (defaults de Refiner::setCriteria)
     refine_grid: bool = True
     max_refine_passes: int = 6
@@ -1188,17 +1039,6 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
     problem.jacobian_threshold = float(getattr(opts, "jac_threshold", 0.0))
     problem.jacobian_mode = str(getattr(opts, "jacobian_mode", "numba_local"))
     problem.precompute_jacobian_thermo = bool(getattr(opts, "precompute_jacobian_thermo", False))
-    problem.transient_linear_solver = str(
-        getattr(opts, "transient_linear_solver", "direct")
-    ).strip().lower()
-    problem.recycled_gmres_rtol = float(getattr(opts, "recycled_gmres_rtol", 1e-8))
-    problem.recycled_gmres_restart = int(getattr(opts, "recycled_gmres_restart", 4))
-    problem.recycled_gmres_maxiter = int(getattr(opts, "recycled_gmres_maxiter", 1))
-    problem.recycled_gmres_adaptive = bool(getattr(opts, "recycled_gmres_adaptive", False))
-    problem.recycled_gmres_probe_failures = int(
-        getattr(opts, "recycled_gmres_probe_failures", 3)
-    )
-
     steady_fun = _make_steady_fun(problem)
     jac: JacobianState | None = None
     dt = float(opts.time_step)
@@ -2218,19 +2058,6 @@ def solve_free_flame(
         problem._profile = {}
     elif hasattr(problem, "_profile"):
         delattr(problem, "_profile")
-    if str(getattr(opts, "transient_linear_solver", "direct")).strip().lower() == "recycled_gmres":
-        problem._recycled_gmres_stats = {
-            "gmres_solves": 0,
-            "gmres_iterations": 0,
-            "gmres_fallbacks": 0,
-            "gmres_skipped": 0,
-            "adaptive_exact_rebuilds": 0,
-            "gmres_consecutive_failures": 0,
-            "transient_updates_reused": 0,
-        }
-    elif hasattr(problem, "_recycled_gmres_stats"):
-        delattr(problem, "_recycled_gmres_stats")
-
     if problem.backend is None:
         _refresh_backend(problem)
 
@@ -2439,9 +2266,6 @@ def solve_free_flame(
     report["final_accepted"] = bool(final_accepted)
     if bool(getattr(opts, "profile", False)):
         report["profile"] = _profile_snapshot(getattr(problem, "_profile", {}))
-    if hasattr(problem, "_recycled_gmres_stats"):
-        report["recycled_gmres"] = dict(problem._recycled_gmres_stats)
-
     if opts.verbose:
         print(f"\n{'='*60}")
         print(f"  Resuelto: {solved}  n_pts={problem.n_points}"

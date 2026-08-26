@@ -50,6 +50,17 @@ from fgm_common import (
     parse_z_values,
 )
 
+
+_CONTINUATION_MAX_PHI_RATIO = 1.15
+
+
+def _is_local_phi_step(phi_from: float, phi_to: float) -> bool:
+    """Return whether a multiplicative phi step is safe for continuation."""
+    if phi_from <= 0.0 or phi_to <= 0.0:
+        return False
+    ratio = float(phi_to) / float(phi_from)
+    return (1.0 / _CONTINUATION_MAX_PHI_RATIO) <= ratio <= _CONTINUATION_MAX_PHI_RATIO
+
 v2_path = Path(__file__).resolve().parent.parent.parent / "V2"
 v2_dir = str(v2_path)
 if v2_dir not in sys.path:
@@ -156,6 +167,14 @@ def build_continuation_seed(
     if prev_solution is None or "z" not in prev_solution or "x" not in prev_solution:
         return None
 
+    # Parameter continuation is a local method. A distant flame profile can
+    # send the nonlinear solve through a much denser adaptive mesh than a cold
+    # start. Keep the seed only inside a 15 % multiplicative trust region.
+    if "phi" in prev_solution:
+        phi_prev = float(np.asarray(prev_solution["phi"]).ravel()[0])
+        if not _is_local_phi_step(phi_prev, float(phi)):
+            return None
+
     z_prev = np.asarray(prev_solution.get("z"), dtype=float)
     x_prev = np.asarray(prev_solution.get("x"), dtype=float)
     n_sp = int(problem.n_species)
@@ -175,7 +194,7 @@ def build_continuation_seed(
         phi0 = float(np.asarray(prev_prev_solution.get("phi")).ravel()[0])
         phi1 = float(np.asarray(prev_solution.get("phi")).ravel()[0])
         dphi = phi1 - phi0
-        if abs(dphi) > 1.0e-14:
+        if abs(dphi) > 1.0e-14 and _is_local_phi_step(phi0, phi1):
             z0 = np.asarray(prev_prev_solution.get("z"), dtype=float)
             x0 = np.asarray(prev_prev_solution.get("x"), dtype=float)
             expected0 = int(z0.size) * (2 + n_sp)
@@ -318,9 +337,6 @@ def make_solve_options(args: argparse.Namespace) -> SolveOptions:
     opts.damp_factor = float(args.damp_factor)
     opts.jac_threshold = float(args.jac_threshold)
     opts.jacobian_mode = str(args.jacobian_mode)
-    opts.transient_linear_solver = str(
-        getattr(args, "transient_linear_solver", "recycled_gmres")
-    )
     opts.precompute_jacobian_thermo = bool(args.precompute_jacobian_thermo)
     opts.max_refine_passes = int(args.max_refine_passes)
     opts.require_grid_convergence = bool(args.require_grid_convergence)
@@ -749,9 +765,6 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--jacobian-mode", type=str, default="block_tridiag",
                    choices=("numba_local", "banded_lapack", "block_tridiag", "cantera_local"),
                    help="Backend del Jacobiano usado por el solver V2.")
-    p.add_argument("--transient-linear-solver", type=str, default="direct",
-                   choices=("direct", "recycled_gmres"),
-                   help="En BE: LU directa por defecto; recycled_gmres queda disponible para continuaciones donde la sonda resulte util.")
     p.add_argument("--precompute-jacobian-thermo", action=argparse.BooleanOptionalAction,
                    default=True,
                    help="Precalcula termoquimica perturbada de todo el Jacobiano block_tridiag.")
@@ -869,7 +882,7 @@ def main() -> None:
         "transient=PTC-SER/BE-fallback, "
         f"damp=step_norm/{args.damp_factor:g}, "
         f"jacobian={args.jacobian_mode}, "
-        f"transient_linear={args.transient_linear_solver}"
+        "transient_linear=direct"
     )
     print(f"linear BLAS     : {os.environ.get('OPENBLAS_NUM_THREADS', 'auto')} thread(s)")
     print(

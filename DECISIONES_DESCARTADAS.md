@@ -143,8 +143,8 @@ honesta de los solvers.
 El perfil del arranque mostro que el bootstrap anterior refinaba cada malla
 intermedia y repetia el ciclo solve/refine. Se cambio la ruta de produccion a
 refinamiento adaptativo directo desde la malla inicial de 8 nodos y LU directa
-para BE. Los grids 12/24/48 y `recycled_gmres` permanecen como opciones
-explicitas, no se eliminaron.
+para BE. Los grids 12/24/48 permanecen como opciones de diagnostico; la ruta
+`recycled_gmres` se retiro despues del perfil final descrito abajo.
 
 Con el mismo caso y criterios estrictos de la tabla anterior, el comando real
 del generador obtuvo:
@@ -270,3 +270,57 @@ primera corrida después de borrar el caché tomó 26.1 s por la recompilación
 La comparación principal final obtuvo 34.84 s para Cantera y 12.41 s para V2
 (2.81x), con V2 convergido en 36 nodos, `Su=0.425526 m/s` y residual final
 4.23. El generador Cantera también pasó una prueba completa en modo `Z-grid`.
+
+## Perfil matematico y continuacion local (2026-08-26)
+
+El perfil del comparador principal identifico un camino lineal no rentable:
+`recycled_gmres` ejecuto 873 sondas y 801 terminaron reconstruyendo la LU
+exacta (91.8 % de fallback). En corridas alternadas sobre el mismo problema,
+LU directa promedio 7.86 s frente a 10.75 s de GMRES reciclado, una reduccion
+de 26.9 %, con la misma malla y diferencias maximas de 1.22e-11 K en `T` y
+2.92e-14 m/s en `Su`. Por eso se retiro por completo el solver, sus opciones,
+estadisticas e imports; la ruta de produccion es solo block-tridiagonal directa.
+
+Tambien se corrigio el paso PTC linealmente implicito. Cuando una correccion
+no reducia el residual, el control podia caer por error en la rama Newton y
+resolver un segundo sistema con la misma factorizacion. Ahora reduce `alpha`
+y prueba el mismo paso; asi cada iteracion PTC hace realmente una sola
+correccion lineal, como exige la formulacion documentada.
+
+El perfil instrumentado final del caso principal fue:
+
+| Componente | Tiempo | Llamadas |
+| --- | ---: | ---: |
+| Construccion de Jacobiano | 2.408 s | 224 |
+| Residual completo | 1.815 s | 6486 |
+| Damping de Newton/PTC | 1.742 s | 1558 |
+| Factorizacion lineal | 1.506 s | 1094 |
+| Solve lineal | 0.959 s | 4459 |
+
+El total V2 fue 7.33 s, con 36 nodos, `Su=0.4255264047 m/s` y residual final
+4.23; Cantera tomo 32.99 s en la misma corrida (4.50x). La suma de los
+componentes no debe interpretarse como particion exclusiva porque varias
+regiones perfiladas estan anidadas.
+
+Se midieron, pero no se conservaron, las siguientes variantes matematicas:
+
+| Variante | Resultado | Decision |
+| --- | --- | --- |
+| Newton-Krylov inexacto con forcing 0.1--0.5 | Menos LU, pero 6.90--8.87 s y sin mejora repetible frente a directa | Retirar |
+| Mantener `dt` SER 2--4 pasos para reutilizar LU | 11.10 / 15.48 s; intervalo 4 no convergio | Retirar |
+| Edad maxima de Jacobiano 30--60 | 7.71--8.68 s frente a 6.78 s con 20 | Conservar 20 |
+| Incremento SER 1.3--1.5 | Rapido en una llama, pero 16.22--17.94 s en FGM frente a 11.84 s con 1.1 | Conservar 1.1 |
+
+La mejora adicional vino de explotar que la continuacion en `phi` es local.
+En el barrido estricto `phi = 0.7, 0.9, 1.0, 1.1, 1.4`, continuar sin limite
+hizo que los saltos 0.7->0.9 y 1.1->1.4 tardaran 84.53 y 61.38 s y crecieran
+las mallas a 320 y 381 nodos. Se incorporo una region de confianza
+multiplicativa del 15 % tanto para reutilizar el perfil como para mantener el
+historial secante. Fuera de ella se usa el arranque frio robusto.
+
+Con esa regla, el barrido V2 bajo de 163.7 a 36.4 s end-to-end (77.8 %, 4.50x),
+acepto 5/5 flamelets y uso 266 / 247 / 256 / 268 / 247 nodos. Cantera, con los
+mismos valores de `phi` y criterios de refinamiento, tomo 93.9 s end-to-end;
+la suma exclusiva de solves fue 35.38 s para V2 y 93.23 s para Cantera (V2
+2.64x mas rapido). Cada solver conservo su propia malla adaptativa; la
+diferencia maxima de `Su` fue 0.75 % y ocurrio en el extremo `phi=1.4`.

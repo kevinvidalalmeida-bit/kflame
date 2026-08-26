@@ -56,8 +56,9 @@ corrección lineal y el paso temporal se adapta con la reducción del residual;
 si esa corrección falla, el solver vuelve al Euler implícito totalmente
 convergido. En el generador FGM, la ruta fría usa por defecto
 `block_tridiag + direct` y desactiva los grids fijos intermedios; esto evita
-resolver y refinar varias veces la misma llama. `recycled_gmres` sigue
-disponible explícitamente para continuaciones donde resulte beneficioso.
+resolver y refinar varias veces la misma llama. La ruta `recycled_gmres` fue
+retirada porque el perfil mostró retrocesos frecuentes a LU directa y mayor
+tiempo total sin mejorar la solución.
 La opción `--auto-bootstrap-grids` conserva el bootstrap 12/24/48 para
 diagnóstico y reproducibilidad histórica.
 Para evitar sobre-hilos en los bloques densos pequeños, V2 fija
@@ -73,6 +74,12 @@ validar la configuración final.
 Las variantes medidas y descartadas están registradas en
 [`DECISIONES_DESCARTADAS.md`](DECISIONES_DESCARTADAS.md). No deben volver a
 añadirse sin una validación end-to-end de FGM reproducible.
+
+La continuación FGM trata cada perfil previo como una aproximación local: lo
+reutiliza solo cuando la razón entre valores consecutivos de `phi` está entre
+`1/1.15` y `1.15`. Los saltos mayores reinician desde el arranque robusto y
+anulan también la secante anterior. Esto evita que una semilla lejana fuerce
+una trayectoria no lineal con una malla adaptativa innecesariamente densa.
 
 Para barridos FGM repetidos, el generador conserva las semillas V2 aceptadas
 en `output-root/_v2_seed_cache` y activa automáticamente procesos paralelos
