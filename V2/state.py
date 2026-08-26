@@ -20,20 +20,6 @@ C_T = 1  # temperatura
 C_Y = 2  # inicio de fracciones másicas
 
 
-def n_vars(n_species: int) -> int:
-    """Número de variables por punto."""
-    return 2 + n_species
-
-
-def state_size(n_points: int, n_species: int) -> int:
-    return n_points * n_vars(n_species)
-
-
-def vidx(j: int, offset: int, nv: int) -> int:
-    """Índice escalar: variable `offset` en punto `j`, con `nv` vars/punto."""
-    return j * nv + offset
-
-
 # ---------------------------------------------------------------------------
 #  Pack / Unpack
 # ---------------------------------------------------------------------------

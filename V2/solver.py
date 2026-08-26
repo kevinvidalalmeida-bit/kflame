@@ -270,19 +270,6 @@ def initial_grid(
     return width * xi
 
 
-def grid_from_reference(npz_path: str, subsample: int | None = None) -> np.ndarray:
-    data = np.load(npz_path, allow_pickle=True)
-    z_ref = np.asarray(data["z"], dtype=float)
-
-    if subsample is not None and subsample > 1:
-        idx = np.arange(0, len(z_ref), subsample)
-        if idx[-1] != len(z_ref) - 1:
-            idx = np.append(idx, len(z_ref) - 1)
-        z_ref = z_ref[idx]
-
-    return z_ref
-
-
 def build_freeflame_refiner_profiles(problem, u: np.ndarray, T: np.ndarray, Y: np.ndarray) -> dict:
     """
     Selección de perfiles para refinamiento en free premixed flame.
@@ -477,40 +464,6 @@ class AdaptiveRefiner:
         changed = bool(z_new.size != z.size)
         return z_new, changed, n_inserted, n_removed
 
-    def interpolate_solution(self, z_old: np.ndarray, z_new: np.ndarray,
-                             *arrays: np.ndarray) -> list:
-        result = []
-        for arr in arrays:
-            arr = np.asarray(arr, dtype=float)
-            if arr.ndim == 1:
-                result.append(np.interp(z_new, z_old, arr))
-            elif arr.ndim == 2:
-                new_arr = np.empty((arr.shape[0], len(z_new)), dtype=float)
-                for k in range(arr.shape[0]):
-                    new_arr[k, :] = np.interp(z_new, z_old, arr[k, :])
-                result.append(new_arr)
-            else:
-                raise ValueError(f"Array con ndim={arr.ndim} no soportado")
-        return result
-
-
-# --- FIN DE MESH.PY, INICIO DE NEWTON.PY ---
-
-"""
-newton.py - Damped Newton solver aligned with Cantera MultiNewton.
-
-Key behaviors mirrored from Cantera:
-- Reuse Jacobian for limited age and rebuild when stale.
-- Compute undamped Newton step with fixed Jacobian.
-- Damped step acceptance based on weighted step norm:
-    accept if s1 < 1.0 or s1 < s0
-- If damping fails with old Jacobian, force Jacobian rebuild (up to 3 retries).
-- On failure, return the original input state unchanged.
-"""
-
-
-
-
 # ---------------------------------------------------------------------------
 #  Weighted norm (OneDim::weightedNorm analogue)
 # ---------------------------------------------------------------------------
@@ -648,10 +601,6 @@ class JacobianState:
     def is_stale(self, max_age: int) -> bool:
         # Cantera refreshes when age() > maxAge
         return self.J is None or self.lu is None or self.age > max_age
-
-
-def _transient_alpha(transient_order: int, x_older: np.ndarray | None) -> float:
-    return 1.0
 
 
 def _build_linear_model(steady_fun, x: np.ndarray, problem,
@@ -849,8 +798,6 @@ def newton_solve(
     problem,
     rdt: float = 0.0,
     x_old: np.ndarray | None = None,
-    x_older: np.ndarray | None = None,
-    transient_order: int = 1,
     max_iter: int = 20,
     max_jac_age: int = 20,
     max_damp_iter: int = 7,
@@ -858,8 +805,7 @@ def newton_solve(
     tol: float = 1.0,
     jac_eps: float = 1e-5,
     alpha_min: float = 1e-10,
-    damping_mode: str = "step_norm",
-    damping_residual_reduction: float = 1.0e-3,
+    residual_damping: bool = False,
     verbose: bool = False,
     jac_state: JacobianState | None = None,
     deadline: float | None = None,
@@ -884,14 +830,12 @@ def newton_solve(
             problem,
             rdt=rdt,
             x_old=x_old,
-            x_older=x_older,
-            transient_order=transient_order,
         )
 
     mask = build_transient_mask(problem.n_points, problem.n_species,
                                 solve_energy=bool(problem.solve_energy))
 
-    rdt_curr = float(rdt) * _transient_alpha(transient_order, x_older)
+    rdt_curr = float(rdt)
     rdt_changed = (
         jac_state.last_rdt is None
         or not np.isclose(jac_state.last_rdt, rdt_curr, rtol=1e-12, atol=0.0)
@@ -900,10 +844,6 @@ def newton_solve(
     force_new_jac = jac_state.J is None or jac_state.lu is None
     n_jac_reeval = 0
     status = -1
-    damping_mode = str(damping_mode).strip().lower()
-    residual_damping = damping_mode in ("residual", "residual_norm", "inexact")
-    residual_reduction = float(np.clip(damping_residual_reduction, 0.0, 0.5))
-
     for it in range(max_iter):
         if deadline is not None and time.perf_counter() > deadline:
             history.append({"iter": it, "status": "timeout"})
@@ -1030,7 +970,7 @@ def newton_solve(
                 normf_try = float(np.linalg.norm(f_try, ord=np.inf))
                 residual_ok = (
                     normf <= 1.0e-30
-                    or normf_try < normf * (1.0 - residual_reduction)
+                    or normf_try < normf
                 )
                 if residual_ok:
                     damp_ok = True
@@ -1121,36 +1061,6 @@ def newton_solve(
     return x, bool(status == 1), history, jac_state
 
 
-# --- FIN DE NEWTON.PY, INICIO DE SOLVER_CANTERA_AUTO.PY ---
-
-"""
-solver_cantera_auto.py – Solver híbrido Newton + time-stepping.
-
-Replica la estructura de Sim1D::solve() de Cantera:
-
-  while new_points > 0:
-      SteadyStateSystem::solve()   ← hybrid_newton_solve()
-      new_points = refine()        ← AdaptiveRefiner
-
-SteadyStateSystem::solve() (en numerics/SteadyStateSystem.cpp) implementa:
-  for each cycle:
-      intento Newton estacionario   -> newton_solve(rdt=0)
-      si falla -> time steps Euler implÃ­cito (BE)
-      si falla -> reduce dt y reintenta
-  hasta converger o agotar max_steps
-
-La novedad respecto al código anterior:
-  * No hay `transient_jacobian_pairs`; el update diagonal funciona
-    porque estado y residual tienen el mismo layout por-punto.
-  * Refine usa la solución convergida (igual que Sim1D::refine), no la
-    solución del intento en curso.
-  * Se guarda m_xlast_ss (último steady) para restaurar si refine falla.
-"""
-
-
-
-
-
 # ---------------------------------------------------------------------------
 #  Opciones
 # ---------------------------------------------------------------------------
@@ -1197,10 +1107,6 @@ class SolveOptions:
     # back to an exact factorization. The exact fallback remains unchanged.
     recycled_gmres_adaptive: bool = False
     recycled_gmres_probe_failures: int = 3
-
-    # Optional inexact damping for warm starts and continuation chains.
-    damping_mode: str = "step_norm"  # "step_norm" | "residual"
-    damping_residual_reduction: float = 1.0e-3
 
     # Refinamiento (defaults de Refiner::setCriteria)
     refine_grid: bool = True
@@ -1378,8 +1284,6 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
             tol=opts.tol,
             jac_eps=opts.jac_eps,
             alpha_min=opts.alpha_min,
-            damping_mode=getattr(opts, "damping_mode", "step_norm"),
-            damping_residual_reduction=getattr(opts, "damping_residual_reduction", 1.0e-3),
             verbose=opts.verbose,
             jac_state=jac,
             deadline=deadline,
@@ -1434,7 +1338,6 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
 
         # ---- Time-stepping (SteadyStateSystem::timeStep style) ----
         x_old = x.copy()
-        x_older: np.ndarray | None = None
         n_done = 0
         successive_failures = 0
 
@@ -1453,7 +1356,6 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                 break
 
             rdt = 1.0 / dt_try
-            transient_order = 1
             # Production path: one linearly implicit PTC-SER correction.
             # After a rejection, retain the robust fully implicit BE solve as
             # an internal fallback until a transient step succeeds.
@@ -1463,8 +1365,7 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
 
             x_ts, ok_ts, hist_ts, jac = newton_solve(
                 steady_fun, x_old, problem,
-                rdt=rdt, x_old=x_old, x_older=x_older,
-                transient_order=transient_order,
+                rdt=rdt, x_old=x_old,
                 max_iter=1 if use_ptc else opts.transient_max_iter,
                 max_jac_age=ts_jac_age,
                 max_damp_iter=opts.max_damp_iter,
@@ -1475,16 +1376,7 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                 # A single-correction PTC step must not spend extra linear
                 # solves estimating a second Newton correction. The
                 # transient residual provides a cheap globalization test.
-                damping_mode=(
-                    "residual"
-                    if use_ptc
-                    else getattr(opts, "damping_mode", "step_norm")
-                ),
-                damping_residual_reduction=(
-                    0.0
-                    if use_ptc
-                    else getattr(opts, "damping_residual_reduction", 1.0e-3)
-                ),
+                residual_damping=use_ptc,
                 verbose=opts.verbose,
                 jac_state=jac,
                 deadline=deadline,
@@ -1544,7 +1436,6 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                 x_prev = x_old
                 x = x_ts
                 x_old = x_ts
-                x_older = None
                 n_done += 1
                 nsteps_total += 1
 
@@ -1609,7 +1500,6 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                     return x, False, history
             else:
                 successive_failures += 1
-                x_older = None  # Fall back to Backward Euler on failure
                 reset_bad = False
                 reset_after = int(max(1, getattr(opts, "reset_bad_after_failures", 3)))
                 if successive_failures >= reset_after:

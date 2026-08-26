@@ -9,7 +9,7 @@ from scipy import sparse
 from scipy.linalg import get_lapack_funcs, lu_factor, lu_solve
 from scipy.sparse.linalg import splu
 
-from state import C_T, C_U, C_Y, build_transient_mask, unpack_state
+from state import C_T, C_U, C_Y, build_transient_mask
 
 try:
     from numba import njit
@@ -64,7 +64,7 @@ def _corrected_flux(Y_L: np.ndarray, Y_R: np.ndarray,
                     basis: str = "molar") -> np.ndarray:
     """
     Flujo de especie corregido en la cara j+1/2.
-    IdÃ©ntico a Flow1D::updateDiffFluxes (mixture-averaged, sin Soret).
+    Idéntico a Flow1D::updateDiffFluxes (mixture-averaged, sin Soret).
     """
     if basis in ("molar", "mole"):
         W_mix_L = 1.0 / np.dot(Y_L, 1.0 / W)
@@ -76,7 +76,7 @@ def _corrected_flux(Y_L: np.ndarray, Y_R: np.ndarray,
     else:
         dphi = (Y_R - Y_L) / dz
         J_star = -rho_f * D_f * dphi
-    # CorrecciÃ³n para asegurar suma de flujos nula
+    # Corrección para asegurar suma de flujos nula
     # Cantera usa Y_L (el nodo j) en vez del punto medio j+1/2 para distribuir el error:
     # m_flux(k,j) += sum*Y(x,k,j);
     return J_star - Y_L * J_star.sum()
@@ -198,10 +198,13 @@ else:
     _assemble_residual_numba_core = None
 
 
-def _apply_transient_terms(F: np.ndarray, x: np.ndarray, problem, rdt: float,
-                           x_old: np.ndarray | None,
-                           x_older: np.ndarray | None,
-                           transient_order: int) -> np.ndarray:
+def _apply_transient_terms(
+    F: np.ndarray,
+    x: np.ndarray,
+    problem,
+    rdt: float,
+    x_old: np.ndarray | None,
+) -> np.ndarray:
     if rdt > 0.0 and x_old is not None:
         x_old = np.asarray(x_old, dtype=float)
         mask = build_transient_mask(
@@ -213,15 +216,13 @@ def _apply_transient_terms(F: np.ndarray, x: np.ndarray, problem, rdt: float,
 
 
 # ---------------------------------------------------------------------------
-#  FunciÃ³n residual principal
+#  Función residual principal
 # ---------------------------------------------------------------------------
 def residual(
     x: np.ndarray,
     problem,
     rdt: float = 0.0,
     x_old: np.ndarray | None = None,
-    x_older: np.ndarray | None = None,
-    transient_order: int = 1,
 ) -> np.ndarray:
     """
     Residual acoplado completo.
@@ -353,7 +354,7 @@ def residual(
                 bool(_outlet_species_flux_bc(problem)),
             )
             _profile_record(problem, "residual_assembly_numba", t_assembly)
-            _apply_transient_terms(F_numba, x, problem, rdt, x_old, x_older, transient_order)
+            _apply_transient_terms(F_numba, x, problem, rdt, x_old)
             if not np.all(np.isfinite(F_numba)):
                 F_numba = np.full(x.size, 1.0e20)
             return _profile_return(problem, "residual_full", t_profile, F_numba)
@@ -421,14 +422,9 @@ def residual(
     _right_bc(F, u, T, Y, rho, flux[:, -1], problem, nv, n_sp, n_pts)
 
     # ------------------------------------------------------------------
-    #  4. TÃ©rmino transitorio  (idÃ©ntico a "rsd[n] -= rdt*(x-x_old)" en Cantera)
+    #  4. Término transitorio (idéntico a "rsd[n] -= rdt*(x-x_old)" en Cantera)
     # ------------------------------------------------------------------
-    if rdt > 0.0 and x_old is not None:
-        x_old = np.asarray(x_old, dtype=float)
-        mask = build_transient_mask(n_pts, n_sp,
-                                    solve_energy=bool(problem.solve_energy))
-        # Backward Euler: (x - x_n) / dt
-        F -= mask * rdt * (x - x_old)
+    _apply_transient_terms(F, x, problem, rdt, x_old)
 
     if not np.all(np.isfinite(F)):
         return _profile_return(problem, "residual_full", t_profile, np.full(x.size, 1.0e20))
@@ -497,14 +493,14 @@ def _right_bc(F: np.ndarray, u, T, Y, rho, flux_last, problem, nv, n_sp, n_pts):
 
 
 # ---------------------------------------------------------------------------
-#  EcuaciÃ³n de energÃ­a interior
+#  Ecuación de energía interior
 # ---------------------------------------------------------------------------
 def _energy_residual(u, T, Y, rho, cp_n, lam_n, hk_n, omega, lam_face,
                      fm, fp, j, z, dzm, dzp, dz2, n_sp, W, invW, problem):
-    """Residual de la ecuaciÃ³n de energÃ­a en el punto interior j."""
+    """Residual de la ecuación de energía en el punto interior j."""
     rho_u_j = rho[j] * u[j]
 
-    # Upwind para convecciÃ³n
+    # Upwind para convección
     jloc = j if u[j] > 0.0 else j + 1
     dz_up = z[jloc] - z[jloc - 1]
     dTdz_up = (T[jloc] - T[jloc - 1]) / dz_up
@@ -515,13 +511,13 @@ def _energy_residual(u, T, Y, rho, cp_n, lam_n, hk_n, omega, lam_face,
     else:
         dTdz = dTdz_up
 
-    # ConducciÃ³n centrada
+    # Conducción centrada
     lam_m = lam_face[j - 1]
     lam_p = lam_face[j]
     cond = -2.0 * (lam_p * (T[j + 1] - T[j]) / dzp
                    - lam_m * (T[j] - T[j - 1]) / dzm) / dz2
 
-    # Gradientes de entalpÃ­a (upwind)
+    # Gradientes de entalpía (upwind)
     dhk_dz = (hk_n[:, jloc] - hk_n[:, jloc - 1]) / dz_up
 
     flx = 0.5 * (fm + fp)
@@ -529,28 +525,6 @@ def _energy_residual(u, T, Y, rho, cp_n, lam_n, hk_n, omega, lam_face,
                    np.dot(flx * dhk_dz, invW))
 
     return (-cp_n[j] * rho_u_j * dTdz - cond - en_sum) / (rho[j] * cp_n[j])
-
-
-# ---------------------------------------------------------------------------
-def residual_block_report(x: np.ndarray, problem) -> dict:
-    F = residual(x, problem)
-    nv = 2 + problem.n_species
-    n_pts = problem.n_points
-
-    R_left = F[:nv]
-    R_right = F[-nv:]
-    norms_int = [float(np.linalg.norm(F[j*nv:(j+1)*nv], ord=np.inf))
-                 for j in range(1, n_pts - 1)]
-
-    return {
-        "left_inf":      float(np.linalg.norm(R_left, ord=np.inf)),
-        "right_inf":     float(np.linalg.norm(R_right, ord=np.inf)),
-        "interior_max":  float(max(norms_int)) if norms_int else 0.0,
-        "interior_mean": float(sum(norms_int) / len(norms_int)) if norms_int else 0.0,
-        "total_inf":     float(np.linalg.norm(F, ord=np.inf)),
-    }
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -1591,20 +1565,6 @@ def residual_local_rows_batch(x_batch: np.ndarray, problem, center_j: int,
     return _profile_return(problem, "residual_local_batch", t_profile, (rows_out, vals_out))
 
 
-# --- FIN DE RESIDUAL.PY, INICIO DE JACOBIAN.PY ---
-
-"""
-jacobian.py - Sparse Jacobian builders and transient diagonal update.
-
-Default assembly follows the Cantera OneDim::evalJacobian pattern:
-- perturb one state variable at a time
-- evaluate residual only on local rows (j-1, j, j+1)
-- fill a sparse Jacobian column from local finite differences
-"""
-
-
-
-
 # ---------------------------------------------------------------------------
 #  Cantera-style local finite-difference Jacobian
 # ---------------------------------------------------------------------------
@@ -1675,7 +1635,10 @@ def _banded_jacobian_cantera_local(fun, x: np.ndarray, problem, eps: float = 1e-
     - base residual at x
     - perturb one variable x[col]
     - evaluate residual only for point neighborhood of col's grid point
-    - write local rows into Jacobian    # Las funciones residual_local_rows y build_local_jacobian_cache estÃ¡n en este mismo archivo.
+    - write local rows into Jacobian
+
+    ``residual_local_rows`` and ``build_local_jacobian_cache`` are defined in
+    this module.
     """
 
     t_profile = _profile_start(problem)
@@ -2141,14 +2104,6 @@ def build_jacobian_steady(fun, x: np.ndarray, problem,
     j_ss = banded_jacobian(fun, x, problem, eps=eps)
     ss_diag = j_ss.diagonal().copy()
     return j_ss, ss_diag
-
-
-def build_jacobian_transient(fun, x: np.ndarray, problem, rdt: float,
-                             eps: float = 1e-5):
-    j_ss, _ = build_jacobian_steady(fun, x, problem, eps=eps)
-    mask = build_transient_mask(problem.n_points, problem.n_species,
-                                solve_energy=bool(problem.solve_energy))
-    return update_transient(j_ss, mask, rdt)
 
 
 # ---------------------------------------------------------------------------

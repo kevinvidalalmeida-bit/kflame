@@ -2,7 +2,7 @@
 
 ## Comando principal
 
-Desde la raiz del proyecto:
+Desde la raíz del proyecto:
 
 ```powershell
 python .\V2\run_saved_comparison.py --loglevel 0
@@ -14,7 +14,7 @@ Para ver el avance del solver V2:
 python .\V2\run_saved_comparison.py --loglevel 0 --verbose-ours
 ```
 
-Para ver tambien la salida de Cantera:
+Para ver también la salida de Cantera:
 
 ```powershell
 python .\V2\run_saved_comparison.py --loglevel 1 --verbose-ours
@@ -41,7 +41,11 @@ Ese directorio contiene:
 - `V2/`: solver 1-D y comparación de referencia.
 - `FGM/scripts/generate_fgm_tables_native.py`: generador FGM con el backend
   nativo CPU.
-- `FGM/resultados/`: resultados finales conservados.
+- `FGM/scripts/generate_fgm_tables_cantera.py`: generador FGM de referencia.
+- `FGM/scripts/fgm_common.py`: matemática y utilidades compartidas por ambos
+  generadores, sin código duplicado.
+- `FGM/resultados/`: salidas generadas localmente; Git las ignora y no se
+  versionan.
 - `TESIS/`: material de la tesis conservado.
 
 Los perfiles, cachés, respaldos, binarios compilados y scripts de ensayo se
@@ -56,9 +60,9 @@ resolver y refinar varias veces la misma llama. `recycled_gmres` sigue
 disponible explícitamente para continuaciones donde resulte beneficioso.
 La opción `--auto-bootstrap-grids` conserva el bootstrap 12/24/48 para
 diagnóstico y reproducibilidad histórica.
-Para evitar sobre-hilos en los bloques densos pequenos, V2 fija
+Para evitar sobre-hilos en los bloques densos pequeños, V2 fija
 `OPENBLAS_NUM_THREADS=1` si el usuario no lo define. En corridas FGM
-secuenciales y en V2, el kernel de quimica usa 4 hilos de Numba por defecto;
+secuenciales y en V2, el kernel de química usa 4 hilos de Numba por defecto;
 puede modificarse con `NUMBA_NUM_THREADS` o, en FGM, con
 `--numba-kinetics-threads`.
 
@@ -71,9 +75,9 @@ Las variantes medidas y descartadas están registradas en
 añadirse sin una validación end-to-end de FGM reproducible.
 
 Para barridos FGM repetidos, el generador conserva las semillas V2 aceptadas
-en `output-root/_v2_seed_cache` y activa automaticamente procesos paralelos
+en `output-root/_v2_seed_cache` y activa automáticamente procesos paralelos
 cuando todas las semillas del barrido ya existen. Es la ruta recomendada para
-produccion: mantiene la misma malla y criterio de convergencia, y evita pagar
-el bootstrap frio en cada regeneracion. La comparacion estricta fria y sus
-limitaciones estan documentadas en
+producción: mantiene la misma malla y criterio de convergencia, y evita pagar
+el bootstrap frío en cada regeneración. La comparación estricta fría y sus
+limitaciones están documentadas en
 [`DECISIONES_DESCARTADAS.md`](DECISIONES_DESCARTADAS.md).

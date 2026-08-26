@@ -37,6 +37,19 @@ os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 import cantera as ct
 import numpy as np
 
+from fgm_common import (
+    build_adaptive_c_grid,
+    build_global_indicator,
+    compute_bilger_Z,
+    compute_progress_variable,
+    invert_bilger_Z_to_phi,
+    monotonicize_on_c,
+    parse_phi_values,
+    parse_progress_weights,
+    parse_species_list,
+    parse_z_values,
+)
+
 v2_path = Path(__file__).resolve().parent.parent.parent / "V2"
 v2_dir = str(v2_path)
 if v2_dir not in sys.path:
@@ -72,7 +85,7 @@ def configure_numba_kinetics_threads(count: int) -> int:
 @dataclass
 class FlameRecord:
     phi: float
-    Z: float            # <<< NUEVO: fracción de mezcla de Bilger
+    Z: float
     solve_ok: bool
     residual_inf: float
     weighted_step_norm: float
@@ -91,47 +104,6 @@ class FlameRecord:
     Y: np.ndarray
     c: np.ndarray
     beta: np.ndarray
-
-
-# ---------------------------------------------------------------------------
-# Parsers de argumentos
-# ---------------------------------------------------------------------------
-
-def parse_progress_weights(text: str) -> dict[str, float]:
-    weights: dict[str, float] = {}
-    if not text.strip():
-        return weights
-    for token in text.split(","):
-        token = token.strip()
-        if not token:
-            continue
-        if ":" not in token:
-            raise ValueError(f"Formato inválido en progress-species: '{token}'. Usa especie:peso.")
-        sp, w = token.split(":", 1)
-        weights[sp.strip()] = float(w.strip())
-    return weights
-
-
-def parse_species_list(text: str) -> list[str]:
-    return [s.strip() for s in text.split(",") if s.strip()]
-
-
-def parse_phi_values(args: argparse.Namespace) -> np.ndarray:
-    if args.phi_values.strip():
-        vals = [float(v.strip()) for v in args.phi_values.split(",") if v.strip()]
-        return np.array(sorted(vals), dtype=float)
-    if args.n_phi < 2:
-        return np.array([float(args.phi_min)], dtype=float)
-    return np.linspace(float(args.phi_min), float(args.phi_max), int(args.n_phi))
-
-
-def parse_z_values(args: argparse.Namespace) -> np.ndarray:
-    if args.z_values.strip():
-        vals = [float(v.strip()) for v in args.z_values.split(",") if v.strip()]
-        return np.array(sorted(vals), dtype=float)
-    if args.n_z < 2:
-        return np.array([float(args.z_min)], dtype=float)
-    return np.linspace(float(args.z_min), float(args.z_max), int(args.n_z))
 
 
 def load_seed_profile_npz(path: Path, n_species: int, source: str = "auto") -> dict[str, np.ndarray]:
@@ -344,10 +316,6 @@ def make_solve_options(args: argparse.Namespace) -> SolveOptions:
     opts.accept_residual_converged = (opts.acceptance_criterion == "residual")
     opts.max_jac_age = int(args.max_jac_age)
     opts.damp_factor = float(args.damp_factor)
-    opts.damping_mode = str(getattr(args, "damping_mode", "step_norm"))
-    opts.damping_residual_reduction = float(
-        getattr(args, "damping_residual_reduction", 1.0e-3)
-    )
     opts.jac_threshold = float(args.jac_threshold)
     opts.jacobian_mode = str(args.jacobian_mode)
     opts.transient_linear_solver = str(
@@ -359,148 +327,6 @@ def make_solve_options(args: argparse.Namespace) -> SolveOptions:
     opts.auto_bootstrap_grids = bool(args.auto_bootstrap_grids)
     opts.restart_insert_anchor = bool(args.restart_insert_anchor)
     return opts
-
-
-# ---------------------------------------------------------------------------
-# Fracción de mezcla de Bilger  <<<  NUEVA FUNCIÓN
-# ---------------------------------------------------------------------------
-
-def compute_bilger_Z(phi: float, args: argparse.Namespace) -> float:
-    """
-    Calcula la fracción de mezcla de Bilger para la mezcla premezclada
-    con equivalence ratio `phi`.  Para una llama premezclada Z es uniforme
-    a lo largo del flamelet.
-
-    Cantera define Z=1 para combustible puro y Z=0 para oxidante puro,
-    usando la fórmula de Bilger basada en átomos de C, H, O.
-    """
-    gas = ct.Solution(args.mech)
-    gas.TP = float(args.T_in), float(args.P)
-    gas.set_equivalence_ratio(float(phi), args.fuel, args.oxidizer)
-    # basis='mass' → fracción de mezcla másica (estándar en FGM)
-    Z = float(gas.mixture_fraction(args.fuel, args.oxidizer, basis="mass"))
-    return Z
-
-
-def invert_bilger_Z_to_phi(
-    Z_target: float,
-    args: argparse.Namespace,
-    *,
-    phi_lo: float,
-    phi_hi: float,
-    tol: float = 1e-10,
-    max_iter: int = 80,
-) -> float:
-    """
-    Invertir Z(phi) para una mezcla premezclada:
-      dado Z objetivo, encontrar phi tal que compute_bilger_Z(phi)=Z.
-    """
-    if not (0.0 <= Z_target <= 1.0):
-        raise ValueError(f"Z objetivo fuera de [0,1]: {Z_target}")
-
-    # Evitar extremos exactos (phi->0 o phi->inf).
-    zt = float(np.clip(Z_target, 1e-12, 1.0 - 1e-12))
-    plo = max(float(phi_lo), 1e-12)
-    phi = max(float(phi_hi), plo * 1.001)
-
-    z_lo = compute_bilger_Z(plo, args)
-    z_hi = compute_bilger_Z(phi, args)
-    if not (z_lo <= zt <= z_hi):
-        raise ValueError(
-            "Z objetivo no alcanzable con el bracket de phi actual. "
-            f"Z_target={zt:.6f}, Z(phi_lo={plo:.3e})={z_lo:.6f}, "
-            f"Z(phi_hi={phi:.3e})={z_hi:.6f}"
-        )
-
-    for _ in range(int(max_iter)):
-        pm = float(np.sqrt(plo * phi))  # bisección en escala log(phi)
-        zm = compute_bilger_Z(pm, args)
-        if abs(zm - zt) <= float(tol):
-            return pm
-        if zm < zt:
-            plo = pm
-        else:
-            phi = pm
-
-    return 0.5 * (plo + phi)
-
-
-# ---------------------------------------------------------------------------
-# Variable de progreso
-# ---------------------------------------------------------------------------
-
-def compute_progress_variable(
-    species_names: list[str],
-    Y: np.ndarray,
-    T: np.ndarray,
-    progress_weights: dict[str, float],
-) -> tuple[np.ndarray, np.ndarray, list[str]]:
-    sp_to_idx = {sp: i for i, sp in enumerate(species_names)}
-    used: list[str] = []
-    beta = np.zeros(Y.shape[1], dtype=float)
-    for sp, w in progress_weights.items():
-        if sp not in sp_to_idx:
-            continue
-        beta += float(w) * Y[sp_to_idx[sp]]
-        used.append(sp)
-
-    if not used:
-        dT = float(T[-1] - T[0])
-        c = np.linspace(0.0, 1.0, T.size) if abs(dT) < 1e-14 else (T - T[0]) / dT
-        return np.clip(c, 0.0, 1.0), c.copy(), used
-
-    beta_u, beta_b = float(beta[0]), float(beta[-1])
-    den = beta_b - beta_u
-    if abs(den) < 1e-14:
-        dT = float(T[-1] - T[0])
-        c = np.linspace(0.0, 1.0, T.size) if abs(dT) < 1e-14 else (T - T[0]) / dT
-    else:
-        c = (beta - beta_u) / den
-    return np.clip(c, 0.0, 1.0), beta, used
-
-
-# ---------------------------------------------------------------------------
-# Monotonicización en c
-# ---------------------------------------------------------------------------
-
-def monotonicize_on_c(
-    c: np.ndarray,
-    fields: dict[str, np.ndarray],
-) -> tuple[np.ndarray, dict[str, np.ndarray]]:
-    mask = np.isfinite(c)
-    for arr in fields.values():
-        mask &= np.isfinite(arr)
-    if int(np.count_nonzero(mask)) < 2:
-        raise RuntimeError("No hay puntos finitos suficientes para construir c monótona.")
-
-    c0 = np.asarray(c[mask], dtype=float)
-    order = np.argsort(c0)
-    c_sorted = c0[order]
-    uniq_c, inv = np.unique(c_sorted, return_inverse=True)
-
-    out: dict[str, np.ndarray] = {}
-    for key, arr in fields.items():
-        a_sorted = np.asarray(arr[mask], dtype=float)[order]
-        acc = np.zeros(uniq_c.size, dtype=float)
-        cnt = np.zeros(uniq_c.size, dtype=float)
-        np.add.at(acc, inv, a_sorted)
-        np.add.at(cnt, inv, 1.0)
-        out[key] = acc / np.maximum(cnt, 1.0)
-
-    c_u = uniq_c.copy()
-    c_u[0] = max(0.0, c_u[0])
-    c_u[-1] = min(1.0, c_u[-1])
-
-    if c_u[0] > 0.0:
-        c_u = np.concatenate(([0.0], c_u))
-        for k in out:
-            out[k] = np.concatenate(([out[k][0]], out[k]))
-    if c_u[-1] < 1.0:
-        c_u = np.concatenate((c_u, [1.0]))
-        for k in out:
-            out[k] = np.concatenate((out[k], [out[k][-1]]))
-
-    return c_u, out
 
 
 # ---------------------------------------------------------------------------
@@ -743,71 +569,6 @@ def solve_flame_from_seed_cache_worker(payload: tuple[int, float, str, argparse.
 
 
 # ---------------------------------------------------------------------------
-# Indicador global para malla adaptativa en c
-# ---------------------------------------------------------------------------
-
-def build_global_indicator(
-    records: list[FlameRecord],
-    species_names: list[str],
-    indicator_species: list[str],
-    c_fine: np.ndarray,
-    w_grad: float, w_conc: float, w_temp: float, w_qdot: float,
-) -> np.ndarray:
-    sp_to_idx = {sp: i for i, sp in enumerate(species_names)}
-    idx_sel = [sp_to_idx[sp] for sp in indicator_species if sp in sp_to_idx]
-    eps = 1e-30
-    acc = np.zeros_like(c_fine)
-    n_ok = 0
-
-    for rec in records:
-        c_u, out = monotonicize_on_c(rec.c, {"T": rec.T, "qdot": rec.qdot})
-        score = np.zeros_like(c_u)
-        dTdc = np.abs(np.gradient(out["T"], c_u, edge_order=1))
-        score += float(w_temp) * (dTdc / (np.max(dTdc) + eps))
-        qn = np.abs(out["qdot"])
-        score += float(w_qdot) * (qn / (np.max(qn) + eps))
-        for k in idx_sel:
-            c_k, y_k_map = monotonicize_on_c(rec.c, {"Y": rec.Y[k]})
-            yk = y_k_map["Y"]
-            dykdc = np.abs(np.gradient(yk, c_k, edge_order=1))
-            loc = float(w_grad) * (dykdc / (np.max(dykdc) + eps)) + \
-                  float(w_conc) * (yk / (np.max(yk) + eps))
-            score += np.interp(c_u, c_k, loc, left=loc[0], right=loc[-1])
-        if np.max(score) > 0:
-            score /= np.max(score)
-        acc += np.interp(c_fine, c_u, score, left=score[0], right=score[-1])
-        n_ok += 1
-
-    return acc / float(n_ok) if n_ok > 0 else np.ones_like(c_fine)
-
-
-def build_adaptive_c_grid(
-    c_fine: np.ndarray, indicator: np.ndarray, n_c: int, bias: float
-) -> np.ndarray:
-    n_c = int(max(8, n_c))
-    w = 1.0 + float(bias) * np.maximum(indicator, 0.0)
-    dc = np.diff(c_fine)
-    w_mid = 0.5 * (w[:-1] + w[1:])
-    cdf = np.concatenate(([0.0], np.cumsum(w_mid * dc)))
-    total = float(cdf[-1])
-    if total <= 0.0:
-        return np.linspace(0.0, 1.0, n_c)
-    cdf /= total
-    c_adapt = np.interp(np.linspace(0.0, 1.0, n_c), cdf, c_fine)
-    c_uni = np.linspace(0.0, 1.0, max(10, n_c // 6))
-    c_mix = np.unique(np.concatenate(([0.0], c_adapt, c_uni, [1.0])))
-    if c_mix.size != n_c:
-        c_mix = np.interp(
-            np.linspace(0.0, 1.0, n_c),
-            np.linspace(0.0, 1.0, c_mix.size),
-            c_mix,
-        )
-    c_mix[0] = 0.0
-    c_mix[-1] = 1.0
-    return c_mix
-
-
-# ---------------------------------------------------------------------------
 # Escritura de resultados
 # ---------------------------------------------------------------------------
 
@@ -835,7 +596,7 @@ def write_raw_profiles(out_dir: Path, records: list[FlameRecord], species_names:
         np.savez_compressed(
             raw_dir / f"{tag}.npz",
             phi=np.array([rec.phi], dtype=float),
-            Z=np.array([rec.Z], dtype=float),   # <<< NUEVO
+            Z=np.array([rec.Z], dtype=float),
             solve_ok=np.array([rec.solve_ok], dtype=bool),
             final_accepted=np.array([rec.final_accepted], dtype=bool),
             acceptance_criterion=np.array([rec.acceptance_criterion], dtype=object),
@@ -862,7 +623,7 @@ def build_tables(
     n_sp = len(species_names)
 
     phi_grid = np.array([r.phi for r in records], dtype=float)
-    Z_grid   = np.array([r.Z   for r in records], dtype=float)   # <<< NUEVO
+    Z_grid = np.array([r.Z for r in records], dtype=float)
     Su       = np.array([r.Su_m_per_s for r in records], dtype=float)
     solve_ok = np.array([r.solve_ok for r in records], dtype=bool)
     residual_inf = np.array([r.residual_inf for r in records], dtype=float)
@@ -898,7 +659,7 @@ def build_tables(
 
     return {
         "phi_grid": phi_grid,
-        "Z_grid":   Z_grid,      # <<< NUEVO: eje primario de la tabla
+        "Z_grid": Z_grid,
         "c_grid":   c_grid,
         "Su": Su, "solve_ok": solve_ok, "final_accepted": final_accepted,
         "residual_inf": residual_inf, "weighted_step_norm": weighted_step_norm,
@@ -981,11 +742,6 @@ def build_argparser() -> argparse.ArgumentParser:
                    help="Numero maximo de pasos Newton reutilizando el Jacobiano.")
     p.add_argument("--damp-factor", type=float, default=float(np.sqrt(2.0)),
                    help="Factor de backtracking Newton; sqrt(2) reproduce el valor de Cantera.")
-    p.add_argument("--damping-mode", type=str, default="step_norm",
-                   choices=("step_norm", "residual"),
-                   help="Criterio de damping: norma del paso (por defecto) o contraccion del residual; este ultimo es experimental.")
-    p.add_argument("--damping-residual-reduction", type=float, default=1.0e-3,
-                   help="Reduccion relativa minima del residual para aceptar un trial en modo residual.")
     p.add_argument("--continuation-max-jac-age", type=int, default=20,
                    help="Edad del Jacobiano con una semilla convergida; 20 es el valor validado en el barrido FGM frio; 0 conserva --max-jac-age.")
     p.add_argument("--jac-threshold", type=float, default=0.0,
@@ -1052,6 +808,7 @@ def build_argparser() -> argparse.ArgumentParser:
 def main() -> None:
     args = build_argparser().parse_args()
     t_global0 = time.perf_counter()
+    bilger_gas = ct.Solution(args.mech)
 
     z_mode = bool(args.use_z_grid or args.z_values.strip())
     if z_mode:
@@ -1063,6 +820,7 @@ def main() -> None:
                     args=args,
                     phi_lo=float(args.phi_bracket_min),
                     phi_hi=float(args.phi_bracket_max),
+                    gas=bilger_gas,
                 )
                 for z in z_targets
             ],
@@ -1070,7 +828,20 @@ def main() -> None:
         )
     else:
         phi_vals = parse_phi_values(args)
-        z_targets = np.array([compute_bilger_Z(phi, args) for phi in phi_vals], dtype=float)
+        z_targets = np.array(
+            [compute_bilger_Z(phi, args, bilger_gas) for phi in phi_vals],
+            dtype=float,
+        )
+
+    Z_preview = (
+        np.array(
+            [compute_bilger_Z(phi, args, bilger_gas) for phi in phi_vals],
+            dtype=float,
+        )
+        if z_mode
+        else z_targets
+    )
+    Z_st = compute_bilger_Z(1.0, args, bilger_gas)
 
     progress_weights = parse_progress_weights(args.progress_species)
     indicator_species = parse_species_list(args.indicator_species)
@@ -1096,8 +867,9 @@ def main() -> None:
         "solver          : "
         f"initial_grid={args.initial_grid_points}, "
         "transient=PTC-SER/BE-fallback, "
-        f"damp={args.damping_mode}/{args.damp_factor:g}, "
-        f"linear=block_thomas_lapack/{args.transient_linear_solver}"
+        f"damp=step_norm/{args.damp_factor:g}, "
+        f"jacobian={args.jacobian_mode}, "
+        f"transient_linear={args.transient_linear_solver}"
     )
     print(f"linear BLAS     : {os.environ.get('OPENBLAS_NUM_THREADS', 'auto')} thread(s)")
     print(
@@ -1107,11 +879,10 @@ def main() -> None:
     )
     print(f"mode            : {'Z-grid' if z_mode else 'phi-grid'}")
     print(f"phis            : {phi_vals}")
-    Z_preview = [compute_bilger_Z(phi, args) for phi in phi_vals]
     if z_mode:
         print(f"Z target        : {[f'{z:.4f}' for z in z_targets]}")
     print(f"Z (Bilger)      : {[f'{z:.4f}' for z in Z_preview]}")
-    print(f"Z_st (phi=1)    : {compute_bilger_Z(1.0, args):.6f}")
+    print(f"Z_st (phi=1)    : {Z_st:.6f}")
 
     records: list[FlameRecord] = []
     species_names: list[str] | None = None
@@ -1382,7 +1153,7 @@ def main() -> None:
             getattr(args, "numba_kinetics_threads_resolved", 1)
         ),
         "Z_range": [float(tables["Z_grid"].min()), float(tables["Z_grid"].max())],
-        "Z_st": compute_bilger_Z(1.0, args),
+        "Z_st": Z_st,
         "runtime_s": float(time.perf_counter() - t_global0),
     }
     cache_files1, cache_mb1 = seed_cache_stats(cache_dir)

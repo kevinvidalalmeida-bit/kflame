@@ -12,7 +12,6 @@ ZERO Cantera dependency. CPU backend via NumPy and Numba.
 from __future__ import annotations
 import math
 import numpy as np
-from pathlib import Path
 
 from mechanism_data import MechanismData, load_mechanism, R_UNIV
 from thermo_native import NativeThermo

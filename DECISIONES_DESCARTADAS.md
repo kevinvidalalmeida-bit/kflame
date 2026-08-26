@@ -89,15 +89,17 @@ Por eso el valor automatico secuencial pasa a 4; el argumento
 `--numba-kinetics-threads` conserva el control manual y el modo paralelo sigue
 repartiendo hilos entre procesos.
 
-Tambien se probaron dos rutas experimentales nuevas y quedaron desactivadas:
+También se probaron dos rutas experimentales nuevas y quedaron descartadas:
 
 - damping basado en reduccion del residual: mas lento en la llama completa y
   en el mini-barrido FGM;
 - salto adaptativo de GMRES hacia LU exacta: cambio la trayectoria de Newton,
   aumento las reconstrucciones y fue mas lento.
 
-Ambas quedan disponibles solo como opciones experimentales para futuras
-pruebas, no como camino de produccion.
+Sus selectores públicos se retiraron del código de producción. El chequeo de
+reducción del residual se conserva únicamente dentro de la corrección
+PTC-SER, donde evita una segunda resolución lineal y forma parte del método
+validado.
 
 ## Comparacion estricta FGM: misma malla y convergencia (2026-08-10)
 
@@ -238,3 +240,33 @@ de un paso usada por `TSPSEUDO` de PETSc:
 
 - https://repository.lib.ncsu.edu/items/222848f9-65e0-4e5e-9a72-ee1d96d75857
 - https://petsc.org/release/src/ts/impls/pseudo/posindep.c.html
+
+## Limpieza y consolidación final (2026-08-26)
+
+Se retiraron del repositorio 140 archivos de corridas FGM antiguas (60.14
+MiB). `FGM/resultados/`, `V2/comparison_runs/` y los cachés de Python/Numba
+quedan ignorados y se regeneran localmente; la tesis y los mecanismos se
+conservan.
+
+Los dos generadores FGM compartían diez funciones idénticas de parseo,
+fracción de mezcla, variable de progreso e interpolación adaptativa. Ahora
+viven una sola vez en `FGM/scripts/fgm_common.py`. También se retiraron el
+plumbing BDF2 ya descartado, helpers sin llamadas, imports muertos, marcas de
+archivos fusionados y el selector público del damping experimental.
+
+La inversión Bilger `Z -> phi` ahora reutiliza una sola fase de Cantera en vez
+de recargar el mecanismo en cada iteración. Para tres objetivos bajó de 5.740
+s a 0.0145 s (396x), con diferencia máxima de `phi` igual a cero. Esta mejora
+afecta al preprocesamiento de tablas `Z-grid`, no al tiempo físico de resolver
+cada llama.
+
+La validación estricta final de V2 para phi = 0.9, 1.0 y 1.1 aceptó los tres
+flamelets con 247 / 256 / 268 nodos y `Su` = 0.338981 / 0.378772 / 0.381947
+m/s. Todos los arreglos de la tabla fueron idénticos bit a bit a la referencia
+anterior, salvo `solve_time`. La corrida caliente tomó 13.4 s end-to-end; la
+primera corrida después de borrar el caché tomó 26.1 s por la recompilación
+única de Numba.
+
+La comparación principal final obtuvo 34.84 s para Cantera y 12.41 s para V2
+(2.81x), con V2 convergido en 36 nodos, `Su=0.425526 m/s` y residual final
+4.23. El generador Cantera también pasó una prueba completa en modo `Z-grid`.

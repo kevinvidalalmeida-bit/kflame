@@ -9,10 +9,8 @@ CPU-oriented: mechanism arrays are stored as float64 NumPy arrays.
 from __future__ import annotations
 import copy
 import re
-import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 
