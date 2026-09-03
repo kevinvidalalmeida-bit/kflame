@@ -1610,21 +1610,86 @@ class BlockTridiagJacobian:
         )
         if hasattr(self, "_profile_problem"):
             setattr(out, "_profile_problem", getattr(self, "_profile_problem"))
+        if hasattr(self, "use_compiled_substitution"):
+            out.use_compiled_substitution = bool(self.use_compiled_substitution)
         return out
 
     def diagonal(self) -> np.ndarray:
-        out = np.empty(self.n_blocks * self.block_size, dtype=float)
-        for j in range(self.n_blocks):
-            b = j * self.block_size
-            out[b:b + self.block_size] = np.diag(self.diag[j])
-        return out
+        # ``np.diagonal`` returns the block diagonals in point-major order.
+        # This operation is used at every PTC timestep, so avoiding the Python
+        # loop removes measurable overhead without changing any matrix entry.
+        return np.diagonal(self.diag, axis1=1, axis2=2).reshape(-1).copy()
 
     def setdiag(self, diag: np.ndarray) -> None:
-        d = np.asarray(diag, dtype=float)
-        for j in range(self.n_blocks):
-            b = j * self.block_size
-            idx = np.arange(self.block_size)
-            self.diag[j, idx, idx] = d[b:b + self.block_size]
+        d = np.asarray(diag, dtype=float).reshape(self.n_blocks, self.block_size)
+        idx = np.arange(self.block_size)
+        self.diag[:, idx, idx] = d
+
+
+if _NUMBA_AVAILABLE:
+    @njit(cache=True)
+    def _solve_block_tridiag_lu_numba(
+        lu_blocks,
+        pivots,
+        lower_blocks,
+        cprime,
+        rhs,
+    ):
+        """Solve a factored block-tridiagonal system without Python calls.
+
+        SciPy/LAPACK remains responsible for the pivoted factorization of each
+        dense block. This kernel only fuses the many small pivot, triangular,
+        forward-block and backward-block substitutions that otherwise require
+        one Python-to-LAPACK call per spatial point.
+        """
+        n = lu_blocks.shape[0]
+        nv = lu_blocks.shape[1]
+        rhs_b = rhs.reshape((n, nv))
+        y = np.empty_like(rhs_b)
+
+        for i in range(n):
+            # Block forward elimination: rhs_i - A_i y_{i-1}.
+            for row in range(nv):
+                value = rhs_b[i, row]
+                if i > 0:
+                    for col in range(nv):
+                        value -= lower_blocks[i - 1, row, col] * y[i - 1, col]
+                y[i, row] = value
+
+            # Apply the sequential row interchanges returned by dgetrf.
+            for row in range(nv):
+                pivot = pivots[i, row]
+                if pivot != row:
+                    value = y[i, row]
+                    y[i, row] = y[i, pivot]
+                    y[i, pivot] = value
+
+            # Unit-lower and upper triangular substitutions for LU_i.
+            for row in range(1, nv):
+                value = y[i, row]
+                for col in range(row):
+                    value -= lu_blocks[i, row, col] * y[i, col]
+                y[i, row] = value
+
+            for row in range(nv - 1, -1, -1):
+                value = y[i, row]
+                for col in range(row + 1, nv):
+                    value -= lu_blocks[i, row, col] * y[i, col]
+                y[i, row] = value / lu_blocks[i, row, row]
+
+        solution = np.empty_like(rhs_b)
+        for row in range(nv):
+            solution[n - 1, row] = y[n - 1, row]
+        for i in range(n - 2, -1, -1):
+            for row in range(nv):
+                value = y[i, row]
+                for col in range(nv):
+                    value -= cprime[i, row, col] * solution[i + 1, col]
+                solution[i, row] = value
+
+        return solution.reshape(rhs.size)
+else:
+    _solve_block_tridiag_lu_numba = None
 
 
 def _banded_jacobian_cantera_local(fun, x: np.ndarray, problem, eps: float = 1e-5) -> sparse.csr_matrix:
@@ -2058,6 +2123,9 @@ def _block_tridiag_jacobian_local(fun, x: np.ndarray, problem, eps: float = 1e-5
 
     t_blocks = _profile_start(problem)
     jmat = BlockTridiagJacobian(lower_blocks, diag_blocks, upper_blocks)
+    jmat.use_compiled_substitution = bool(
+        getattr(problem, "use_compiled_block_substitution", True)
+    )
     _profile_record(problem, "jacobian_block_assembly", t_blocks)
     return _profile_return(problem, "jacobian_build", t_profile, jmat)
 
@@ -2136,6 +2204,8 @@ def factorize(jmat) -> dict:
         n = int(jmat.n_blocks)
         nv = int(jmat.block_size)
         lu_blocks: list[tuple[np.ndarray, np.ndarray]] = []
+        lu_blocks_array = np.empty((n, nv, nv), dtype=np.float64)
+        pivots_array = np.empty((n, nv), dtype=np.int32)
         cprime = np.zeros_like(jmat.upper)
         for i in range(n):
             mat = jmat.diag[i].copy()
@@ -2143,16 +2213,23 @@ def factorize(jmat) -> dict:
                 mat -= jmat.lower[i - 1] @ cprime[i - 1]
             lu = lu_factor(mat, overwrite_a=True, check_finite=False)
             lu_blocks.append(lu)
+            lu_blocks_array[i] = lu[0]
+            pivots_array[i] = lu[1]
             if i < n - 1:
                 cprime[i] = lu_solve(lu, jmat.upper[i], check_finite=False)
         out = {
             "method": "block_tridiag",
             "solver": "block_thomas",
             "lu_blocks": lu_blocks,
+            "lu_blocks_array": np.ascontiguousarray(lu_blocks_array),
+            "pivots_array": np.ascontiguousarray(pivots_array),
             "lower_blocks": np.ascontiguousarray(jmat.lower, dtype=np.float64),
             "cprime": np.ascontiguousarray(cprime, dtype=np.float64),
             "n_blocks": n,
             "block_size": nv,
+            "compiled_substitution": bool(
+                getattr(jmat, "use_compiled_substitution", True)
+            ),
         }
         if problem is not None:
             _profile_record(problem, "linear_factorize", t_profile)
@@ -2199,7 +2276,23 @@ def solve_linear(linear_state, rhs: np.ndarray) -> np.ndarray:
     if isinstance(linear_state, dict) and linear_state.get("method") == "block_tridiag":
         n = int(linear_state["n_blocks"])
         nv = int(linear_state["block_size"])
-        rhs_b = np.asarray(rhs, dtype=float).reshape(n, nv)
+        rhs_array = np.ascontiguousarray(rhs, dtype=np.float64)
+        if (
+            _solve_block_tridiag_lu_numba is not None
+            and rhs_array.ndim == 1
+            and bool(linear_state.get("compiled_substitution", True))
+        ):
+            out = _solve_block_tridiag_lu_numba(
+                linear_state["lu_blocks_array"],
+                linear_state["pivots_array"],
+                linear_state["lower_blocks"],
+                linear_state["cprime"],
+                rhs_array,
+            )
+            if problem is not None:
+                _profile_record(problem, "linear_solve", t_profile)
+            return out
+        rhs_b = rhs_array.reshape(n, nv)
         y = np.empty_like(rhs_b)
         lu_blocks = linear_state["lu_blocks"]
         lower_blocks = linear_state["lower_blocks"]

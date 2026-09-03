@@ -1,0 +1,4027 @@
+% !TeX encoding = UTF-8
+% !TeX program = pdflatex
+% Maestro final del TFM. Antes del depósito, incorporar aquí la portada oficial,
+% el nombre del máster, la institución y la dirección académica.
+\documentclass[12pt,a4paper,twoside,openright]{report}
+
+% -----------------------------------------------------------------------------
+% Codificación, idioma y tipografía
+% -----------------------------------------------------------------------------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-nodecimaldot]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{csquotes}
+\usepackage{xspace}
+
+% -----------------------------------------------------------------------------
+% Página y composición
+% -----------------------------------------------------------------------------
+\usepackage[a4paper,inner=3.2cm,outer=2.6cm,top=2.8cm,bottom=2.8cm,
+            headheight=28pt]{geometry}
+\usepackage{setspace}
+\onehalfspacing
+\usepackage{parskip}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.55em plus 0.1em minus 0.1em}
+\usepackage{fancyhdr}
+\usepackage{emptypage}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[LE]{\small\thepage\quad\textsc{Resolución numérica de llamas}}
+\fancyhead[RO]{\small\textsc{\leftmark}\quad\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\fancypagestyle{plain}{%
+  \fancyhf{}
+  \fancyfoot[C]{\thepage}
+  \renewcommand{\headrulewidth}{0pt}}
+
+% -----------------------------------------------------------------------------
+% Matemática, unidades, tablas y gráficos
+% -----------------------------------------------------------------------------
+\usepackage{amsmath,amssymb,mathtools,bm}
+\usepackage{siunitx}
+\sisetup{output-decimal-marker={,},per-mode=symbol,detect-all=true}
+\DeclareSIUnit\atmosphere{atm}
+\usepackage{booktabs,array,longtable,tabularx,multirow}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcolumntype{C}{>{\centering\arraybackslash}X}
+\usepackage{graphicx}
+\graphicspath{{./}{figuras/}{../}}
+\usepackage{float}
+\usepackage[section]{placeins}
+\usepackage[font=small,labelfont=bf]{caption}
+\usepackage{subcaption}
+\usepackage{xcolor}
+\definecolor{azulTFM}{HTML}{155C8A}
+\definecolor{verdeTFM}{HTML}{2D7F5E}
+\definecolor{naranjaTFM}{HTML}{D97706}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit,calc}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage{pgfplotstable}
+
+% -----------------------------------------------------------------------------
+% Listas y enlaces
+% -----------------------------------------------------------------------------
+\usepackage{enumitem}
+\setlist{itemsep=0.25em,topsep=0.35em}
+\usepackage[hidelinks,unicode]{hyperref}
+\hypersetup{
+  pdftitle={Resolución numérica de llamas premezcladas en régimen laminar},
+  pdfauthor={Kevin Vidal},
+  pdfsubject={Llamas premezcladas laminares, métodos numéricos, solver unidimensional y FGM},
+  pdfkeywords={FGM, flamelet, Cantera, PTC-SER, Newton, HPC, combustión}
+}
+\usepackage[spanish,nameinlink,noabbrev,capitalise]{cleveref}
+\crefname{chapter}{capítulo}{capítulos}
+\Crefname{chapter}{Capítulo}{Capítulos}
+\crefname{section}{sección}{secciones}
+\Crefname{section}{Sección}{Secciones}
+\crefname{figure}{figura}{figuras}
+\Crefname{figure}{Figura}{Figuras}
+\crefname{table}{tabla}{tablas}
+\Crefname{table}{Tabla}{Tablas}
+\crefname{equation}{ecuación}{ecuaciones}
+\Crefname{equation}{Ecuación}{Ecuaciones}
+
+% -----------------------------------------------------------------------------
+% Macros y convenciones
+% -----------------------------------------------------------------------------
+\newcommand{\vect}[1]{\bm{#1}}
+\newcommand{\mat}[1]{\bm{#1}}
+\newcommand{\dd}{\mathop{}\!\mathrm{d}}
+\newcommand{\pd}[2]{\frac{\partial #1}{\partial #2}}
+\newcommand{\norm}[1]{\left\lVert #1\right\rVert}
+\newcommand{\abs}[1]{\left\lvert #1\right\rvert}
+\newcommand{\Su}{S_{\mathrm{u}}}
+\newcommand{\Tin}{T_{\mathrm{in}}}
+\newcommand{\Tad}{T_{\mathrm{ad}}}
+\newcommand{\Yk}{Y_k}
+\newcommand{\omegak}{\dot{\omega}_k}
+\newcommand{\FGM}{\textsc{FGM}\xspace}
+\newcommand{\Vdos}{\textsc{V2}\xspace}
+\newcommand{\Cantera}{\textsc{Cantera}\xspace}
+\newcommand{\codigo}[1]{\texttt{#1}}
+\newcommand{\resultadoverificado}[1]{%
+  \begin{center}
+  \fcolorbox{verdeTFM}{verdeTFM!6}{%
+    \begin{minipage}{0.90\textwidth}
+      \textbf{Resultado verificado.} #1
+    \end{minipage}}
+  \end{center}}
+
+\addto\captionsspanish{%
+  \renewcommand{\contentsname}{Índice general}
+  \renewcommand{\listfigurename}{Índice de figuras}
+  \renewcommand{\listtablename}{Índice de tablas}
+  \renewcommand{\bibname}{Referencias bibliográficas}
+}
+
+\begin{document}
+\hypersetup{pageanchor=false}
+
+% =============================================================================
+% Portada y materia preliminar
+% =============================================================================
+\begin{titlepage}
+  \centering
+  \vspace*{1.8cm}
+  \rule{0.88\textwidth}{0.6pt}\par
+  \vspace{0.65cm}
+  {\LARGE\bfseries Resolución numérica de llamas premezcladas en régimen laminar\par}
+  \vspace{0.45cm}
+  {\Large Desarrollo y optimización de un solver unidimensional con aplicación a la generación acelerada de manifolds FGM\par}
+  \vspace{0.65cm}
+  \rule{0.88\textwidth}{0.6pt}\par
+  \vfill
+  {\large Trabajo de Fin de Máster\par}
+  \vfill
+  {\large\textbf{Autor:} Kevin Vidal\par}
+  \vfill
+  {\large 2026\par}
+\end{titlepage}
+
+\cleardoublepage
+\thispagestyle{empty}
+\vspace*{\fill}
+\begin{center}
+\begin{minipage}{0.82\textwidth}
+\small
+\textbf{Nota de trazabilidad.} Este documento distingue expresamente entre
+resultados medidos, formulaciones implementadas y propuestas de trabajo futuro.
+Los valores etiquetados como verificados proceden de ejecuciones reproducibles
+del repositorio. La portada oficial, la dirección académica y los agradecimientos
+se incorporarán cuando el autor disponga de esos datos; no se han inventado
+datos administrativos ni resultados científicos para cerrar el documento.
+\end{minipage}
+\end{center}
+\vspace*{\fill}
+
+\cleardoublepage
+\pagenumbering{roman}
+\hypersetup{pageanchor=true}
+\chapter*{Resumen}
+\addcontentsline{toc}{chapter}{Resumen}
+La resolución de llamas premezcladas laminares libres es un problema de contorno
+rígido: la velocidad de propagación, la temperatura y la composición deben
+obtenerse simultáneamente, mientras la reacción se concentra en una región mucho
+menor que el dominio. Este coste se multiplica al construir bibliotecas de
+\emph{flamelets} para modelos \emph{flamelet-generated manifold} (FGM).
+
+Este trabajo desarrolla \Vdos, un solver especializado para llamas planas,
+estacionarias y premezcladas. La formulación conserva masa, especies y energía,
+emplea transporte promediado por mezcla y adapta la malla unidimensional. La
+resolución combina Newton amortiguado, una corrección pseudo-transitoria
+linealmente implícita con actualización SER y un rescate por Euler implícito. La
+localidad espacial se conserva mediante un Jacobiano tridiagonal por bloques y
+factorización directa pivotada. Las sustituciones hacia delante y atrás de esa
+factorización se fusionan en un kernel compilado para evitar una llamada externa
+por bloque espacial. La termoquímica y la cinética se evalúan asimismo en lotes;
+\Cantera se utiliza como referencia de la solución de llama.
+
+La contribución metodológica no se atribuye a una de estas técnicas por separado,
+sino a su integración dentro de una cadena de certificación y a una continuación
+paramétrica protegida. Un perfil se reutiliza únicamente dentro de una vecindad
+multiplicativa de \(\phi\); fuera de ella se reinician tanto el estado como el
+historial secante. En el barrido reproducido de cinco mezclas, eliminar esta
+protección elevó el tiempo acumulado de resolución de \SI{28.32}{\second} a
+\SI{153.84}{\second}. La región de confianza produjo así una aceleración interna
+de \(5.43\times\), concentrada en los dos saltos paramétricos no locales.
+
+La verificación espacial del caso metano--aire a \SI{300}{\kelvin} y
+\SI{1}{\atmosphere} se realizó con cuatro niveles de malla. En el nivel más
+exigente, con 505 nodos en \Vdos y 517 en \Cantera, las velocidades fueron
+\SI{0.376287}{\metre\per\second} y \SI{0.376441}{\metre\per\second}; la
+diferencia relativa fue \SI{0.041}{\percent}. En el barrido de cinco llamas, la
+diferencia máxima de velocidad fue \SI{1.118}{\percent}, el error máximo
+\(L_2\) de temperatura fue \SI{0.145}{\percent} y el de liberación de calor
+\SI{2.52}{\percent}, después de alinear los frentes por su temperatura media.
+El tiempo de resolución del barrido fue \SI{28.32}{\second} para \Vdos y
+\SI{61.38}{\second} para \Cantera en una ejecución reproducible; estos tiempos
+se consideran preliminares hasta completar repeticiones estadísticas.
+En una ablación posterior de dos pares completos, activar la sustitución
+compilada redujo la mediana de \Vdos de \SI{37.14}{\second} a
+\SI{32.67}{\second} (\SI{12.0}{\percent}) sin alterar el número de nodos ni la
+velocidad de llama de forma material.
+
+La aplicación FGM construye los ejes \((Z,c)\), una malla común de progreso y
+los campos termodinámicos, de composición y fuente de progreso. La validación
+dejando fuera cada mezcla interior mostró que cinco valores de \(Z\) son
+insuficientes para una tabla de producción: el error \(L_2\) de la liberación de
+calor alcanzó \SI{27.9}{\percent}. Este resultado delimita el alcance de la tabla
+actual y motiva muestreo paramétrico adaptativo, sin confundir una demostración
+de generación con una tabla ya validada para CFD.
+
+\textbf{Palabras clave:} combustión premezclada; FGM; flamelet; continuación
+pseudo-transitoria; PTC-SER; Newton; malla adaptativa; alto rendimiento; Cantera.
+
+\cleardoublepage
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+The numerical solution of freely propagating premixed laminar flames is a stiff
+boundary-value problem in which flame speed, temperature, and composition must
+be determined simultaneously. Its cost is multiplied when flamelet libraries
+are generated for flamelet-generated manifold (FGM) models.
+
+This work develops \Vdos, a specialised solver for planar, steady premixed
+flames. It combines conservative governing equations, mixture-averaged
+transport, adaptive meshing, damped Newton iterations, one linearly implicit
+pseudo-transient correction with SER control, and a fully implicit
+backward-Euler rescue. Spatial locality is retained through a block-tridiagonal
+Jacobian and pivoted direct factorisation. Forward and backward block
+substitutions are fused in a compiled kernel to avoid one external call per
+spatial block. Compiled native kernels also evaluate repeated thermochemistry
+and kinetics operations, while \Cantera provides the reference flame solution.
+
+The contribution lies in the certification-aware integration of these elements
+and in bounded parametric continuation. A previous profile and its secant
+history are reused only inside a multiplicative neighbourhood in equivalence
+ratio. Removing this protection increased the accumulated solution time of a
+five-flame sweep from \SI{28.32}{\second} to \SI{153.84}{\second}, corresponding
+to a \(5.43\times\) internal speed-up for the bounded strategy.
+
+A four-level mesh study was performed for methane--air at \SI{300}{\kelvin} and
+\SI{1}{\atmosphere}. On the finest level, \Vdos and \Cantera used 505 and 517
+nodes and predicted \SI{0.376287}{\metre\per\second} and
+\SI{0.376441}{\metre\per\second}, respectively, a \SI{0.041}{\percent}
+difference. Across five mixtures, the maximum flame-speed difference was
+\SI{1.118}{\percent}; the largest aligned-profile \(L_2\) errors were
+\SI{0.145}{\percent} for temperature and \SI{2.52}{\percent} for heat release.
+Accumulated solve times were \SI{28.32}{\second} for \Vdos and
+\SI{61.38}{\second} for \Cantera in one reproducible run; timing statistics are
+therefore reported as preliminary.
+A subsequent two-pair ablation reduced the median \Vdos sweep time from
+\SI{37.14}{\second} to \SI{32.67}{\second} (\SI{12.0}{\percent}) when the
+compiled block substitution was enabled, without a material change in node
+counts or flame speed.
+
+The FGM application constructs \((Z,c)\) coordinates, an adaptive common
+progress grid, and thermochemical, composition, and progress-source fields.
+Leave-one-mixture-out validation showed that five mixture-fraction values are
+not sufficient for a production table: the heat-release \(L_2\) error reached
+\SI{27.9}{\percent}. The present result is consequently a verified generation
+demonstration and identifies adaptive parametric sampling as the next required
+step, rather than claiming a CFD-ready manifold.
+
+\textbf{Keywords:} premixed combustion; FGM; flamelet; pseudo-transient
+continuation; Newton method; adaptive mesh; high performance; Cantera.
+
+\cleardoublepage
+\tableofcontents
+\cleardoublepage
+\listoffigures
+\cleardoublepage
+\listoftables
+
+\cleardoublepage
+\chapter*{Nomenclatura}
+\addcontentsline{toc}{chapter}{Nomenclatura}
+\markboth{Nomenclatura}{Nomenclatura}
+La tesis emplea unidades SI. Las cantidades molares del backend se expresan por
+\(\mathrm{kmol}\); por tanto, \(W_k\) se usa en \(\mathrm{kg\,kmol^{-1}}\).
+Un subíndice \(j\) identifica un nodo espacial, \(k\) una especie y \(r\) una
+reacción. Los símbolos se reúnen a continuación por familia para evitar
+introducir definiciones dispersas en capítulos posteriores.
+
+\begin{longtable}{@{}p{0.25\textwidth}p{0.63\textwidth}@{}}
+\toprule
+\textbf{Símbolo latino} & \textbf{Definición} \\
+\midrule
+\endhead
+\(A_r,b_r,E_{a,r}\) & Factor preexponencial, exponente térmico y energía de activación de la reacción \(r\). \\
+\(a_{i,k}\) & Coeficiente \(i\) del polinomio termoquímico NASA de la especie \(k\). \\
+\(\mat A_j,\mat B_j,\mat C_j,\mat L_j\) & Bloques inferior, diagonal, superior y multiplicador de la eliminación lineal. \\
+\(\mat P_j,\mat L_j^{\rm LU},\mat U_j\) & Matriz de permutación y factores triangular inferior y superior del bloque pivotado. \\
+\(\mathcal A,\mathcal A_\ell\) & Predicado global de aceptación y condición de su capa \(\ell\). \\
+\(c\) & Variable de progreso normalizada del manifold. \\
+\(c_p,c_{p,k}\) & Capacidades caloríficas específicas de mezcla y especie a presión constante. \\
+\(C_k\) & Concentración molar de la especie \(k\). \\
+\(D_k\) & Coeficiente de difusión promediado por mezcla de la especie \(k\). \\
+\(D_z,D\) & Operadores discretos de derivación espacial. \\
+\(d,d_{\rm tr}\) & Dimensión del vector de control del manifold y distancia de confianza paramétrica. \\
+\(\mathrm{Da},\mathrm{Le}_k,\mathrm{Ma}\) & Números de Damköhler, Lewis y Mach. \\
+\(E_2,\Delta_{\infty},E_m,E_Y\) & Error relativo de perfil, diferencia máxima absoluta, error de flujo másico y cierre de composición. \\
+\(e_J,e_q\) & Errores de verificación direccional del Jacobiano y de validación cruzada de tabla. \\
+\(\vect e_i\) & Vector canónico asociado a la variable global \(i\). \\
+\(\vect F,\mat J_F\) & Residual estacionario discreto y su Jacobiano. \\
+\(F_{\rm guard}\) & Límite independiente del residual usado para aceptar convergencia no lineal. \\
+\(\vect G,\mat J_G\) & Residual de Euler implícito y su Jacobiano. \\
+\(g(c),G(c)\) & Indicador FGM de actividad y su distribución acumulada normalizada. \\
+\(h,h_k^{\mathrm{mol}},h_k^{\mathrm{mass}}\) & Entalpía de mezcla y entalpías molar y másica de la especie \(k\). \\
+\(h_j^-,h_j^+,h_j^c\) & Distancias izquierda, derecha y total del stencil del nodo \(j\). \\
+\(J_k,J_k^*\) & Flujo difusivo másico corregido y flujo preliminar de la especie \(k\). \\
+\(j_a,T_a\) & Índice y temperatura prescrita del nodo de anclaje. \\
+\(k_{f,r},k_{b,r},q_r\) & Constantes directa e inversa y tasa de progreso de la reacción \(r\). \\
+\(K,N,n_v\) & Número de especies, nodos y variables por nodo. \\
+\(L\) & Longitud del dominio unidimensional. \\
+\(\mat M\) & Matriz de masa diagonal del sistema pseudo-transitorio. \\
+\(\mathcal M,\vect q\) & Aplicación del manifold y vector de estado termoquímico reconstruido. \\
+\(\mathcal I,\mathcal Q,\mathcal S\) & Operador de interpolación y conjuntos de campos y especies seleccionados. \\
+\(\dot m,m_j,\overline{\dot m}\) & Flujo másico por unidad de área, valor nodal \(\rho_j u_j\) y promedio nodal. \\
+\(n_j,N_{\rm tabla}\) & Nodos del eje \(j\) y número total de estados de una tabla. \\
+\(p,p_0\) & Presión termodinámica y su valor uniforme de bajo Mach. \\
+\(q_c,\dot q\) & Flujo conductivo y liberación volumétrica de calor. \\
+\(q_{\rm abs},s_q\) & Escalas de regularización absoluta y normalización de un campo \(q\). \\
+\(R\) & Constante universal de los gases. \\
+\(r_\phi,r_h\) & Radios de confianza en equivalencia y defecto de entalpía. \\
+\(R_j,S_{\psi,j},C_{\psi,j},P\) & Indicadores de ratio, pendiente y curvatura de malla, y umbral de poda. \\
+\(R_{\max},S_{\max},C_{\max}\) & Umbrales de inserción de los tres indicadores de malla. \\
+\(\vect s,w_v\) & Corrección no lineal y escala ponderada de la variable física \(v\). \\
+\(S_t,S_{t,5\phi}\) & Aceleración temporal de una llama y del barrido de cinco mezclas. \\
+\(\Su\) & Velocidad de llama laminar referida a la mezcla no quemada. \\
+\(t_{\rm solve}\) & Tiempo exclusivo de resolución de una llama. \\
+\(T,\Tin,\Tad,T_{\mathrm u},T_{\mathrm b}\) & Temperatura local, de entrada, adiabática, no quemada y quemada. \\
+\(u,V_k\) & Velocidad axial y velocidad difusiva de la especie \(k\). \\
+\(W,W_k\) & Masa molar de mezcla y de la especie \(k\). \\
+\(w_T,w_q,w_k\) & Pesos del indicador adaptativo de progreso. \\
+\(X_k,Y_k\) & Fracciones molar y másica de la especie \(k\). \\
+\(\vect x,\vect x^{\rm tr},\vect x^n\) & Estado discreto, estado candidato y estado del nivel pseudo-temporal anterior. \\
+\(z,Z\) & Coordenada espacial y fracción de mezcla de Bilger. \\
+\(Z_e\) & Fracción másica del elemento químico \(e\). \\
+\bottomrule
+\end{longtable}
+
+\begin{longtable}{@{}p{0.25\textwidth}p{0.63\textwidth}@{}}
+\toprule
+\textbf{Símbolo griego} & \textbf{Definición} \\
+\midrule
+\endhead
+\(\alpha_T\) & Difusividad térmica de mezcla, \(\lambda/(\rho c_p)\). \\
+\(\alpha_\ell\) & Factor de amortiguamiento de la iteración no lineal \(\ell\). \\
+\(\beta_{\mathrm B},\beta_c\) & Escalar elemental de Bilger y progreso químico no normalizado. \\
+\(\gamma\) & Factor del predictor secante paramétrico. \\
+\(\delta,\delta_T\) & Escala espacial genérica y espesor térmico de llama. \\
+\(\delta_{\mathrm{abs}},\delta_{\mathrm{rel}}\) & Perturbaciones absoluta y relativa del Jacobiano por diferencias finitas. \\
+\(\delta_i\) & Perturbación total aplicada a la columna \(i\) del Jacobiano. \\
+\(\Delta h,\Delta\tau,\Delta\psi\) & Defecto de entalpía, paso pseudo-temporal y rango de un perfil de malla. \\
+\(\Delta z_j^-,\Delta z_j^+,\Delta z_j^c\) & Espaciados izquierdo, derecho y total del stencil principal. \\
+\(\boldsymbol\eta,\eta_k\) & Vector de control del manifold y peso de concentración de una especie en el indicador FGM. \\
+\(\eta_i\) & Indicador de error para insertar un nuevo flamelet paramétrico. \\
+\(\varepsilon_{\Su},\delta_q^{(r)}\) & Diferencia relativa de velocidad de llama y cambio entre ciclos de malla. \\
+\(\varepsilon_a,\varepsilon_r\) & Tolerancias absoluta y relativa usadas en la norma ponderada. \\
+\(\epsilon,\varepsilon_\psi,\varepsilon_d\) & Regularizadores positivos para la malla FGM y los indicadores espaciales. \\
+\(\theta\) & Fracción de esquema aguas arriba en la discretización convectiva. \\
+\(\lambda\) & Conductividad térmica. \\
+\(\mu_i\) & Entrada diagonal de la matriz de masa: uno para fila diferencial y cero para fila algebraica. \\
+\(\nu'_{kr},\nu''_{kr}\) & Coeficientes estequiométricos de reactivos y productos. \\
+\(\rho\) & Densidad de la mezcla. \\
+\(\phi\) & Relación de equivalencia combustible--oxidante. \\
+\(\tau_{\mathrm{tr}},\tau_{\mathrm q}\) & Escalas temporales de transporte y química. \\
+\(\dot\omega_k^{\mathrm{mol}},\dot\omega_k^{\mathrm{mass}}\) & Tasas netas de producción molar y másica. \\
+\(\dot\omega_c\) & Fuente másica normalizada de la variable de progreso tabulada. \\
+\(\psi\) & Variable escalar genérica usada en derivadas e indicadores de malla. \\
+\bottomrule
+\end{longtable}
+
+\begin{longtable}{@{}p{0.25\textwidth}p{0.63\textwidth}@{}}
+\toprule
+\textbf{Índice} & \textbf{Significado} \\
+\midrule
+\endhead
+\(\mathrm{ad},\mathrm b,\mathrm{in},\mathrm u\) & Adiabático, quemado, entrada y no quemado. \\
+\(a,\mathrm{exc}\) & Nodo de anclaje y especie de exceso usada para normalización. \\
+\(\mathrm f,\mathrm{ox}\) & Corrientes de combustible y oxidante. \\
+\(j,j\!+\!1/2\) & Nodo y cara entre los nodos \(j\) y \(j+1\). \\
+\(k,r\) & Índices de especie y reacción. \\
+\(\mathrm{mol},\mathrm{mass}\) & Bases molar y másica. \\
+\((\cdot)^*,\overline{(\cdot)}\) & Valor preliminar y promedio entre caras. \\
+\(m,n,\mathrm{tr}\) & Iteración de Newton, nivel pseudo-temporal y estado de prueba. \\
+\bottomrule
+\end{longtable}
+
+\begin{longtable}{@{}p{0.25\textwidth}p{0.63\textwidth}@{}}
+\toprule
+\textbf{Sigla} & \textbf{Significado} \\
+\midrule
+\endhead
+BE & Euler implícito (\emph{backward Euler}). \\
+BLAS/LAPACK & Bibliotecas básicas de álgebra lineal y de álgebra lineal numérica. \\
+CFD & Dinámica de fluidos computacional (\emph{computational fluid dynamics}). \\
+CPU & Unidad central de procesamiento. \\
+CSV & Archivo de valores separados por comas. \\
+FD & Diferencias finitas (\emph{finite differences}). \\
+FGM & Manifold generado por flamelets (\emph{flamelet-generated manifold}). \\
+FPI/FPV & Prolongación flamelet de ILDM y modelo flamelet/variable de progreso. \\
+GRI-Mech & Mecanismo cinético detallado para combustión de gas natural. \\
+HP & Equilibrio a entalpía y presión constantes. \\
+HPC & Computación de alto rendimiento. \\
+ILDM & Manifold intrínseco de baja dimensión. \\
+ISAT & Tabulación adaptativa en ejecución (\emph{in-situ adaptive tabulation}). \\
+JIT & Compilación en tiempo de ejecución (\emph{just in time}). \\
+JSON/NPZ & Formatos de metadatos y arreglos comprimidos empleados en las salidas. \\
+LES/RANS & Simulación de grandes escalas y ecuaciones de Reynolds promediadas. \\
+LLVM & Infraestructura de compilación empleada indirectamente por Numba. \\
+LU & Factorización triangular inferior--superior. \\
+NASA & Administración Nacional de Aeronáutica y el Espacio; designa aquí sus polinomios termoquímicos. \\
+NOx & Óxidos de nitrógeno. \\
+PDF & Función de densidad de probabilidad en el contexto de modelado de combustión. \\
+PREMIX & Solver unidimensional histórico para llamas premezcladas. \\
+PTC & Continuación pseudo-transitoria. \\
+SER & Relajación de evolución conmutada (\emph{switched evolution relaxation}). \\
+SI & Sistema Internacional de Unidades. \\
+TFM & Trabajo Fin de Máster. \\
+\Vdos & Solver especializado desarrollado en este trabajo. \\
+\bottomrule
+\end{longtable}
+
+\begin{longtable}{@{}p{0.25\textwidth}p{0.63\textwidth}@{}}
+\toprule
+\textbf{Término técnico} & \textbf{Uso en esta tesis} \\
+\midrule
+\endhead
+Backend & Núcleo que evalúa propiedades, cinética o transporte detrás de la interfaz del solver. \\
+Caché & Almacenamiento persistente de perfiles certificados para reutilizarlos como semillas. \\
+Flamelet & Solución canónica unidimensional que aporta estados al manifold. \\
+Kernel & Rutina computacional intensiva, normalmente compilada y repetida sobre muchos nodos. \\
+Layout & Orden de almacenamiento de las variables en memoria. \\
+Manifold & Variedad termoquímica de dimensión reducida parametrizada por variables de control. \\
+Solver & Conjunto de algoritmos que ensambla y resuelve el problema discreto. \\
+Stencil & Conjunto de nodos que intervienen en una aproximación espacial local. \\
+\emph{Speedup} & Cociente entre el tiempo de referencia y el tiempo del método evaluado. \\
+\emph{Upwind} & Discretización convectiva aguas arriba. \\
+\bottomrule
+\end{longtable}
+
+\cleardoublepage
+\pagenumbering{arabic}
+
+% =============================================================================
+\chapter{Introducción}
+\label{chap:introduccion}
+
+\section{Motivación}
+
+La transición energética no elimina de forma inmediata la necesidad de modelar
+procesos reactivos. Turbinas de gas alimentadas con mezclas de hidrógeno o
+amoníaco, motores de combustión de alta eficiencia, hornos industriales y
+sistemas híbridos continúan exigiendo predicciones fiables de estabilidad,
+emisiones y seguridad. En estos dispositivos, la interacción entre turbulencia,
+transporte molecular y cinética detallada produce un problema multiescala: las
+reacciones elementales rápidas coexisten con el transporte macroscópico y con
+tiempos de residencia varios órdenes de magnitud mayores
+\cite{Peters1984,Poinsot2005,Kee2017}.
+
+Una simulación directa que integre cada especie y cada reacción en todos los
+volúmenes de una malla tridimensional resulta inasumible para campañas de diseño.
+La reducción de química pretende conservar la respuesta relevante del sistema
+sin transportar el espacio termoquímico completo. Entre sus familias se
+encuentran la reducción de mecanismos, los manifolds intrínsecos de baja
+dimensión (ILDM), los métodos de flamelet y las técnicas de tabulación adaptativa
+\cite{MaasPope1992,Pope1997,Peters1984}. Los FGM combinan una hipótesis física
+potente ---la estructura local se aproxima mediante llamas canónicas--- con una
+representación tabulada de baja dimensión
+\cite{vanOijen2000,vanOijenThesis2002,vanOijenReview2016}.
+
+La reducción desplaza el coste: una vez construida la tabla, la consulta es
+barata, pero producirla requiere resolver una familia de problemas de contorno
+no lineales. Una tabla bidimensional sencilla puede contener decenas de llamas;
+la incorporación de presión, entalpía, deformación, dilución o difusión
+preferencial multiplica ese número. Los manifolds de cinco dimensiones usados en
+aplicaciones de turbinas ilustran cómo la fase de preprocesamiento deja de ser
+secundaria \cite{DoniniThesis2014}. Si cada llama tarda decenas de segundos o
+minutos, la exploración de mecanismos y condiciones se vuelve demasiado lenta
+para un ciclo iterativo de investigación.
+
+Este TFM aborda precisamente ese cuello de botella. El objetivo no es reemplazar
+una herramienta general por una reimplementación indistinguible, sino estudiar
+qué estructura matemática puede explotarse cuando el propósito está delimitado:
+resolver muchas llamas premezcladas similares, certificarlas y convertirlas en
+una tabla FGM reproducible. Esta especialización permite compilar los kernels
+repetitivos, almacenar el estado con localidad espacial, aprovechar un Jacobiano
+por bloques y continuar en parámetros próximos.
+
+\section{Problema central: resolver numéricamente una llama libre}
+
+Una llama premezclada laminar libre no se obtiene prescribiendo su velocidad de
+propagación. En el sistema ligado al frente, la velocidad de entrada forma parte
+de la solución junto con la temperatura y la composición. El problema es, por
+tanto, un sistema no lineal de contorno con un autovalor y una invariancia por
+traslación. Para fijar una solución única se necesita una condición de anclaje
+que determine la posición del frente sin imponer artificialmente \(\Su\).
+
+La dificultad aumenta al emplear química detallada. Una mezcla con \(K\)
+especies produce \(K+2\) incógnitas por nodo; las tasas de reacción cambian muchos
+órdenes de magnitud a través de una zona muy delgada y las propiedades dependen
+no linealmente de \(T\) y \(Y_k\). La discretización debe conservar masa y
+elementos, mientras que el método no lineal debe evitar temperaturas y
+composiciones no físicas. La malla tampoco puede fijarse de antemano: debe
+concentrar nodos en las zonas de precalentamiento y reacción y verificar que los
+bordes representan estados asintóticos.
+
+En consecuencia, la resolución numérica completa comprende cinco problemas
+acoplados: formulación física, discretización conservativa, solución no lineal,
+adaptación espacial y certificación. El tiempo de una ejecución solo es una
+métrica válida después de demostrar que el perfil no depende materialmente de la
+malla, que el dominio es suficiente y que las cantidades integrales concuerdan
+con una referencia.
+
+Esta tesis se organiza alrededor de ese problema. Primero se deriva la llama 1D,
+después se desarrolla el solver \Vdos y se analizan sus algoritmos. Solo una vez
+establecida esta base se utiliza el solver repetidamente para construir un
+manifold FGM.
+
+\subsection{FGM como aplicación complementaria}
+
+En un cálculo CFD con química detallada, cada celda debe evaluar tasas de
+reacción rígidas y transportar numerosas especies. En un FGM, el estado
+termoquímico se reconstruye aproximadamente como
+\begin{equation}
+  \vect{q}=\mathcal{M}(\eta_1,\eta_2,\ldots,\eta_d),
+  \label{eq:manifold-general}
+\end{equation}
+donde \(\vect{q}\) contiene temperatura, composición, densidad, propiedades de
+transporte y términos fuente, mientras que \(d\ll K\). Para combustión
+premezclada adiabática puede bastar una parametrización mediante composición de
+mezcla y progreso; al introducir pérdidas térmicas se añade una coordenada de
+entalpía. El cálculo tridimensional transporta únicamente las variables de
+control y consulta \(\mathcal{M}\), reduciendo de forma sustancial el coste de la
+química \cite{vanOijenReview2016,Fiorina2003}.
+
+La utilidad no se limita a acelerar. La tabla impone una región termoquímica
+físicamente construida, permite incorporar extinción y reignición mediante la
+selección de flamelets apropiados \cite{Ihme2005}, y facilita el posprocesado de
+variables no transportadas. Se han publicado aplicaciones en turbinas de gas
+\cite{ProchKempf2015,DoniniThesis2014}, combustión diésel
+\cite{Bekdemir2011,Wehrfritz2016,Maghbouli2019}, combustibles con amoníaco
+\cite{Honzawa2019,Fuzesi2023} e hidrógeno con difusión preferencial
+\cite{deSwart2010,PerezSanchez2025}.
+
+No obstante, una tabla solo es útil si cumple tres propiedades. Primero, sus
+flamelets deben converger a soluciones físicas y reproducibles. Segundo, la
+proyección a variables de control debe ser unívoca o resolver explícitamente las
+ramas. Tercero, la interpolación debe preservar la estructura relevante sin
+introducir oscilaciones. Por esta razón, el presente trabajo trata la generación
+FGM como una cadena certificada y no como la simple concatenación de archivos de
+llama.
+
+\section{Papel de Cantera y necesidad de un solver especializado}
+
+\Cantera es una biblioteca abierta, madura y ampliamente empleada para cinética,
+termodinámica, transporte y llamas unidimensionales \cite{GoodwinCantera2023}.
+Su módulo \codigo{FreeFlame} implementa una estrategia robusta basada en
+problemas de contorno, Newton, pasos transitorios de rescate y refinamiento de
+malla, heredera de la tradición de PREMIX \cite{KeePremix1998}. En este trabajo
+se utiliza como referencia física y numérica; no sería correcto calificarla de
+inadecuada de forma general.
+
+La necesidad de una implementación propia aparece al estudiar con detalle la
+resolución de la llama. Se requiere instrumentar residual, Jacobiano,
+factorización, globalización y malla; controlar el layout de memoria; y modificar
+el método sin depender de una interfaz opaca. Una herramienta general prioriza
+cobertura, estabilidad y muchas configuraciones. Un solver de investigación
+acotado puede explotar la estructura de esta clase concreta de problemas. La
+generación FGM añade después el requisito de repetir la solución para muchas
+condiciones. Por tanto, la tesis formula la comparación como sigue:
+
+\begin{quote}
+\emph{Cantera es la referencia general y madura; V2 es una ruta especializada
+para investigar y acelerar la resolución numérica de llamas premezcladas
+laminares bajo un dominio de aplicabilidad explícito. FGM es una aplicación
+posterior de esas soluciones.}
+\end{quote}
+
+Esta distinción evita dos errores frecuentes. El primero sería comparar un
+solver frío con otro alimentado por una solución ya convergida. El segundo sería
+atribuir al algoritmo de llama el ahorro obtenido únicamente por caché o
+paralelismo. Los experimentos se reportan por separado como llama individual,
+barrido frío y regeneración con semillas persistentes.
+
+\section{Hipótesis de investigación}
+
+La hipótesis central es que un solver especializado puede reducir el tiempo de
+resolución numérica de familias de llamas premezcladas laminares sin degradar
+materialmente la solución si se explotan conjuntamente:
+
+\begin{enumerate}
+  \item la localidad espacial de las ecuaciones discretizadas;
+  \item la separación entre ecuaciones algebraicas y pseudo-dinámicas;
+  \item la combinación de correcciones PTC baratas y rescates robustos;
+  \item la compilación de cinética y propiedades repetitivas;
+  \item criterios cuantitativos de conservación, aceptación y convergencia de
+        malla;
+  \item y, como aplicación FGM, la continuidad paramétrica entre llamas próximas.
+\end{enumerate}
+
+La hipótesis no atribuye novedad a Newton, PTC, la estructura por bloques ni la
+continuación considerados por separado. La aportación que se somete a prueba es
+su integración en un flujo guiado por certificación: una semilla solo se reutiliza
+si procede de una llama aceptada y si el nuevo parámetro permanece dentro de una
+vecindad multiplicativa declarada. El rendimiento se mide hasta alcanzar una
+solución no lineal, espacial y físicamente admisible.
+
+\section{Objetivos}
+
+\subsection{Objetivo general}
+
+Desarrollar, optimizar y validar un método numérico reproducible para resolver
+llamas premezcladas en régimen laminar, reduciendo el tiempo respecto de una
+referencia Cantera y manteniendo criterios explícitos de convergencia no lineal,
+convergencia de malla y coherencia física; demostrar su utilidad mediante la
+generación de tablas FGM.
+
+\subsection{Objetivos específicos}
+
+\begin{enumerate}
+  \item Formular las ecuaciones estacionarias de continuidad, especies y
+        energía con transporte promediado por mezcla y condiciones de contorno
+        coherentes.
+  \item Discretizar el problema de forma que su estructura por bloques pueda
+        explotarse en el Jacobiano y en la resolución lineal.
+  \item Implementar una estrategia no lineal robusta que combine Newton
+        amortiguado, PTC-SER linealmente implícito y rescate BE.
+  \item Verificar residual, conservación, independencia de malla, suficiencia
+        del dominio y coherencia de los perfiles.
+  \item Comparar \Vdos y \Cantera con condiciones, criterios de refinamiento y
+        reglas de aceptación equivalentes, reportando tiempo, malla y magnitudes
+        físicas.
+  \item Evaluar mediante ablación el efecto de limitar la continuación a vecinos
+        paramétricos y separar ese efecto del coste del solver individual.
+  \item Evaluar mediante ablación una ruta lineal híbrida que conserva la
+        factorización pivotada y compila únicamente las sustituciones repetidas
+        por bloque.
+  \item Aplicar el solver a FGM mediante \(Z\), \(c\), una fuente de progreso
+        consistente, continuación local y caché certificada.
+  \item Validar por exclusión de mezclas si la resolución del eje \(Z\) es
+        suficiente antes de considerar una tabla apta para CFD.
+\end{enumerate}
+
+\section{Contribuciones}
+
+Las contribuciones concretas, entendidas como conjunto metodológico y no como
+invención de sus componentes clásicos, son:
+
+\begin{itemize}
+  \item una formulación completa de llama libre 1D, con velocidad desconocida y
+        anclaje de la posición;
+  \item un solver de propósito delimitado con backend termoquímico nativo;
+  \item una formulación PTC-SER de una corrección lineal por intento y rescate BE;
+  \item un Jacobiano local por bloques tridiagonal y una resolución directa
+        híbrida: factorización pivotada de los bloques y sustituciones fusionadas
+        en un kernel compilado;
+  \item adaptación de malla, expansión de dominio y criterios explícitos de
+        aceptación;
+  \item un protocolo de certificación que enlaza convergencia no lineal,
+        conservación, malla, dominio y comparación de perfiles antes de medir
+        rendimiento;
+  \item una continuación paramétrica acotada por la razón
+        \(1/1.15\le\phi_{i+1}/\phi_i\le1.15\), evaluada mediante una ablación
+        con y sin el límite;
+  \item una ablación pareada del kernel de sustitución por bloques sobre barridos
+        completos, con comprobación simultánea de aceptación, malla y solución;
+  \item una cadena FGM común a V2 y Cantera que tabula propiedades, composición
+        y la fuente normalizada de la variable de progreso;
+  \item una verificación cruzada por exclusión de mezclas que separa la calidad
+        del solver de la suficiencia de la discretización paramétrica.
+\end{itemize}
+
+El aporte diferenciador defendible no es presentar Newton, PTC, LU por bloques o
+FGM como técnicas nuevas. Consiste en convertirlas en una política única de
+generación certificada: reutilizar una llama solo si supera la aceptación y
+permanece dentro de una región paramétrica local, y ejecutar el álgebra lineal
+según la granularidad de cada operación. Las dos decisiones se someten a
+ablaciones de barrido completo, de modo que el ahorro se atribuye sin recurrir a
+microbenchmarks aislados. Esta combinación de criterio de validez, coste hasta
+aceptación y evidencia causal es la contribución metodológica principal.
+
+\section{Alcance y limitaciones}
+
+El alcance productivo se restringe a llamas planas, unidimensionales,
+premezcladas y estacionarias, a presión constante, con transporte promediado por
+mezcla. El mecanismo principal de los resultados disponibles es GRI-Mech 3.0 y
+el caso base es metano--aire a \SI{300}{\kelvin} y \SI{1}{\atmosphere}. El
+efecto Soret existe como opción, pero no forma parte del caso base. La radiación,
+la formación de hollín, la química superficial y el transporte multicomponente
+no están integrados en la ruta productiva evaluada.
+
+La comparación no fuerza una malla nodal idéntica porque cada solver conserva su
+propio algoritmo adaptativo; sí impone los mismos valores de \(\phi\), dominio
+inicial, modelo de transporte y umbrales equivalentes. Cada método puede expandir
+el dominio si su criterio de borde lo exige. Cuando se usa una malla idéntica
+para un ensayo lineal, se declara expresamente. Esta precisión es esencial para
+interpretar diferencias de tiempo y de velocidad de llama.
+
+\section{Estructura del documento}
+
+El \cref{chap:fundamentos} desarrolla la física, las escalas y el carácter de
+autovalor de una llama premezclada libre. El \cref{chap:estado-arte} revisa
+formulaciones y algoritmos para resolverla. El \cref{chap:modelo} presenta el
+modelo físico y el \cref{chap:numerico} deriva la discretización y el solver
+\Vdos. Una vez establecido ese núcleo, el \cref{chap:fgm} presenta FGM como
+aplicación complementaria. El \cref{chap:resultados} organiza la verificación
+del solver, el perfil temporal y, en segundo término, los barridos FGM.
+Finalmente, el \cref{chap:conclusiones} sintetiza conclusiones y trabajo futuro.
+Los apéndices contienen derivaciones, algoritmos, parámetros y formatos
+reproducibles.
+
+% =============================================================================
+\chapter{Fundamentos de las llamas premezcladas laminares}
+\label{chap:fundamentos}
+\chaptermark{Llamas premezcladas laminares}
+
+\section{Llamas premezcladas laminares}
+
+En una llama premezclada, combustible y oxidante se mezclan antes de alcanzar la
+zona reactiva. En el sistema de referencia ligado a una llama plana estacionaria,
+la mezcla fresca entra con velocidad \(\Su\) y abandona el dominio como productos
+quemados. La estructura típica comprende una zona de precalentamiento dominada
+por difusión, una capa reactiva delgada y una región quemada próxima al
+equilibrio. Aunque esta imagen asintótica es útil, una química detallada reparte
+la reacción entre múltiples escalas y especies intermedias
+\cite{Peters1984,Smooke1991}.
+
+La velocidad de llama no se prescribe: es un autovalor del problema de contorno.
+Si \(\dot m=\rho u\) es el flujo másico constante, entonces
+\begin{equation}
+  \Su=\frac{\dot m}{\rho_{\mathrm{u}}},
+  \label{eq:Su-mdot}
+\end{equation}
+con \(\rho_{\mathrm{u}}\) evaluada en la mezcla no quemada. Esta magnitud resume
+la competencia entre difusión térmica y química; por eso constituye una primera
+prueba sensible del solver, aunque no basta por sí sola para certificar todos los
+perfiles.
+
+Una escala cualitativa del espesor térmico es
+\begin{equation}
+  \delta_T = \frac{T_{\mathrm{b}}-T_{\mathrm{u}}}
+  {\max_z \abs{\dd T/\dd z}},
+  \label{eq:thermal-thickness}
+\end{equation}
+y el número de Damköhler compara tiempo de transporte y tiempo químico. La
+rigidez surge porque el mecanismo contiene reacciones mucho más rápidas que el
+avance macroscópico. La resolución numérica debe tolerar la mezcla de variables
+algebraicas y diferenciales, escalas de magnitud distintas y perfiles muy
+localizados.
+
+\section{Estructura física de la llama}
+
+La estructura de una llama libre puede interpretarse mediante balances
+dominantes. En la corriente fresca, la mezcla permanece prácticamente uniforme.
+La conducción desde la zona caliente eleva progresivamente la temperatura en la
+zona de precalentamiento. Cuando la velocidad química se vuelve comparable con
+el transporte, aparece la capa reactiva, en la que se consumen reactivos, se
+forman radicales y se libera la mayor parte del calor. Aguas abajo, reacciones
+más lentas conducen la composición hacia el estado quemado.
+
+Esta descripción no implica que las zonas tengan fronteras exactas. Con un
+mecanismo detallado, cada especie posee su propio espesor y algunas conversiones
+continúan lejos del máximo de liberación de calor. Por ello, resolver solo la
+temperatura o una reacción global no basta para validar un solver de química
+detallada. Deben observarse reactivos, productos, radicales, tasa de calor y flujo
+másico.
+
+El perfil estacionario resulta de un equilibrio entre convección, difusión y
+reacción. Si se redujera artificialmente la difusión térmica, el precalentamiento
+sería más corto y cambiaría la velocidad. Si se modificara la cinética, variaría
+la posición en que la mezcla alcanza una tasa autosostenida. Esta interacción
+explica por qué \(\Su\) constituye una propiedad conjunta del combustible, el
+oxidante, la temperatura, la presión, la química y el transporte.
+
+\section{Velocidad de llama como autovalor}
+
+En una formulación ligada al frente, el gas fresco entra con velocidad \(\Su\).
+La continuidad hace constante \(\dot m=\rho u\), pero no fija su valor. Las
+condiciones fresca y quemada, junto con conservación y química, seleccionan el
+flujo másico que admite una conexión estacionaria entre ambos estados. El
+resultado es análogo a un autovalor no lineal.
+
+La invariancia por traslación introduce otra indeterminación: si
+\(T(z),Y_k(z)\) es solución en un dominio infinito, el perfil desplazado
+\(T(z-z_0),Y_k(z-z_0)\) también lo es. En un dominio truncado esta libertad
+produce un Jacobiano casi singular. Una condición térmica en un punto interior
+elimina el modo de traslación sin fijar la velocidad; su forma exacta se deriva
+cuando se cierra el modelo físico.
+
+Esta interpretación aclara dos errores metodológicos. Primero, fijar
+simultáneamente la velocidad y el anclaje sobredeterminaría el problema. Segundo,
+comparar velocidades sin verificar que cada solver resolvió una llama libre
+equivalente podría mezclar formulaciones físicas diferentes.
+
+\section{Escalas y números adimensionales}
+
+La difusividad térmica de mezcla es
+\begin{equation}
+  \alpha_T=\frac{\lambda}{\rho c_p},
+  \label{eq:thermal-diffusivity}
+\end{equation}
+y una escala de tiempo de transporte sobre un espesor \(\delta\) es
+\begin{equation}
+  \tau_{\mathrm{tr}}\sim\frac{\delta^2}{\alpha_T}.
+  \label{eq:transport-time-scale}
+\end{equation}
+Si \(\tau_{\mathrm{q}}\) representa una escala química, el número de Damköhler
+\begin{equation}
+  \mathrm{Da}=\frac{\tau_{\mathrm{tr}}}{\tau_{\mathrm{q}}}
+  \label{eq:damkohler}
+\end{equation}
+indica la competencia entre transporte y reacción. No existe una única
+\(\tau_{\mathrm{q}}\) para un mecanismo detallado; la gran separación entre sus
+escalas es precisamente la fuente de rigidez.
+
+El número de Lewis de la especie \(k\),
+\begin{equation}
+  \mathrm{Le}_k=\frac{\alpha_T}{D_k},
+  \label{eq:lewis-number}
+\end{equation}
+compara difusión térmica y másica. Cuando \(\mathrm{Le}_k\neq1\), temperatura y
+especie no se difunden al mismo ritmo. El efecto es especialmente importante en
+hidrógeno y motiva evaluar transporte preferencial y Soret antes de generalizar
+resultados obtenidos para metano.
+
+Los números adimensionales no sustituyen la solución detallada, pero permiten
+interpretar sensibilidad y diseñar casos de validación. Una campaña que cambia
+combustible, presión o temperatura modifica simultáneamente \(\mathrm{Da}\),
+\(\mathrm{Le}_k\), densidad y cinética; por eso no debe extrapolarse una única
+aceleración a todo el espacio operativo.
+
+\section{Acoplamiento de química, transporte y termodinámica}
+
+La química proporciona \(\dot\omega_k(T,\vect Y,p)\), la termodinámica
+proporciona \(h_k,c_p,\rho\), y el transporte determina \(D_k\) y \(\lambda\).
+Cada grupo alimenta a los otros: la reacción cambia composición y temperatura;
+estas modifican densidad y coeficientes; los nuevos flujos cambian de nuevo la
+zona reactiva. Una iteración no lineal debe actualizar este acoplamiento hasta
+que todos los balances sean compatibles.
+
+La presión suele considerarse uniforme en una llama de bajo Mach, pero influye
+en concentraciones y reacciones dependientes de tercer cuerpo. La temperatura
+aparece exponencialmente en Arrhenius y polinómicamente en propiedades. Las
+especies traza pueden controlar rutas radicalarias aunque su fracción sea muy
+pequeña. Estas características producen escalas de residual heterogéneas y
+justifican tolerancias ponderadas por variable.
+
+Desde el punto de vista computacional, gran parte del tiempo se consume al
+evaluar repetidamente las mismas formas termoquímicas en nodos y perturbaciones
+del Jacobiano. La optimización debe conservar exactamente unidades, bases
+molares/másicas y límites de validez; un kernel rápido con una conversión
+incorrecta no constituye una mejora.
+
+\section{Implicaciones para el método numérico}
+
+Los fundamentos anteriores conducen a los requisitos de
+\cref{tab:physics-to-numerics}. Esta relación entre causa física y respuesta
+numérica servirá como guía para la derivación posterior.
+
+\begin{table}[htbp]
+\centering
+\caption{De la dificultad física a la estrategia numérica.}
+\label{tab:physics-to-numerics}
+\begin{tabularx}{\textwidth}{@{}p{0.31\textwidth}YY@{}}
+\toprule
+\textbf{Dificultad} & \textbf{Requisito} & \textbf{Respuesta del solver} \\
+\midrule
+Velocidad de llama desconocida & Mantener \(\dot m\) como incógnita. & Resolver
+continuidad junto con energía y especies. \\
+Invariancia por traslación & Eliminar un modo nulo sin fijar \(\Su\). & Sustituir
+una fila de continuidad por un anclaje térmico. \\
+Conservación multiespecie & Usar flujos de cara comunes y
+\(\sum_kJ_k=0\). & Forma conservativa y velocidad de corrección. \\
+Rigidez química y ecuaciones algebraicas & Globalizar Newton sin introducir
+pseudo-derivadas donde no corresponden. & Matriz de masa diagonal, PTC--SER y
+rescate BE. \\
+Escalas y unidades distintas & Evitar que una variable domine el criterio. &
+Normas ponderadas y perturbaciones relativas más absolutas. \\
+Capas espaciales delgadas & Demostrar independencia de discretización. & Malla
+adaptativa, expansión de dominio y comparación de perfiles. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Estos criterios definen el núcleo del trabajo. La tabla FGM no introduce una
+física de llama distinta: consume soluciones producidas por este problema
+primario.
+
+\section{Relación con la aplicación FGM}
+
+La llama libre es el problema primario de esta tesis. Una tabla FGM no modifica
+sus balances ni su solución: reúne muchas llamas ya convergidas y las expresa en
+coordenadas adecuadas para consulta. Por ello, ninguna decisión de tabulación se
+usa para cerrar las ecuaciones de continuidad, especies o energía.
+
+Este orden separa con claridad dos niveles. En el primero se obtiene y certifica
+cada perfil laminar; en el segundo se organizan perfiles aceptados en una tabla.
+Las coordenadas de mezcla y progreso, la interpolación y la validación del
+manifold se definen después de completar el solver.
+
+\section{Síntesis del capítulo}
+
+Una llama premezclada libre combina un flujo másico desconocido, un modo de
+traslación, escalas químicas rígidas y capas espaciales delgadas. Estas
+características exigen conservación, anclaje, globalización no lineal y control
+de malla. La velocidad y el espesor se sintetizan en
+\cref{eq:Su-mdot,eq:thermal-thickness}; las escalas de transporte y reacción, en
+\cref{eq:thermal-diffusivity,eq:transport-time-scale,eq:damkohler,eq:lewis-number}.
+El capítulo siguiente revisa cómo la literatura ha resuelto esos cuatro
+requisitos antes de fijar la formulación empleada en este trabajo.
+
+% =============================================================================
+\chapter{Estado del arte de la resolución numérica de llamas premezcladas}
+\label{chap:estado-arte}
+\chaptermark{Estado del arte}
+
+\section{Formulación numérica de llamas unidimensionales}
+
+La solución computacional de llamas premezcladas estacionarias se consolidó con
+códigos como PREMIX, que combinan una formulación de bajo Mach, química detallada,
+Newton amortiguado, integración transitoria de respaldo y adaptación de malla
+\cite{KeePremix1998,Smooke1991}. Este patrón continúa siendo relevante porque
+responde a las dificultades esenciales del problema: rigidez, autovalor de
+velocidad, traslación del frente y capas espaciales delgadas.
+
+Las primeras implementaciones estaban condicionadas por memoria y coste de
+factorización. Se explotaban matrices bandeadas y evaluaciones locales del
+residual. En un problema 1D, una ecuación discreta conecta principalmente nodos
+vecinos; ordenar las incógnitas por punto produce una matriz de bloques casi
+tridiagonal. El principio sigue siendo válido en hardware moderno, aunque los
+kernels densos, la jerarquía de caché y la compilación JIT cambian qué
+implementación concreta es más eficiente.
+
+Una llama libre se distingue de una llama estabilizada en quemador. En la primera,
+el flujo másico es desconocido y debe añadirse una condición de fase; en la
+segunda, el flujo puede prescribirse y la temperatura o el balance con el
+quemador introduce condiciones distintas. Un solver debe declarar cuál problema
+resuelve antes de comparar velocidades o perfiles.
+
+\section{Discretización conservativa y tratamiento del transporte}
+
+Las formulaciones de diferencias finitas y volúmenes finitos buscan conservar
+flujos entre nodos. Los términos de difusión se evalúan naturalmente en caras y
+su divergencia en centros; la convección puede usar esquemas aguas arriba para
+robustez o esquemas de mayor orden cuando la malla y la solución lo permiten.
+La química permanece local en el espacio, pero acopla todas las especies dentro
+de cada nodo.
+
+El transporte promediado por mezcla ofrece un compromiso entre coste y fidelidad.
+El multicomponente resuelve interacciones cruzadas más completas, y Soret añade
+termodifusión. No existe una selección universal: metano--aire puede representarse
+razonablemente con el modelo promediado en muchos casos, mientras que hidrógeno
+exige estudiar difusión preferencial. La comparación de solvers debe fijar el
+mismo modelo, pues cambiar transporte puede modificar \(\Su\) más que una
+tolerancia numérica.
+
+La conservación de \(\sum_kJ_k=0\) y \(\sum_kY_k=1\) merece tratamiento
+explícito. Resolver las \(K\) ecuaciones sin una restricción independiente puede
+crear una singularidad algebraica; eliminar una especie sin cuidar su escala
+puede empeorar condicionamiento. Los códigos robustos sustituyen una fila por la
+normalización o formulan \(K-1\) variables independientes.
+
+\section{Estrategias no lineales y globalización}
+
+Newton presenta convergencia local rápida, pero no garantiza progreso desde una
+conjetura lejana. Las llamas añaden el riesgo de cruzar regiones de temperatura o
+composición donde las propiedades no son válidas. Las estrategias clásicas
+incluyen amortiguamiento, límites físicos, continuación en parámetros e
+integración temporal de respaldo.
+
+La continuación pseudo-transitoria interpreta el estado estacionario como
+límite de una dinámica artificial. Para pasos pequeños, el término de masa
+regulariza las variables diferenciales; a medida que el residual decrece, el
+paso crece y el método se aproxima a Newton. Kelley y Keyes establecieron una
+base de convergencia para esta estrategia \cite{KelleyKeyes1998}. El control SER
+usa directamente la reducción del residual para adaptar el paso.
+
+Los métodos inexactos y de Krylov reducen el coste de factorizar sistemas muy
+grandes \cite{EisenstatWalker1996,SaadSchultz1986}. Sin embargo, en una llama 1D
+con estructura por bloques, una resolución directa puede ser más barata y
+predecible. La literatura ofrece candidatos; el tamaño concreto y la trayectoria
+no lineal deciden cuál es apropiado.
+
+\section{Adaptación de malla y verificación}
+
+La capa reactiva no ocupa una fracción fija del dominio al variar combustible,
+presión o temperatura. Una malla uniforme suficientemente fina desperdicia nodos
+en regiones constantes, mientras que una malla uniforme económica puede perder
+el gradiente máximo. El refinamiento adaptativo combina indicadores de pendiente,
+curvatura y razón de tamaños, seguido de interpolación y nueva convergencia.
+
+La adaptación introduce una segunda noción de convergencia. Un residual pequeño
+en la malla actual no demuestra que el continuo esté bien aproximado. Se necesita
+repetir solve y refinamiento hasta estabilizar magnitudes y perfiles. También se
+debe verificar el dominio: gradientes apreciables en la salida indican que la
+condición asintótica se impuso demasiado cerca de la llama.
+
+La verificación numérica se separa de la validación física. La primera estudia
+residual, independencia de malla, dominio y conservación. La segunda compara con
+otro código, datos experimentales o valores de referencia. Esta tesis usa
+\Cantera como referencia independiente y reserva la comparación experimental
+multicombustible para una campaña posterior.
+
+
+\section{Síntesis de solvers unidimensionales de referencia}
+
+PREMIX estableció una metodología robusta para llamas premezcladas estacionarias
+mediante diferencias finitas, Newton, integración transitoria de respaldo y
+adaptación de malla \cite{KeePremix1998,Smooke1991,Grcar1988}. La continuación
+en parámetros para recorrer ramas de llamas también tiene antecedentes directos
+\cite{GiovangigliSmooke1993}. \Cantera conserva ese patrón conceptual y ofrece
+modelos modernos de termoquímica y transporte
+\cite{GoodwinCantera2023}. Su valor como referencia deriva tanto de la madurez
+del software como de su uso extendido.
+
+La robustez tiene coste. Un solver general administra dominios, modelos de
+transporte, objetos termodinámicos y múltiples estrategias. Para una campaña FGM
+homogénea, se puede adoptar una representación de memoria fija, evaluar lotes de
+nodos y compartir lógica entre flamelets. Esta tesis no presupone que el nuevo
+solver será más rápido en toda condición: formula y mide el dominio donde la
+especialización es ventajosa.
+
+Desarrollos recientes explotan matrices dispersas, solvers iterativos y
+Jacobianos analíticos para mecanismos grandes \cite{Lapointe2019,Perini2025},
+mientras que otros trabajos reorganizan el cálculo repetido de flamelets
+\cite{LapointeFlamelet2020}. Estos antecedentes impiden presentar la dispersión,
+el Jacobiano estructurado o la reutilización paramétrica como novedades
+aisladas. El espacio específico de esta tesis es otro: integrar esas ideas con
+una certificación explícita y demostrar, mediante ablación, cuándo una semilla
+vecina deja de ser beneficiosa.
+
+\section{Estrategias de solución no lineal}
+
+Newton resuelve \(\vect{F}(\vect{x})=\vect{0}\) mediante
+\begin{equation}
+  \mat{J}_F(\vect{x}^{(m)})\vect{s}^{(m)}=-\vect{F}(\vect{x}^{(m)}),
+  \qquad \vect{x}^{(m+1)}=\vect{x}^{(m)}+\alpha_m\vect{s}^{(m)}.
+  \label{eq:newton-generic}
+\end{equation}
+Su convergencia local es rápida, pero una aproximación inicial lejana puede
+producir temperaturas o composiciones no físicas. El amortiguamiento y la
+proyección de límites amplían la región de convergencia.
+
+La continuación pseudo-transitoria añade una dinámica artificial y avanza hacia
+el estado estacionario. Kelley y Keyes analizaron su convergencia global para
+problemas estacionarios \cite{KelleyKeyes1998}. En sistemas diferenciales
+algebraicos, una matriz de masa permite desplazar únicamente las ecuaciones con
+dinámica. La actualización SER aumenta el paso cuando el residual decrece y lo
+reduce cuando la corrección deja de ser fiable. Esta estructura inspiró el
+método productivo del presente trabajo.
+
+Para sistemas muy grandes, los métodos Newton--Krylov y los solvers dispersos
+pueden evitar factorizaciones completas \cite{EisenstatWalker1996,SaadSchultz1986,
+Lapointe2019}. En el tamaño estudiado se adopta una factorización directa de la
+matriz por bloques. Esta es una decisión de alcance y reproducibilidad, no una
+afirmación de superioridad general sobre los métodos iterativos.
+
+\section{Evaluación acelerada de química y transporte}
+
+La evaluación de tasas químicas domina muchos cálculos reactivos. \codigo{pyJac}
+genera Jacobianos analíticos para mecanismos cinéticos y reportó aceleraciones
+respecto de diferencias finitas \cite{Niemeyer2017}. KinetiX genera kernels
+optimizados de cinética y transporte para CPU y GPU, con mejoras publicadas
+frente a implementaciones generales \cite{DanciuKinetiX2025}. Estas herramientas
+demuestran el potencial del \emph{code generation}, pero su beneficio depende de
+integración, layout de datos y frecuencia de reconstrucción.
+
+Otra familia evita evaluaciones repetidas mediante tabulación adaptativa.
+\emph{In-situ adaptive tabulation} (ISAT) reutiliza soluciones químicas dentro de
+regiones de error controlado \cite{Pope1997,YangPope1998}. La caché de perfiles
+de esta tesis es conceptualmente más sencilla: almacena soluciones flamelet
+certificadas y solo las reutiliza si coinciden las condiciones que definen el
+problema. No aproxima la química dentro de una llama.
+
+\section{FGM como aplicación complementaria}
+
+Después de resolver y verificar llamas individuales, una familia de perfiles
+puede emplearse para reducción de química. Esta aplicación aumenta la importancia
+del rendimiento, pero no modifica el problema matemático primario.
+
+\subsection{Origen y evolución de los FGM}
+
+El método FGM fue formulado por van Oijen y de Goey para representar llamas
+premezcladas mediante manifolds construidos con flamelets
+\cite{vanOijen2000}. La tesis doctoral de van Oijen consolidó la base teórica y
+las extensiones a configuraciones premezcladas y de contracorriente
+\cite{vanOijenThesis2002,vanOijenCounterflow2002}. La revisión posterior de van
+Oijen, Donini, Bastiaans, ten Thije Boonkkamp y de Goey ofrece una síntesis de
+los avances en parametrización, transporte y aplicaciones
+\cite{vanOijenReview2016}.
+
+FGM comparte objetivos con ILDM y FPI, pero difiere en construcción. ILDM usa la
+separación de escalas del sistema químico homogéneo \cite{MaasPope1992}; FPI
+prolonga una variedad mediante trayectorias flamelet \cite{Gicquel2000}; FGM
+selecciona y tabula problemas canónicos que incorporan transporte. En todos los
+casos, la precisión depende tanto de la dimensión elegida como del conjunto de
+estados empleado para construir la variedad.
+
+La elección de una variable de progreso ha recibido atención específica.
+Combinaciones lineales simples funcionan en combustibles convencionales, pero
+pueden presentar pérdida de monotonicidad en mezclas complejas. La optimización
+de pesos propuesta por Niu et al. busca maximizar la calidad de parametrización
+\cite{Niu2013}. Para hidrógeno y mezclas ligeras, los números de Lewis no
+unitarios y la difusión preferencial obligan a incorporar variables o estrategias
+adicionales \cite{deSwart2010,PerezSanchez2025}.
+
+\subsection{Aplicaciones en dispositivos energéticos}
+
+En turbinas de gas, los manifolds permiten incluir química compleja en LES o
+RANS con coste controlado. Donini desarrolló extensiones multidimensionales para
+llamas de turbina \cite{DoniniThesis2014}; Proch y Kempf incorporaron pérdidas de
+calor en un PFGM aplicado a una cámara de combustión \cite{ProchKempf2015}. Estas
+aplicaciones muestran que presión, entalpía y mezcla pueden ser variables tan
+importantes como el progreso.
+
+En motores de encendido por compresión, la presión varía y la combustión combina
+regiones premezcladas y no premezcladas. Se han propuesto FGM dependientes de
+presión para combustión diésel \cite{Bekdemir2011}, aplicaciones LES a sprays de
+n-dodecano \cite{Wehrfritz2016} y formulaciones para motores de compresión
+\cite{Maghbouli2019}. El beneficio computacional permite repetir ciclos y
+explorar condiciones, pero la tabla debe cubrir autoignición, mezcla y extinción.
+
+Los combustibles bajos en carbono plantean nuevos retos. Mezclas
+amoníaco--metano requieren representar NO y CO con precisión, especialmente bajo
+pérdidas térmicas \cite{Honzawa2019,Fuzesi2023}. Las llamas ricas en hidrógeno
+presentan alta difusividad, inestabilidades y fuerte sensibilidad a transporte;
+los FGM con difusión preferencial siguen siendo un área activa
+\cite{deSwart2010,PerezSanchez2025}. Por ello, una plataforma rápida de
+generación no solo reduce tiempo: permite evaluar sistemáticamente qué
+dimensiones necesita cada combustible.
+
+\section{Vacío identificado}
+
+La literatura ofrece métodos robustos para llamas 1D y estrategias eficientes
+para familias de flamelets. El vacío abordado aquí no es la ausencia de un
+solver ni de continuación, sino la falta de una demostración reproducible que
+conecte tres decisiones: aceptar primero una llama con criterios algebraicos y
+espaciales, reutilizarla solo dentro de una vecindad paramétrica declarada y
+evaluar después la tabla mediante estados excluidos de su construcción.
+
+La pregunta principal es: \emph{¿qué combinación de discretización estructurada,
+solver no lineal, adaptación de malla y ejecución compilada reduce de forma
+reproducible el tiempo hasta obtener una llama premezclada laminar aceptada?}
+Una pregunta complementaria estudia cómo se traslada esa ventaja a FGM sin
+confundir exactitud del flamelet con suficiencia del muestreo paramétrico. La
+respuesta requiere separar tres comparaciones:
+
+\begin{enumerate}
+  \item una llama individual sin reutilización;
+  \item un barrido frío con continuación permitida únicamente entre vecinos;
+  \item una ablación del mismo barrido con continuación acotada y no acotada;
+  \item una validación de la tabla reteniendo mezclas interiores.
+\end{enumerate}
+
+Esta taxonomía guía el diseño experimental y evita mezclar aceleraciones de
+naturaleza distinta.
+
+% =============================================================================
+\chapter{Modelo físico y termoquímico}
+\label{chap:modelo}
+
+\section{Configuración del problema}
+
+Se considera una llama plana premezclada que se propaga en la dirección \(z\).
+El sistema de referencia se fija a la llama, de manera que el gas fresco entra
+por \(z=0\) y los productos salen por \(z=L\). Las hipótesis y su consecuencia
+numérica se resumen en \cref{tab:model-assumptions}. Cada simplificación retira
+una ecuación o un término concreto; no se trata solamente de una lista de
+supuestos físicos.
+
+\begin{table}[htbp]
+\centering
+\caption{Hipótesis del caso base y consecuencia sobre el sistema resuelto.}
+\label{tab:model-assumptions}
+\begin{tabularx}{\textwidth}{@{}p{0.25\textwidth}YY@{}}
+\toprule
+\textbf{Aspecto} & \textbf{Hipótesis} & \textbf{Consecuencia matemática} \\
+\midrule
+Geometría y régimen & Llama plana, estacionaria y unidimensional. & Todas las
+variables dependen solo de \(z\); desaparecen derivadas tangenciales y
+curvatura. \\
+Hidrodinámica & Bajo Mach y presión termodinámica uniforme. & La presión se fija
+como parámetro; no se integra una ecuación axial de momento ni se propagan ondas
+acústicas. \\
+Termodinámica & Mezcla gaseosa ideal. & La densidad se cierra algebraicamente
+mediante \(p=\rho RT/W\). \\
+Química & Fase homogénea con mecanismo detallado. & Se resuelve una ecuación por
+especie y las tasas dependen de \(T,p,\vect Y\). \\
+Transporte & Modelo promediado por mezcla, sin Soret en el caso base. & Se
+calculan \(K\) flujos de difusión y se corrigen para imponer suma nula. \\
+Energía & Adiabática, sin radiación ni fuentes volumétricas externas. & El
+balance contiene convección, conducción, difusión de entalpía y química. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+El vector de estado continuo es
+\begin{equation}
+  \vect{q}(z)=\left[u,T,Y_1,\ldots,Y_K\right]^{\mathsf T},
+  \label{eq:continuous-state}
+\end{equation}
+con la restricción
+\begin{equation}
+  \sum_{k=1}^{K}Y_k=1.
+  \label{eq:mass-fractions-sum}
+\end{equation}
+Aunque solo \(K-1\) fracciones son independientes, conservar las \(K\) especies
+facilita la evaluación vectorizada. En cada frontera se sustituye una ecuación
+de especie por \cref{eq:mass-fractions-sum} para evitar singularidad.
+
+\section{Cierre del problema y ausencia de una ecuación axial de momento}
+
+La formulación de bajo Mach separa la presión termodinámica \(p_0\), que fija el
+estado de la mezcla, de las pequeñas perturbaciones mecánicas. Para la llama
+plana considerada,
+\begin{equation}
+  p(z)=p_0+O(\mathrm{Ma}^2p_0),
+  \qquad \frac{\dd p_0}{\dd z}=0.
+  \label{eq:low-mach-pressure}
+\end{equation}
+En consecuencia, \(p_0\) es un dato y no una incógnita nodal. La velocidad axial
+sí pertenece al estado, pero queda determinada por continuidad y por el flujo
+másico seleccionado por la llama. Esta es la razón por la que no aparece una
+ecuación axial de momento en \cref{eq:continuous-state}. No debe confundirse
+esta configuración con la formulación axisimétrica de estancamiento, que añade
+una velocidad radial escalada y un autovalor de presión. La clase
+\codigo{FreeFlow} utilizada por \codigo{FreeFlame} expone precisamente
+\(u,T,Y_k\) como variables de solución \cite{CanteraDocs32}.
+
+En \(N\) nodos existen \(N(K+2)\) incógnitas. El mismo número de filas se obtiene
+repartiendo los balances como muestra \cref{tab:equation-count}. La fila de
+anclaje no añade una ecuación: reemplaza una fila de continuidad. De igual
+modo, la normalización de composición reemplaza una fila de especie en cada
+frontera.
+
+\begin{table}[htbp]
+\centering
+\caption{Cierre algebraico del problema discreto de llama libre.}
+\label{tab:equation-count}
+\begin{tabularx}{\textwidth}{@{}p{0.23\textwidth}p{0.16\textwidth}YY@{}}
+\toprule
+\textbf{Bloque} & \textbf{Número de filas} & \textbf{Interior} &
+\textbf{Fronteras o reemplazos} \\
+\midrule
+Velocidad \(u\) & \(N\) & Continuidad a ambos lados del frente. & En \(j_a\),
+\(T_{j_a}-T_a=0\) fija la traslación. \\
+Temperatura \(T\) & \(N\) & Energía en \(N-2\) nodos. & \(T_0=\Tin\) y
+\(T_{N-1}-T_{N-2}=0\). \\
+Especies \(Y_k\) & \(NK\) & \(K\) balances en cada nodo interior. & Balance de
+entrada y gradiente nulo de salida; una fila se reemplaza por
+\(1-\sum_kY_k=0\) en cada borde. \\
+\midrule
+Total & \(N(K+2)\) & \multicolumn{2}{l}{Igual al número de incógnitas.} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Una vez resuelto el sistema, la velocidad de propagación no necesita una
+ecuación adicional. Se recupera de la solución en la corriente fresca:
+\begin{equation}
+  \Su=u_0=\frac{\dot m}{\rho_\mathrm{u}},
+  \qquad \dot m=\rho_j u_j\quad\forall j.
+  \label{eq:freeflame-speed-recovery}
+\end{equation}
+El anclaje selecciona la posición del perfil y las ecuaciones seleccionan
+\(\dot m\); prescribir también \(u_0\) convertiría el problema libre en uno
+sobrecondicionado.
+
+\section{Ecuación de estado y propiedades de mezcla}
+
+Para gas ideal,
+\begin{equation}
+  p=\rho R T/W,
+  \qquad
+  W=\left(\sum_{k=1}^{K}\frac{Y_k}{W_k}\right)^{-1},
+  \label{eq:ideal-gas-mixture}
+\end{equation}
+donde \(W\) es la masa molar de mezcla y \(R\) la constante universal. Las
+fracciones molares se obtienen como
+\begin{equation}
+  X_k=\frac{Y_k W}{W_k}.
+  \label{eq:Y-to-X}
+\end{equation}
+La capacidad calorífica y la entalpía de mezcla son
+\begin{equation}
+  c_p=\sum_{k=1}^{K}Y_k c_{p,k},
+  \qquad
+  h=\sum_{k=1}^{K}Y_k h_k.
+  \label{eq:mixture-cp-h}
+\end{equation}
+
+El backend nativo evalúa \(c_{p,k}(T)\), \(h_k(T)\) y \(s_k(T)\) mediante las
+formas polinómicas de NASA. En su forma de siete coeficientes,
+\begin{align}
+  \frac{c_{p,k}^{\circ}}{R} & =a_{1,k}+a_{2,k}T+a_{3,k}T^2+a_{4,k}T^3+a_{5,k}T^4,
+  \label{eq:nasa-cp}\\
+  \frac{h_k^{\circ}}{RT} & =a_{1,k}+\frac{a_{2,k}}{2}T
+  +\frac{a_{3,k}}{3}T^2+\frac{a_{4,k}}{4}T^3
+  +\frac{a_{5,k}}{5}T^4+\frac{a_{6,k}}{T},
+  \label{eq:nasa-h}\\
+  \frac{s_k^{\circ}}{R} & =a_{1,k}\ln T+a_{2,k}T
+  +\frac{a_{3,k}}{2}T^2+\frac{a_{4,k}}{3}T^3
+  +\frac{a_{5,k}}{4}T^4+a_{7,k}.
+  \label{eq:nasa-s}
+\end{align}
+Los intervalos de temperatura y coeficientes proceden del mecanismo. La base de
+datos termoquímica de NASA documenta la construcción de estas funciones
+\cite{McBride2002}.
+
+\section{Conservación de masa}
+
+La ecuación de continuidad estacionaria es
+\begin{equation}
+  \frac{\dd}{\dd z}(\rho u)=0.
+  \label{eq:continuity}
+\end{equation}
+Por tanto, \(\dot m=\rho u\) es constante. En una llama libre, este flujo y la
+posición de la zona reactiva no quedan determinados simultáneamente: el problema
+posee invariancia por traslación. Se elimina el modo nulo imponiendo una
+temperatura en un nodo de anclaje,
+\begin{equation}
+  T(z_a)=T_a,
+  \qquad
+  T_a=0.75\,\Tin+0.25\,\Tad.
+  \label{eq:anchor-temperature}
+\end{equation}
+La estimación \(\Tad\) se obtiene de un equilibrio adiabático a presión
+constante. El anclaje fija la fase espacial; no prescribe la velocidad de llama.
+
+\section{Conservación de especies}
+
+Para cada especie \(k\),
+\begin{equation}
+  \rho u\frac{\dd Y_k}{\dd z}
+  +\frac{\dd J_k}{\dd z}=\dot\omega_k,
+  \qquad k=1,\ldots,K,
+  \label{eq:species-continuous}
+\end{equation}
+donde \(J_k=\rho Y_k V_k\) es el flujo difusivo y \(\dot\omega_k\) la tasa de
+producción másica. La consistencia requiere
+\begin{equation}
+  \sum_{k=1}^{K}J_k=0,
+  \qquad
+  \sum_{k=1}^{K}\dot\omega_k=0.
+  \label{eq:species-conservation-constraints}
+\end{equation}
+
+En el modelo promediado por mezcla se calcula primero un flujo preliminar sobre
+la cara \(j+1/2\),
+\begin{equation}
+  J_{k,j+1/2}^{*}=-\rho_{j+1/2}
+  \frac{W_k}{W_{j+1/2}}D_{k,j+1/2}
+  \frac{X_{k,j+1}-X_{k,j}}{z_{j+1}-z_j},
+  \label{eq:preliminary-diffusion-flux}
+\end{equation}
+y se aplica una velocidad de corrección:
+\begin{equation}
+  J_{k,j+1/2}=J_{k,j+1/2}^{*}
+  -Y_{k,j}\sum_{\ell=1}^{K}J_{\ell,j+1/2}^{*}.
+  \label{eq:corrected-diffusion-flux}
+\end{equation}
+Así, la suma de flujos se anula algebraicamente. La elección del valor izquierdo
+\(Y_{k,j}\) reproduce la convención del flujo de referencia utilizada en la
+comparación. El código permite gradientes másicos como opción, pero la ruta base
+usa gradientes molares.
+
+Los coeficientes binarios y de mezcla dependen de integrales de colisión. Las
+correlaciones de Neufeld, Janzen y Aziz proporcionan aproximaciones prácticas
+para potenciales de Lennard--Jones \cite{Neufeld1972}. La conductividad y la
+difusión se evalúan en lote sobre caras para evitar reconstruir objetos por nodo.
+
+\section{Cinética química}
+
+Para una reacción reversible \(r\),
+\begin{equation}
+  \sum_{k=1}^{K}\nu'_{kr}\mathcal{S}_k
+  \rightleftharpoons
+  \sum_{k=1}^{K}\nu''_{kr}\mathcal{S}_k,
+  \label{eq:reaction-generic}
+\end{equation}
+la tasa de progreso es
+\begin{equation}
+  q_r=k_{f,r}\prod_k C_k^{\nu'_{kr}}
+  -k_{b,r}\prod_k C_k^{\nu''_{kr}},
+  \label{eq:rate-of-progress}
+\end{equation}
+y la producción molar neta
+\begin{equation}
+  \dot\omega_k^{\mathrm{mol}}=
+  \sum_r(\nu''_{kr}-\nu'_{kr})q_r.
+  \label{eq:molar-production}
+\end{equation}
+La tasa másica que aparece en el balance de especies se obtiene mediante
+\begin{equation}
+  \dot\omega_k^{\mathrm{mass}}=W_k\dot\omega_k^{\mathrm{mol}}.
+  \label{eq:molar-to-mass-production}
+\end{equation}
+Esta conversión es crítica en la implementación: el backend devuelve
+\(\dot\omega_k^{\mathrm{mass}}\) en \(\mathrm{kg\,m^{-3}\,s^{-1}}\) y entalpías
+parciales molares en \(\mathrm{J\,kmol^{-1}}\). Por ello el término químico se
+evalúa como
+\(h_k^{\mathrm{mol}}\dot\omega_k^{\mathrm{mass}}/W_k\), que es idéntico a
+\(h_k^{\mathrm{mol}}\dot\omega_k^{\mathrm{mol}}\) y tiene unidades de potencia
+volumétrica. La constante directa sigue
+una ley de Arrhenius modificada,
+\begin{equation}
+  k_{f,r}=A_rT^{b_r}\exp\left(-\frac{E_{a,r}}{RT}\right).
+  \label{eq:arrhenius}
+\end{equation}
+Las reacciones de tercer cuerpo y de presión variable requieren concentraciones
+efectivas y funciones de \emph{falloff}; se evalúan con los parámetros del
+mecanismo. El caso de referencia emplea GRI-Mech 3.0
+\cite{SmithGRI30}. La implementación se valida contra propiedades y velocidades
+obtenidas con \Cantera, en vez de asumir equivalencia por usar el mismo archivo.
+
+\section{Conservación de energía}
+
+Sin radiación ni pérdidas externas, una forma de la ecuación de temperatura es
+\begin{equation}
+  \rho u c_p\frac{\dd T}{\dd z}
+  -\frac{\dd}{\dd z}\left(\lambda\frac{\dd T}{\dd z}\right)
+  +\sum_{k=1}^{K}\frac{J_k}{W_k}
+  \frac{\dd h_k^{\mathrm{mol}}}{\dd z}
+  +\sum_{k=1}^{K}\frac{h_k^{\mathrm{mol}}}{W_k}
+  \dot\omega_k^{\mathrm{mass}}=0,
+  \label{eq:energy-continuous}
+\end{equation}
+donde \(h_k^{\mathrm{mol}}/W_k\) es la entalpía específica másica. La expresión
+usa exactamente las bases devueltas por el backend: \(J_k\) y
+\(\dot\omega_k^{\mathrm{mass}}\) son másicos, mientras
+\(h_k^{\mathrm{mol}}\) es molar. Así se distinguen sin ambigüedad la convección
+sensible, la conducción, el transporte difusivo de entalpía y la fuente
+química. En el residual se divide por \(\rho c_p\) para reducir diferencias de
+escala.
+
+El calor volumétrico usado en la tabla se deriva de
+\begin{equation}
+  \dot q=-\sum_{k=1}^{K}h_k^{\mathrm{mol}}
+  \dot\omega_k^{\mathrm{mol}}
+  =-\sum_{k=1}^{K}\frac{h_k^{\mathrm{mol}}}{W_k}
+  \dot\omega_k^{\mathrm{mass}},
+  \label{eq:heat-release}
+\end{equation}
+con la convención de unidades del backend. No se emplea \(\dot q\) para cerrar la
+ecuación de energía: se almacena como salida y como indicador de adaptación FGM.
+
+\section{Condiciones de contorno}
+
+En la entrada se prescribe la mezcla fresca y la temperatura:
+\begin{align}
+  T(0)&=\Tin,\label{eq:bc-left-T}\\
+  J_k(0)+\dot m\,Y_k(0)&=\dot m\,Y_{k,\mathrm{in}}.
+  \label{eq:bc-left-Y}
+\end{align}
+La segunda expresión permite que el valor del primer nodo se ajuste de forma
+coherente con el flujo difusivo. La continuidad discreta determina el flujo
+másico, salvo en el nodo de anclaje donde se usa \cref{eq:anchor-temperature}.
+
+En la salida suficientemente alejada de la zona reactiva se impone
+\begin{equation}
+  \left.\frac{\dd T}{\dd z}\right|_{L}=0,
+  \qquad
+  \left.\frac{\dd Y_k}{\dd z}\right|_{L}=0.
+  \label{eq:bc-right-default}
+\end{equation}
+Una variante de flujo total compatible con la formulación de referencia se
+mantiene como opción, pero el valor productivo por defecto es gradiente nulo. El
+dominio se expande si los gradientes en el borde no son suficientemente pequeños;
+así se evita declarar convergencia sobre una llama truncada.
+
+\clearpage
+\section{Mapa de cierre matemático}
+
+La \cref{tab:model-equation-map} cierra el capítulo relacionando cada grupo de
+ecuaciones con su función. De este modo, la discretización posterior puede citar
+balances ya definidos sin introducir símbolos nuevos de forma retroactiva.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Secuencia de cierre del modelo físico y termoquímico.}
+\label{tab:model-equation-map}
+\begin{tabularx}{\textwidth}{@{}p{0.22\textwidth}YY@{}}
+\toprule
+\textbf{Bloque} & \textbf{Ecuaciones} & \textbf{Función en el modelo} \\
+\midrule
+Bajo Mach y estado &
+\Cref{eq:low-mach-pressure,eq:ideal-gas-mixture,eq:Y-to-X,eq:mixture-cp-h} &
+Fijar presión y obtener densidad, composición molar, calor específico y entalpía. \\
+Termoquímica de especie &
+\Cref{eq:nasa-cp,eq:nasa-h,eq:nasa-s} & Evaluar propiedades en función de la
+temperatura dentro del intervalo del mecanismo. \\
+Llama libre &
+\Cref{eq:continuity,eq:anchor-temperature,eq:freeflame-speed-recovery} &
+Determinar flujo másico, fijar la posición del frente y recuperar \(\Su\). \\
+Especies y transporte &
+\Cref{eq:species-continuous,eq:species-conservation-constraints,eq:preliminary-diffusion-flux,eq:corrected-diffusion-flux} &
+Conservar cada especie y anular la suma de flujos difusivos. \\
+Cinética &
+\Cref{eq:reaction-generic,eq:rate-of-progress,eq:molar-production,eq:molar-to-mass-production,eq:arrhenius} &
+Convertir el mecanismo elemental en fuentes molares y másicas consistentes. \\
+Energía y diagnóstico &
+\Cref{eq:energy-continuous,eq:heat-release} & Cerrar la temperatura y calcular la
+liberación de calor sin duplicar la fuente energética. \\
+Fronteras &
+\Cref{eq:bc-left-T,eq:bc-left-Y,eq:bc-right-default} & Conectar los estados
+asintóticos fresco y quemado con el dominio finito. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+
+\section{Dominio de aplicabilidad física}
+
+Las hipótesis anteriores son apropiadas para evaluar el núcleo numérico y
+construir un FGM premezclado adiabático. No cubren automáticamente:
+
+\begin{itemize}
+  \item llamas sometidas a fuerte estiramiento o curvatura;
+  \item autoignición homogénea y ramas extinguidas;
+  \item pérdidas radiativas o conducción a paredes;
+  \item transporte multicomponente y termo-difusión dominante;
+  \item partículas de hollín o química heterogénea.
+\end{itemize}
+
+Estas limitaciones no invalidan la plataforma. Delimitan qué resultados pueden
+compararse ahora y qué ecuaciones deben incorporarse antes de ampliar el
+manifold.
+
+% =============================================================================
+\chapter{Discretización y solver V2}
+\label{chap:numerico}
+
+\section{Organización del estado discreto}
+
+Sea una malla no uniforme \(0=z_0<z_1<\cdots<z_{N-1}=L\). El estado se guarda en
+orden por punto:
+\begin{equation}
+  \vect{x}=\left[
+  u_0,T_0,Y_{1,0},\ldots,Y_{K,0},
+  u_1,T_1,Y_{1,1},\ldots,Y_{K,1},\ldots
+  \right]^{\mathsf T}.
+  \label{eq:point-major-layout}
+\end{equation}
+Cada nodo forma un bloque de tamaño \(n_v=K+2\). Esta disposición es coherente
+con la dependencia espacial del residual: las ecuaciones del nodo \(j\) dependen
+principalmente de \(j-1,j,j+1\). Además, las variables de un punto son contiguas
+durante la evaluación termoquímica.
+
+Las ecuaciones de velocidad son algebraicas; temperatura y especies interiores
+reciben dinámica pseudo-transitoria. La matriz de masa discreta es diagonal,
+\begin{equation}
+  \mat{M}=\operatorname{diag}(\mu_i),
+  \qquad
+  \mu_i=\begin{cases}
+  1,&\text{ecuación diferencial interior},\\
+  0,&\text{continuidad, anclaje o condición de frontera}.
+  \end{cases}
+  \label{eq:mass-matrix}
+\end{equation}
+La \cref{eq:point-major-layout} fija la localidad espacial y la
+\cref{eq:mass-matrix} identifica exactamente qué filas reciben pseudo-tiempo.
+Ambas permiten construir la máscara sin operaciones dispersas complejas.
+
+\section{Aproximaciones espaciales}
+
+Para \(\Delta z_j^-=z_j-z_{j-1}\), \(\Delta z_j^+=z_{j+1}-z_j\) y
+\(\Delta z_j^c=z_{j+1}-z_{j-1}\), la divergencia de un flujo de cara se aproxima
+por
+\begin{equation}
+  \left.\frac{\dd J_k}{\dd z}\right|_j
+  \approx \frac{2\left(J_{k,j+1/2}-J_{k,j-1/2}\right)}
+  {\Delta z_j^c}.
+  \label{eq:flux-divergence-discrete}
+\end{equation}
+La conducción adopta la forma conservativa
+\begin{equation}
+  \left.\frac{\dd}{\dd z}\left(\lambda\frac{\dd T}{\dd z}\right)\right|_j
+  \approx \frac{2}{\Delta z_j^c}
+  \left[
+  \lambda_{j+1/2}\frac{T_{j+1}-T_j}{\Delta z_j^+}
+  -\lambda_{j-1/2}\frac{T_j-T_{j-1}}{\Delta z_j^-}
+  \right].
+  \label{eq:conduction-discrete}
+\end{equation}
+
+La convección usa por defecto una diferencia aguas arriba. Para velocidad
+positiva,
+\begin{equation}
+  \left.\frac{\dd \psi}{\dd z}\right|_j
+  \approx\frac{\psi_j-\psi_{j-1}}{\Delta z_j^-},
+  \label{eq:upwind-positive}
+\end{equation}
+con \(\psi=T\) o \(Y_k\). Existe una mezcla configurable con derivada central,
+pero no se necesita para la referencia productiva. El término difusivo central
+compensa la difusión numérica de primer orden en la capa reactiva, siempre que la
+malla esté adecuadamente refinada.
+
+El residual normalizado de especies en un nodo interior es
+\begin{equation}
+  F_{Y_k,j}=\frac{1}{\rho_j}\left[
+  \dot\omega_{k,j}-\rho_j u_j(D_zY_k)_j
+  -(D_zJ_k)_j\right].
+  \label{eq:species-residual-discrete}
+\end{equation}
+La \cref{eq:species-residual-discrete} reúne la convección aguas arriba de
+\cref{eq:upwind-positive}, la divergencia conservativa de
+\cref{eq:flux-divergence-discrete} y la fuente química másica.
+
+Para escribir la fila térmica sin ocultar la base de unidades, se define
+\(\overline J_{k,j}=(J_{k,j-1/2}+J_{k,j+1/2})/2\), mientras
+\((D_zh_k^{\mathrm{mol}})_j\) usa la misma dirección aguas arriba que la
+temperatura. El residual implementado es
+\begin{equation}
+  F_{T,j}=\frac{1}{\rho_jc_{p,j}}\left\{
+  -\rho_j u_jc_{p,j}(D_zT)_j
+  +[D_z(\lambda D_zT)]_j
+  -\sum_{k=1}^{K}\left[
+    \frac{h_{k,j}^{\mathrm{mol}}}{W_k}\dot\omega_{k,j}^{\mathrm{mass}}
+    +\frac{\overline J_{k,j}}{W_k}(D_zh_k^{\mathrm{mol}})_j
+  \right]\right\}.
+  \label{eq:energy-residual-discrete-main}
+\end{equation}
+La \cref{eq:energy-residual-discrete-main} combina la conducción conservativa de
+\cref{eq:conduction-discrete} con la convección de
+\cref{eq:upwind-positive}. Es el opuesto normalizado del balance de
+\cref{eq:energy-continuous}; por ello tiene la misma raíz. La división por
+\(\rho_jc_{p,j}\) reduce diferencias de escala sin cambiar la solución.
+
+\section{Residual estacionario y restricciones}
+
+Se denota por \(\vect{F}(\vect{x})\) el residual estacionario completo. Sea
+\(m_j=\rho_j u_j\). La fila asociada a la velocidad propaga el flujo másico hacia
+el nodo de anclaje y sustituye allí continuidad por la condición térmica:
+\begin{equation}
+  F_{u,j}=\begin{cases}
+  -\dfrac{m_{j+1}-m_j}{z_{j+1}-z_j}, & 0\le j<j_a,\\[1.5ex]
+  T_j-T_a, & j=j_a,\\[1.0ex]
+  -\dfrac{m_j-m_{j-1}}{z_j-z_{j-1}}, & j_a<j<N-1,\\[1.5ex]
+  m_{N-1}-m_{N-2}, & j=N-1.
+  \end{cases}
+  \label{eq:continuity-residual-main}
+\end{equation}
+La \cref{eq:continuity-residual-main} contiene la condición de entrada, las dos
+ramas interiores, el anclaje y la salida. Sus diferencias unilaterales evitan
+acoplar innecesariamente cuatro nodos.
+
+Una especie de exceso se usa para imponer suma unitaria en cada frontera:
+\begin{equation}
+  F_{Y_{k_\mathrm{exc}},b}=1-\sum_{k=1}^{K}Y_{k,b},
+  \qquad b\in\{0,N-1\}.
+  \label{eq:boundary-normalization}
+\end{equation}
+La especie elegida debe tener fracción apreciable para evitar mal
+condicionamiento. Después de interpolar una solución a una malla nueva también
+se normalizan las fracciones, pero durante Newton se permite un margen inferior
+pequeño, \(-10^{-7}\), que evita rechazar pasos por ruido redondo.
+La sustitución de la especie de exceso queda definida por
+\cref{eq:boundary-normalization}; no se aplica una renormalización oculta dentro
+de cada evaluación de Newton.
+
+La \cref{tab:residual-by-location} ofrece una lectura compacta de todo el
+sistema. En ella, ``interior'' excluye el nodo de anclaje cuando la fila de
+continuidad ha sido reemplazada. Las expresiones completas y sus factores de
+escala se derivan en el apéndice~\ref{app:discreto}.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Mapa de ecuaciones por variable y ubicación de malla.}
+\label{tab:residual-by-location}
+\begin{tabularx}{\textwidth}{@{}p{0.16\textwidth}YYY@{}}
+\toprule
+\textbf{Fila} & \textbf{Entrada \(j=0\)} & \textbf{Interior} &
+\textbf{Salida \(j=N-1\)} \\
+\midrule
+Velocidad & Primera rama de \cref{eq:continuity-residual-main}. & Continuidad
+unilateral; en \(j_a\), \(T_{j_a}-T_a=0\). & Última rama de
+\cref{eq:continuity-residual-main}. \\
+Temperatura & \(T_0-\Tin=0\). & Balance de
+\cref{eq:energy-residual-discrete-main}. & \(T_{N-1}-T_{N-2}=0\). \\
+Especies & Balance convectivo--difusivo con la mezcla fresca; una fila impone
+\(\sum_kY_k=1\). & Balance conservativo de cada especie,
+\cref{eq:species-residual-discrete}. & Gradiente nulo; una fila impone
+\(\sum_kY_k=1\). \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Inicialización física}
+
+La mezcla fresca se construye a partir de combustible, oxidante y \(\phi\). Un
+equilibrio HP proporciona \(\Tad\) y la composición quemada. La conjetura inicial
+interpola suavemente entre ambos estados sobre ocho nodos y estima \(u\) a partir
+de conservación de flujo. Este uso puntual de \Cantera para composición y
+equilibrio no convierte a \Cantera en el solver de la llama \Vdos; las
+iteraciones posteriores usan el backend nativo.
+
+La inicialización incluye límites físicos:
+\begin{equation}
+  200\ \mathrm{K}\le T\le 2T_{\max,\mathrm{mecanismo}},
+  \qquad Y_k\ge -10^{-7}.
+  \label{eq:state-bounds}
+\end{equation}
+Un paso se amortigua si viola estos límites. La composición se normaliza de
+forma conservadora al transferir perfiles entre mallas.
+
+\section{Newton amortiguado}
+
+En la vecindad de una solución, Newton es la ruta más eficiente. La forma
+genérica de \cref{eq:newton-generic} se concreta, en la iteración \(m\), como
+\begin{align}
+  \mat{J}_m\vect{s}_m&=-\vect{F}(\vect{x}_m),
+  \label{eq:newton-linear}\\
+  \vect{x}_{m+1}&=\vect{x}_m+\alpha_m\vect{s}_m,
+  \qquad 0<\alpha_m\le1.
+  \label{eq:newton-update}
+\end{align}
+Se prueban hasta siete niveles de amortiguamiento con factor \(\sqrt{2}\). La
+aceptación considera límites de estado y contracción de la corrección de Newton.
+La escala se calcula por componente físico \(v\), no por entrada aislada del
+vector. Para \(v\in\{u,T,Y_1,\ldots,Y_K\}\),
+\begin{equation}
+  w_v=\varepsilon_{a,v}+\varepsilon_{r,v}
+  \frac{1}{N}\sum_{j=0}^{N-1}\abs{x_{v,j}},
+  \label{eq:weighted-scale}
+\end{equation}
+y la norma implementada es
+\begin{equation}
+  \norm{\vect{s}}_w=
+  \left[\frac{1}{Nn_v}
+  \sum_{v=1}^{n_v}\sum_{j=0}^{N-1}
+  \left(\frac{s_{v,j}}{w_v}\right)^2\right]^{1/2}.
+  \label{eq:weighted-step}
+\end{equation}
+Esta forma coincide con la idea de norma ponderada por componente utilizada por
+el solver 1D de \Cantera y evita que temperatura domine a especies minoritarias
+por una mera diferencia de unidades \cite{CanteraDocs32}. En particular,
+\cref{eq:weighted-scale,eq:weighted-step} separan la escala física de la medida
+adimensional de la corrección.
+
+Sea \(\vect{s}^{(0)}\) la corrección calculada con el estado actual. Primero se
+limita \(\alpha_m\) para que temperatura y fracciones permanezcan dentro de
+\cref{eq:state-bounds}. Para cada candidato
+\(\vect{x}^{\rm tr}=\vect{x}+\alpha_m\vect{s}^{(0)}\), se conserva la misma
+factorización y se estima la corrección que exigiría el estado de prueba:
+\begin{equation}
+  \mat J(\vect{x})\vect{s}^{\rm tr}
+  =-\vect F(\vect{x}^{\rm tr}).
+  \label{eq:damping-trial-step}
+\end{equation}
+El candidato se acepta si
+\begin{equation}
+  \norm{\vect{s}^{\rm tr}}_w<1
+  \quad\text{o}\quad
+  \norm{\vect{s}^{\rm tr}}_w<\norm{\vect{s}^{(0)}}_w;
+  \label{eq:damping-contraction}
+\end{equation}
+La corrección de prueba y su condición de contracción quedan, respectivamente,
+en \cref{eq:damping-trial-step,eq:damping-contraction}; en caso contrario,
+\(\alpha_m\leftarrow\alpha_m/\sqrt{2}\). Si falla el
+amortiguamiento con un Jacobiano envejecido, se reconstruye antes de abandonar
+la iteración. El umbral productivo de convergencia es
+\(\norm{\vect{s}}_w<1\), acompañado de una guarda independiente sobre el
+residual. Las tolerancias estacionarias base son
+\(\varepsilon_r=10^{-4}\) y \(\varepsilon_a=10^{-9}\); en pseudo-tiempo se usa
+\(\varepsilon_a=10^{-11}\).
+
+\section{Continuación pseudo-transitoria PTC-SER}
+\label{sec:ptc-ser}
+
+Cuando Newton no encuentra un paso aceptable, se introduce la ecuación
+pseudo-transitoria
+\begin{equation}
+  \mat{M}\frac{\vect{x}-\vect{x}_n}{\Delta\tau_n}
+  =\vect{F}(\vect{x}).
+  \label{eq:pseudo-transient-continuous}
+\end{equation}
+Una linealización en \(\vect{x}_n\) produce una única corrección
+\begin{equation}
+  \left[\mat{J}_F(\vect{x}_n)-\frac{\mat{M}}{\Delta\tau_n}\right]
+  \vect{s}_n=-\vect{F}(\vect{x}_n),
+  \qquad
+  \vect{x}_{n+1}=\vect{x}_n+\alpha_n\vect{s}_n.
+  \label{eq:ptc-linear-correction}
+\end{equation}
+Esta es la diferencia esencial respecto de resolver por Newton hasta convergencia
+cada subproblema BE: un intento PTC paga una resolución lineal, no una secuencia
+completa. Si el residual crece demasiado o ningún amortiguamiento es aceptable,
+el algoritmo reduce el paso; después de un rechazo usa como rescate el BE
+totalmente implícito, más caro pero robusto.
+
+Los niveles de amortiguamiento de un mismo intento reutilizan además la
+corrección \(\vect{s}_n\) de \cref{eq:ptc-linear-correction}. Cada nuevo valor de
+\(\alpha_n\) exige proyectar el estado y evaluar el residual, pero no reconstruir
+el Jacobiano ni repetir la factorización. Solo después de rechazar el intento se
+reduce \(\Delta\tau_n\) o se activa el rescate BE. Esta decisión forma parte de
+la integración metodológica evaluada: evita convertir cada prueba de
+amortiguamiento en otra resolución Newton. La secuencia conceptual de
+\cref{alg:ptc-step} resume esta decisión sin reproducir detalles de código.
+
+El paso pseudo-temporal se actualiza con SER:
+\begin{equation}
+  \Delta\tau_{n+1}=\Delta\tau_n\,
+  \operatorname{clip}\left(
+  1.1\frac{\norm{\vect{F}(\vect{x}_n)}_\infty}
+  {\norm{\vect{F}(\vect{x}_{n+1})}_\infty},\ 0.2,\ 5.0\right).
+  \label{eq:ser-update}
+\end{equation}
+La \cref{eq:pseudo-transient-continuous} introduce la dinámica artificial,
+\cref{eq:ptc-linear-correction} define la corrección barata y
+\cref{eq:ser-update} adapta su paso. La constante \(1.1\), el intervalo de
+recorte y el filtro de crecimiento se mantienen fijos en todos los resultados
+comparativos; de este modo, el barrido no ajusta el algoritmo a cada mezcla.
+
+La \cref{tab:nonlinear-strategy-levels} evita confundir las tres capas del
+algoritmo. \Cantera combina Newton estacionario con pasos BE completos;
+\Vdos conserva ese rescate y antepone una corrección PTC más barata. La mejora
+no procede de relajar las ecuaciones finales, pues todas las rutas regresan a
+\(\vect F(\vect x)=0\).
+
+\begin{table}[htbp]
+\centering
+\caption{Capas de robustez del solver no lineal.}
+\label{tab:nonlinear-strategy-levels}
+\begin{tabularx}{\textwidth}{@{}p{0.18\textwidth}YYp{0.22\textwidth}@{}}
+\toprule
+\textbf{Ruta} & \textbf{Sistema lineal} & \textbf{Trabajo por intento} &
+\textbf{Uso} \\
+\midrule
+Newton estacionario & \(\mat J_F\vect s=-\vect F\) & Una factorización
+reutilizable y amortiguamiento. & Primera opción cerca de la raíz. \\
+PTC--SER & \((\mat J_F-\mat M/\Delta\tau)\vect s=-\vect F\) & Una sola
+corrección sometida a límites físicos y crecimiento acotado del residual;
+adapta \(\Delta\tau\). & Alejarse de regiones donde Newton no globaliza. \\
+BE implícito & \(\vect G(\vect x;\vect x^n,\Delta\tau)=0\) & Varias iteraciones
+de Newton para converger un paso pseudo-temporal. & Rescate después de una
+corrección PTC rechazada. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+La máscara \(\mat M\) es esencial: continuidad, anclaje y fronteras son filas
+algebraicas y no reciben pseudo-derivada; solo temperatura y especies interiores
+se desplazan en la diagonal. En la implementación, un paso PTC se rechaza si no
+es finito o si el residual estacionario posterior supera diez veces el anterior.
+Esta guarda impide que una aceptación barata desplace el estado hacia una rama
+claramente peor.
+
+La \cref{fig:nonlinear-flow} resume esta jerarquía de decisión antes de detallar
+la construcción del Jacobiano.
+
+\begin{figure}[htbp]
+\centering
+\resizebox{0.98\textwidth}{!}{%
+\begin{tikzpicture}[node distance=7mm and 12mm,
+  proc/.style={draw,rounded corners,fill=azulTFM!7,text width=4.0cm,
+               minimum height=9mm,align=center},
+  dec/.style={draw,diamond,aspect=2.25,fill=naranjaTFM!9,text width=2.6cm,
+              align=center,inner sep=1pt},
+  arr/.style={-{Latex[length=2mm]},thick}]
+  \node[proc] (eval) {Evaluar \(\vect F\), límites y criterio};
+  \node[dec,below=of eval] (conv) {¿Convergió?};
+  \node[proc,below left=9mm and 23mm of conv] (newton) {Intentar Newton amortiguado};
+  \node[dec,below=of newton] (okn) {¿Aceptado?};
+  \node[proc,below right=9mm and 23mm of conv] (ptc) {Una corrección PTC-SER};
+  \node[dec,below=of ptc] (okp) {¿Es finito y cumple la guarda?};
+  \node[proc,below=22mm of conv] (be) {Rescate BE totalmente implícito};
+  \node[proc,below=of be] (refine) {Verificar bordes y refinar malla};
+  \draw[arr] (eval)--(conv);
+  \draw[arr] (conv)--node[above left]{no}(newton);
+  \draw[arr] (conv.east)--++(12mm,0)|-node[pos=.22,above]{sí}(refine.east);
+  \draw[arr] (newton)--(okn);
+  \draw[arr] (okn)--node[above]{no}(ptc);
+  \draw[arr] (okn.west)--++(-8mm,0)|-(eval.west) node[pos=.25,left]{sí};
+  \draw[arr] (ptc)--(okp);
+  \draw[arr] (okp.west)--++(-8mm,0)|-(eval.east) node[pos=.28,right]{sí};
+  \draw[arr] (okp)--node[right]{no}(be);
+  \draw[arr] (be)--(refine);
+\end{tikzpicture}}
+\caption{Flujo conceptual del solver no lineal. La figura omite contadores y
+límites secundarios para mostrar la jerarquía de robustez.}
+\label{fig:nonlinear-flow}
+\end{figure}
+
+\section{Jacobiano local por diferencias finitas}
+
+Cada columna del Jacobiano se aproxima mediante una perturbación relativa y
+absoluta controlada. Si la variable \(x_{j,r}\) pertenece al nodo \(j\), solo se
+recalculan las filas asociadas a \(j-1,j,j+1\). Las propiedades de transporte se
+congelan en el estado base durante la construcción, mientras que termoquímica y
+cinética del nodo perturbado se actualizan. Así se reproduce una aproximación
+tipo local sin evaluar el residual global por cada grado de libertad.
+
+La estructura resultante es
+\begin{equation}
+  \mat{J}=
+  \begin{bmatrix}
+    \mat{B}_0 & \mat{C}_0 & & \\
+    \mat{A}_1 & \mat{B}_1 & \mat{C}_1 & \\
+    & \ddots & \ddots & \ddots\\
+    & & \mat{A}_{N-1} & \mat{B}_{N-1}
+  \end{bmatrix},
+  \label{eq:block-tridiagonal}
+\end{equation}
+con bloques densos de \(n_v\times n_v\). La memoria crece como
+\(O(Nn_v^2)\), frente a \(O(N^2n_v^2)\) de una matriz densa global. Los bloques
+se ensamblan directamente en el formato consumido por la factorización; esta
+estructura es la de \cref{eq:block-tridiagonal}.
+
+Un Jacobiano puede reutilizarse durante varias iteraciones si el progreso es
+regular. La edad máxima se fija en 20 para todos los experimentos. Si falla el
+amortiguamiento con una matriz reutilizada, el Jacobiano se reconstruye antes de
+abandonar la iteración.
+
+\section{Resolución lineal directa}
+
+La ruta productiva factoriza los bloques con kernels densos de LAPACK
+proporcionados por SciPy. En una eliminación conceptual por bloques,
+\begin{align}
+  \widetilde{\mat{B}}_0&=\mat{B}_0,\\
+  \mat{L}_j&=\mat{A}_j\widetilde{\mat{B}}_{j-1}^{-1},\\
+  \widetilde{\mat{B}}_j&=\mat{B}_j-\mat{L}_j\mat{C}_{j-1},
+  \label{eq:block-elimination}
+\end{align}
+seguida de sustituciones hacia delante y atrás. En la implementación no se
+forma la inversa explícita: se resuelven sistemas con las factorizaciones
+pivotadas de cada bloque. La notación de \cref{eq:block-elimination} describe la
+eliminación conceptual, no una inversión explícita en el código.
+
+La ruta productiva separa dos escalas de trabajo. Para cada complemento de Schur
+se conserva la factorización pivotada de LAPACK,
+\begin{equation}
+  \mat P_j\widetilde{\mat B}_j=\mat L_j^{\rm LU}\mat U_j,
+  \label{eq:block-pivoted-lu}
+\end{equation}
+porque esta operación densa requiere estabilidad numérica y está bien resuelta
+por una biblioteca especializada. Una vez factorizada la matriz, cada nuevo
+lado derecho repite, para todos los nodos, la aplicación de pivotes, las dos
+sustituciones triangulares y los productos con los bloques vecinos. Esas
+operaciones pequeñas se ejecutan en un único kernel compilado que recorre la
+cadena espacial completa. No cambia la matriz, el pivotado ni el algoritmo de
+Thomas por bloques; elimina el coste de entrar y salir de una rutina externa en
+cada nodo y para cada corrección de Newton, amortiguamiento o pseudo-tiempo.
+
+Esta organización híbrida es deliberada: la factorización y la sustitución no
+tienen el mismo tamaño granular. Su validez se comprueba comparando contra la
+ruta que llama a LAPACK en cada bloque y contra el sistema denso equivalente.
+La ablación extremo a extremo de \cref{sec:block-substitution-ablation} mide el
+beneficio sin atribuirle las mejoras de química, malla o continuación.
+
+Los bloques son pequeños en relación con una operación BLAS de gran tamaño. La
+ruta evaluada usa un hilo para cada factorización densa y para la sustitución
+fusionada, y reserva el paralelismo para los kernels nodales de química. Esta
+elección evita paralelismo anidado y forma parte de la configuración
+reproducible, no de la formulación física.
+
+\section{Adaptación de malla}
+
+Después de converger en una malla, se aplican los cuatro criterios del refinador
+1D de \Cantera: ratio, slope, curve y prune \cite{CanteraDocs32}. Sean
+\(h_j=z_{j+1}-z_j\), el rango
+\(\Delta\psi=\max_j\psi_j-\min_j\psi_j\) y las pendientes de intervalo
+\(d_j=(\psi_{j+1}-\psi_j)/h_j\). Los indicadores adimensionales son
+\begin{align}
+  R_j&=\max\left(\frac{h_j}{h_{j-1}},\frac{h_{j-1}}{h_j}\right),
+  \label{eq:mesh-ratio-indicator}\\
+  S_{\psi,j}&=\frac{\abs{\psi_{j+1}-\psi_j}}
+  {\Delta\psi+\varepsilon_\psi},
+  \label{eq:mesh-slope-indicator}\\
+  C_{\psi,j}&=\frac{\abs{d_{j+1}-d_j}}
+  {\max_jd_j-\min_jd_j+\varepsilon_d}.
+  \label{eq:mesh-curve-indicator}
+\end{align}
+Las \cref{eq:mesh-ratio-indicator,eq:mesh-slope-indicator,eq:mesh-curve-indicator}
+se evalúan conjuntamente. Los pequeños \(\varepsilon_\psi,\varepsilon_d\) evitan
+dividir por cero; además,
+un perfil casi constante se excluye antes de marcar nodos. La equivalencia con
+el código es directa: este inserta un punto medio cuando
+\(R_j>R_{\max}\), \(S_{\psi,j}>S_{\max}\) o
+\(C_{\psi,j}>C_{\max}\).
+La \cref{tab:mesh-criteria-meaning} traduce cada desigualdad a su efecto físico y
+a la protección aplicada durante la modificación de la malla.
+
+\begin{table}[htbp]
+\centering
+\caption{Interpretación operativa de los criterios de malla.}
+\label{tab:mesh-criteria-meaning}
+\begin{tabularx}{\textwidth}{@{}p{0.17\textwidth}p{0.24\textwidth}YY@{}}
+\toprule
+\textbf{Criterio} & \textbf{Condición de inserción} & \textbf{Qué detecta} &
+\textbf{Protección aplicada} \\
+\midrule
+Ratio & \(R_j>R_{\max}\) & Saltos bruscos de tamaño entre celdas. & Conserva un
+stencil alrededor del intervalo marcado. \\
+Slope & \(S_{\psi,j}>S_{\max}\) & Cambio grande de \(u,T\) o una especie respecto
+a su rango global. & No activa perfiles cuyo rango sea despreciable. \\
+Curve & \(C_{\psi,j}>C_{\max}\) & Cambio rápido de pendiente, incluso antes o
+después del máximo gradiente. & Marca los dos intervalos adyacentes. \\
+Prune & Indicadores menores que \(P\) para todas las variables. & Puntos
+redundantes en regiones suaves. & Nunca elimina bordes ni anclaje y evita dos
+eliminaciones consecutivas. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Se consideran temperatura, velocidad y especies suficientemente activas, no
+todas las trazas por igual. Los umbrales estrictos usados en la comparación son
+ratio \(=2.5\), slope \(=0.04\), curve \(=0.08\) y prune \(=0.003\), después de
+una fase base con \((3,0.08,0.12,0.01)\).
+
+La convergencia del sistema no implica convergencia de malla. El ciclo es:
+resolver, marcar, interpolar, volver a resolver y detenerse solo cuando no se
+requieren cambios materiales. Se permiten hasta seis ciclos. Si la llama se
+aproxima al borde, el dominio se duplica, hasta una anchura máxima predefinida;
+el criterio de pendiente de borde por defecto es \(0.02\).
+
+\section{Arquitectura y trazabilidad del solver}
+
+La arquitectura separa cinco responsabilidades científicas. Esta división
+permite modificar una capa sin cambiar silenciosamente las demás y constituye
+la trazabilidad relevante para el método; los nombres de archivos y funciones se
+mantienen en la documentación del repositorio, no en el cuerpo de la tesis.
+
+\begin{table}[htbp]
+\centering
+\caption{Responsabilidades conceptuales de la ruta V2.}
+\label{tab:v2-modules}
+\begin{tabularx}{\textwidth}{@{}p{0.28\textwidth}Y@{}}
+\toprule
+\textbf{Capa} & \textbf{Responsabilidad} \\
+\midrule
+Definición física & Mezcla, presión, temperatura, transporte, mecanismo,
+anclaje y dominio inicial. \\
+Estado y propiedades & Orden por puntos, matriz de masa, normalización,
+termoquímica, cinética y transporte. \\
+Sistema discreto & Flujos de cara, residual, fronteras, Jacobiano local,
+factorización pivotada y sustitución compilada por bloques. \\
+Globalización y espacio & Newton amortiguado, PTC--SER, rescate BE, adaptación
+de malla y expansión del dominio. \\
+Certificación y FGM & Aceptación conjunta, reutilización de semillas,
+proyección a \((Z,c)\) y validación cruzada. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Cada resultado publicado se enlaza con el objeto matemático que lo determina,
+como resume la \cref{tab:equation-code-trace}.
+
+\begin{table}[htbp]
+\centering
+\scriptsize
+\caption{Trazabilidad entre formulación, control y evidencia.}
+\label{tab:equation-code-trace}
+\begin{tabularx}{\textwidth}{@{}p{0.22\textwidth}p{0.34\textwidth}Y@{}}
+\toprule
+\textbf{Objeto} & \textbf{Control aplicado} & \textbf{Evidencia} \\
+\midrule
+\(\vect F(\vect x)\) & Norma de corrección ponderada, guarda independiente y
+límites de estado. & Estado aceptado y diagnósticos no lineales. \\
+\(\rho u\), \(\sum_kY_k\) & Errores máximos sobre todos los nodos. &
+Conservación del barrido de cinco mezclas. \\
+Malla y dominio & Cuatro niveles de refinamiento y pendientes relativas en los
+bordes. & Secuencia de \(\Su\), nodos y anchura final. \\
+Perfiles & Alineación por \(T_{50}\) e interpolación sobre una malla común. &
+Errores \(L_2\), \(L_\infty\), picos y magnitudes integrales. \\
+Continuación & Mismo barrido con y sin el límite multiplicativo. & Tiempo,
+nodos y aceptación por flamelet. \\
+Resolución lineal & Dos pares de barridos con la misma factorización y con la
+sustitución compilada activada o desactivada. & Tiempo total, identidad de nodos
+y diferencias máximas de \(\Su\), \(T\) y \(Y_k\). \\
+Tabla FGM & Exclusión sucesiva de mezclas interiores. & Error de reconstrucción
+de \(T\), \(\dot q\) y \(Y_k\). \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+
+\section{Del caso físico a la velocidad de llama}
+
+La \cref{tab:solver-sequence} sigue una corrida completa. Esta secuencia permite
+entender que Newton no es ``el solver'' por sí solo: es una etapa dentro de un
+proceso que también fija el problema libre, controla el dominio y certifica la
+malla.
+
+\begin{table}[htbp]
+\centering
+\caption{Secuencia matemática de una solución \texttt{FreeFlame} en V2.}
+\label{tab:solver-sequence}
+\begin{tabularx}{\textwidth}{@{}p{0.08\textwidth}p{0.24\textwidth}YY@{}}
+\toprule
+\textbf{Fase} & \textbf{Operación} & \textbf{Objeto producido} &
+\textbf{Condición para avanzar} \\
+\midrule
+1 & Construir mezcla fresca y equilibrio HP. & \(\Tin,\vect Y_{\rm u}\),
+\(\Tad,\vect Y_{\rm b}\) y perfil inicial suave. & Estado finito, normalizado y
+dentro del dominio termoquímico. \\
+2 & Fijar el anclaje y ensamblar propiedades, flujos y residual. &
+\(\vect F(\vect x)\) sobre la malla actual. & Stencil válido y propiedades
+evaluables en todos los nodos y caras. \\
+3 & Intentar Newton estacionario amortiguado. & Correcciones de
+\cref{eq:newton-linear,eq:newton-update}. & Contracción de
+\cref{eq:damping-contraction} y norma ponderada menor que uno. \\
+4 & Si Newton falla, avanzar en pseudo-tiempo. & Corrección PTC--SER o paso BE
+de rescate. & Descenso controlado del residual y límites físicos satisfechos. \\
+5 & Analizar resolución espacial y bordes. & Nueva malla interpolada o dominio
+expandido. & Ninguna marca adicional y pendientes de borde pequeñas. \\
+6 & Reevaluar el residual completo y certificar. & Estado, métricas y metadatos
+de aceptación. & Criterios algebraicos, espaciales y físicos compatibles. \\
+7 & Calcular la magnitud reportada. &
+\(\Su=u_0=\dot m/\rho_{\rm u}\) y perfiles finales. & Solo se publica si la
+fase 6 fue aceptada. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+La \cref{tab:solver-sequence} contiene el algoritmo científico central, no solo
+un resumen de implementación. En particular, las fases 3 y 4 determinan cuánto
+trabajo lineal se paga para globalizar; la fase 5 evita aceptar una ganancia
+obtenida con resolución espacial insuficiente. El
+\cref{alg:single-flame} desarrolla la misma secuencia como un algoritmo
+conceptual; no introduce una contribución distinta ni una aceleración ausente
+del cuerpo principal.
+
+\section{Criterios de aceptación}
+
+Una salida del solver no se incorpora automáticamente a la tabla. El predicado
+de aceptación puede escribirse como
+\begin{equation}
+  \mathcal A=\mathcal A_{\rm estado}\land
+  \mathcal A_{\text{composición}}\land
+  \mathcal A_{\rm NL}\land
+  \mathcal A_{\rm malla}\land
+  \mathcal A_{\rm dominio}\land
+  \mathcal A_{\text{física}}.
+  \label{eq:acceptance-predicate}
+\end{equation}
+La \cref{eq:acceptance-predicate} exige simultáneamente todas las capas y la
+\cref{tab:acceptance-layers} desarrolla cada factor. Así se distingue entre
+la convergencia interna de Newton y la aceptación científica de la llama.
+
+\begin{table}[htbp]
+\centering
+\caption{Capas de aceptación de una llama individual.}
+\label{tab:acceptance-layers}
+\begin{tabularx}{\textwidth}{@{}p{0.20\textwidth}YY@{}}
+\toprule
+\textbf{Capa} & \textbf{Prueba} & \textbf{Error que evita} \\
+\midrule
+Estado & Valores finitos y límites de \cref{eq:state-bounds}. & NaN, temperatura
+fuera del mecanismo o pasos no físicos. \\
+Composición & \(\sum_kY_k\) dentro de tolerancia y fracciones normalizables. &
+Pérdida artificial de masa. \\
+No lineal & \(\norm{\vect s}_w\le1\) y
+\(\norm{\vect F}_\infty\le F_{\rm guard}\) en modo tipo Cantera. & Falsa
+convergencia por paso pequeño con residual patológico. \\
+Malla & Ninguna inserción o eliminación material pendiente. & Resultado
+dependiente de una discretización todavía cambiante. \\
+Dominio & Pendientes relativas de temperatura en ambos bordes menores que el
+umbral. & Frente truncado o demasiado próximo a una frontera. \\
+Física & Flujo másico, perfiles, temperatura quemada y liberación de calor
+coherentes. & Raíz algebraica no representativa de la llama buscada. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Se guardan el estado de aceptación, norma, residual, número de nodos y tiempo.
+La certificación no demuestra por sí sola exactitud frente a un experimento, pero
+impide confundir ``el proceso terminó'' con ``la llama es apta para tabular''.
+
+\section{Correspondencia final con \texttt{FreeFlame} de Cantera 3.2}
+\label{sec:cantera-equation-correspondence}
+
+Una vez definidos el modelo, la discretización y la estrategia de solución, es
+posible cerrar la comparación con la versión 3.2.0 de \Cantera instalada en la
+máquina de referencia. Su documentación oficial formula el dominio libre con
+las variables \(u,T,Y_k\), transporte de entalpía por difusión y una condición
+de temperatura interior que determina indirectamente el flujo másico
+\cite{CanteraDocs32}. La \cref{tab:cantera-v2-equations} separa las identidades
+matemáticas de las decisiones propias de implementación. ``Equivalente'' no
+significa que ambos programas recorran las mismas iteraciones; significa que
+buscan la raíz del mismo balance bajo las hipótesis del caso base.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Correspondencia matemática entre \texttt{FreeFlame} y V2.}
+\label{tab:cantera-v2-equations}
+\begin{tabularx}{\textwidth}{@{}p{0.20\textwidth}YYY@{}}
+\toprule
+\textbf{Elemento} & \textbf{Cantera 3.2} & \textbf{V2} &
+\textbf{Relación} \\
+\midrule
+Estado de llama libre & \(u,T,Y_1,\ldots,Y_K\); \(p\) es parámetro. & Mismo
+estado en orden por punto, \cref{eq:point-major-layout}. & Equivalente. \\
+Continuidad & \(\dd(\rho u)/\dd z=0\), propagada hacia ambos lados del punto
+fijo. & \Cref{eq:continuity-residual-main}. & Mismo
+balance y stencil unilateral. \\
+Selección de \(\Su\) & Una temperatura interior fija determina el caudal de
+entrada. & La fila \(F_{u,j_a}\) se sustituye por \(T_{j_a}-T_a\). & Mismo
+autovalor; difiere la implementación del solver. \\
+Especies & \(\rho uY_k'=-J_k'+W_k\dot\omega_k^{\rm mol}\). &
+\Cref{eq:species-residual-discrete}; la fuente se almacena en base másica. &
+Equivalente tras \cref{eq:molar-to-mass-production}. \\
+Energía & Convección \emph{upwind}, conducción conservativa, difusión de
+entalpía y química. & \Cref{eq:energy-residual-discrete-main}. & Mismos términos;
+V2 divide la fila por \(\rho c_p\). \\
+Difusión de mezcla & Gradiente molar y corrección
+\(J_k=J_k^*-Y_k\sum_i J_i^*\). &
+\Cref{eq:preliminary-diffusion-flux,eq:corrected-diffusion-flux}. & Equivalente
+en el modo productivo. \\
+Entrada & \(T=\Tin\) y balance entre flujo convectivo, difusivo y composición
+fresca. & \Cref{eq:bc-left-T,eq:bc-left-Y}. &
+Equivalente. \\
+Salida compuesta & El objeto \texttt{Outlet1D} impone gradiente nulo de \(T\) y
+\(Y_k\). & Gradiente nulo por defecto; el flujo crudo de \texttt{Flow1D} queda
+solo como opción diagnóstica. & Equivalente en producción. \\
+Pseudo-tiempo & Euler implícito sobre las filas diferenciales cuando Newton
+estacionario falla. & Corrección PTC--SER de un paso y rescate Euler implícito.
+& Misma regularización diagonal; estrategia V2 más selectiva. \\
+Refinamiento & Criterios ratio, slope, curve y prune. & Los mismos cuatro
+criterios y protección del nodo de anclaje. & Algoritmo reproducido. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Hay dos diferencias que deben declararse al interpretar resultados. Primero,
+el Jacobiano productivo de V2 congela los coeficientes de transporte durante
+cada perturbación local y, por tanto, actúa como un Jacobiano quasi-Newton.
+Segundo, los dos programas adaptan su propia malla; exigir los mismos umbrales
+no implica obtener exactamente los mismos nodos. La validación debe comparar
+velocidad, perfiles alineados, balances y convergencia espacial, no solamente
+el mensaje final de convergencia.
+
+% =============================================================================
+\chapter{Aplicación complementaria: construcción de tablas FGM}
+\label{chap:fgm}
+\chaptermark{Construcción de tablas FGM}
+
+\section{Fundamentos matemáticos de la tabla FGM}
+\label{sec:fgm-fundamentals}
+
+Los capítulos anteriores establecieron primero el modelo, la discretización y la
+certificación de cada llama. Solo ahora se introduce la reducción FGM: una vez
+que el solver genera perfiles certificados para distintas condiciones, esas
+soluciones se proyectan a un manifold de baja dimensión. Esta sección define las
+coordenadas y operaciones que utilizará el resto del capítulo, particularizando
+la aplicación general de \cref{eq:manifold-general}.
+
+\subsection{De la química detallada a un manifold}
+
+Para \(K\) especies, un estado a presión prescrita puede describirse mediante
+temperatura y \(K-1\) fracciones másicas independientes. La trayectoria física de
+una familia de llamas ocupa, sin embargo, una región de dimensión efectiva menor.
+Los ILDM identifican direcciones rápidas a partir del Jacobiano químico
+\cite{MaasPope1992}; los FGM construyen directamente la variedad a partir de
+soluciones flamelet, incorporando transporte y condiciones relevantes
+\cite{vanOijen2000}.
+
+Sea \(\boldsymbol{\eta}\in\mathbb{R}^d\) el vector de variables de control. La
+tabla aproxima la aplicación
+\begin{equation}
+  \mathcal{M}:\boldsymbol{\eta}\mapsto
+  \left(T,u,\rho,c_p,\lambda,\dot q,\dot\omega_c,
+  Y_1,\ldots,Y_K\right).
+  \label{eq:M-map}
+\end{equation}
+La \cref{eq:M-map} explicita qué campos reconstruye la tabla. La selección de
+\(\boldsymbol{\eta}\) no es un detalle de almacenamiento: define
+qué estados pueden distinguirse. Una variable de progreso mal elegida puede no
+ser monotónica y asignar dos estados distintos a una misma coordenada. Niu,
+Vervisch y Tao formularon la selección del progreso como un problema de
+optimización para mejorar la parametrización \cite{Niu2013}.
+
+\subsection{Familias flamelet relacionadas}
+
+Los modelos flamelet no son idénticos. En combustión no premezclada, la fracción
+de mezcla y la disipación escalar suelen parametrizar llamas de difusión. La
+\emph{flamelet prolongation of ILDM} (FPI) extiende una variedad mediante llamas
+canónicas \cite{Gicquel2000}. Los modelos FPV añaden una variable de progreso y
+han sido aplicados a LES, incluyendo extinción y reignición
+\cite{PierceMoin2004,Ihme2005}. FGM nació en el contexto premezclado, aunque su
+formulación se ha extendido a combustión parcialmente premezclada,
+contracorriente, pérdidas térmicas y presión variable
+\cite{vanOijenCounterflow2002,vanOijenReview2016}.
+
+En esta tesis, ``FGM'' designa la construcción de una tabla a partir de llamas
+premezcladas libres, recorridas mediante \(\phi\) o su fracción de mezcla Bilger
+equivalente, y reparametrizadas por una variable de progreso. No se pretende que
+esta colección cubra automáticamente extinción por deformación ni mezcla
+parcial: esas capacidades requieren familias adicionales.
+
+\subsection{Fracción de mezcla de Bilger}
+
+La fracción de mezcla debe ser conservada por reacción en el límite de difusión
+igual y distinguir corriente de combustible y oxidante. Para combustibles CHON,
+se define el escalar elemental de Bilger
+\begin{equation}
+  \beta_{\mathrm{B}} = 2\frac{Z_{\mathrm{C}}}{W_{\mathrm{C}}}
+  +\frac{1}{2}\frac{Z_{\mathrm{H}}}{W_{\mathrm{H}}}
+  -\frac{Z_{\mathrm{O}}}{W_{\mathrm{O}}},
+  \label{eq:bilger-beta}
+\end{equation}
+donde \(Z_e\) es la fracción másica elemental. La normalización entre las
+corrientes pura de oxidante y pura de combustible es
+\begin{equation}
+  Z=\frac{\beta_{\mathrm{B}}-\beta_{\mathrm{B,ox}}}
+  {\beta_{\mathrm{B,f}}-\beta_{\mathrm{B,ox}}}.
+  \label{eq:bilger-Z}
+\end{equation}
+Las \cref{eq:bilger-beta,eq:bilger-Z} separan la combinación elemental de su
+normalización entre corrientes. La construcción sigue el criterio descrito por Bilger
+\cite{Bilger1989}. Para una composición de combustible y oxidante fijas existe
+una correspondencia monotónica \(Z\leftrightarrow\phi\). El generador admite
+ambas entradas y resuelve la inversión \(Z\to\phi\) mediante bisección
+logarítmica.
+
+Es importante distinguir esta coordenada de la posición \(z\). En una llama
+\emph{perfectamente premezclada}, cada flamelet se calcula con una composición
+global fija; \(Z\) etiqueta qué mezcla originó esa llama. El progreso \(c\)
+recorre internamente el estado no quemado al quemado. Por ello, la tabla básica
+usa ejes \((Z,c)\), no convierte cada nodo espacial en una nueva mezcla.
+
+\subsection{Variable de progreso}
+
+Se parte de una combinación lineal de especies producto,
+\begin{equation}
+  \beta_c=Y_{\mathrm{CO_2}}+Y_{\mathrm{H_2O}}+Y_{\mathrm{CO}}
+  +\tfrac{1}{2}Y_{\mathrm{H_2}},
+  \label{eq:progress-beta}
+\end{equation}
+y se normaliza con los extremos no quemado y quemado de cada flamelet:
+\begin{equation}
+  c=\frac{\beta_c-\beta_{c,\mathrm{u}}}
+  {\beta_{c,\mathrm{b}}-\beta_{c,\mathrm{u}}}.
+  \label{eq:progress-c}
+\end{equation}
+La \cref{eq:progress-beta} define el progreso no normalizado y la
+\cref{eq:progress-c} lo lleva al intervalo de cada flamelet. La inclusión de CO y
+\(\mathrm{H_2}\) mejora la sensibilidad a estados
+intermedios respecto de usar únicamente \(\mathrm{CO_2}+\mathrm{H_2O}\). Los
+pesos pueden cambiar con combustible y mecanismo; deben validarse verificando
+monotonicidad y condicionamiento. Cuando el denominador es demasiado pequeño,
+la temperatura normalizada ofrece un respaldo diagnóstico, no una definición
+universal.
+
+Los datos numéricos pueden contener pequeñas inversiones por difusión
+preferencial, interpolación o ruido. El flujo implementado ordena por \(c\),
+promedia duplicados y fuerza extremos coherentes antes de interpolar. Esta
+operación evita una interpolación multivaluada, pero no debe ocultar una
+inversión física grande. La certificación registra el grado de corrección y debe
+rechazar flamelets cuya parametrización no sea válida.
+
+\subsection{Malla adaptativa en el espacio del manifold}
+
+Una malla uniforme en \(c\) desperdicia puntos en regiones suaves y puede perder
+intermedios estrechos. El generador calcula un indicador global \(g(c)\) que
+combina gradientes normalizados de temperatura, especies seleccionadas y tasa de
+liberación de calor. A partir de
+\begin{equation}
+  G(c)=\frac{\displaystyle\int_0^c [\epsilon+g(\xi)]\dd\xi}
+  {\displaystyle\int_0^1 [\epsilon+g(\xi)]\dd\xi},
+  \label{eq:cdf-progress}
+\end{equation}
+La \cref{eq:cdf-progress} concentra nodos al invertir una cuadrícula uniforme en
+\(G\). El término
+\(\epsilon>0\) conserva cobertura en zonas suaves. El mismo eje \(c\) se utiliza
+para todas las mezclas, por lo que el indicador se agrega sobre los flamelets y
+evita una tabla irregular difícil de consultar.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[node distance=8mm and 10mm,
+  bloque/.style={draw,rounded corners,fill=azulTFM!8,minimum height=9mm,
+                 text width=3.2cm,align=center},
+  flecha/.style={-{Latex[length=2.2mm]},thick}]
+  \node[bloque] (cond) {Condiciones \((p,T,\phi)\) o \((p,T,Z)\)};
+  \node[bloque,right=of cond] (solve) {Resolver y certificar cada llama 1D};
+  \node[bloque,right=of solve] (project) {Proyectar \(z\mapsto c\) y seleccionar campos};
+  \node[bloque,below=of project] (grid) {Construir malla global adaptativa en \(c\)};
+  \node[bloque,left=of grid] (table) {Interpolar \(\mathcal{M}(Z,c)\)};
+  \node[bloque,left=of table] (verify) {Verificar límites, monotonicidad y metadatos};
+  \draw[flecha] (cond)--(solve);
+  \draw[flecha] (solve)--(project);
+  \draw[flecha] (project)--(grid);
+  \draw[flecha] (grid)--(table);
+  \draw[flecha] (table)--(verify);
+\end{tikzpicture}
+\caption{Cadena conceptual de generación de una tabla FGM. La certificación de
+la llama precede a su incorporación en el manifold.}
+\label{fig:fgm-chain}
+\end{figure}
+
+La \cref{fig:fgm-chain} fija el orden conceptual: resolver, certificar, proyectar
+y solo entonces interpolar.
+
+\subsection{FGM adiabático, no adiabático y de mayor dimensión}
+
+La tabla básica supone que la entalpía queda determinada por composición y
+progreso. En cámaras reales existen conducción a paredes, radiación, mezcla con
+gases fríos y calentamiento previo. Una parametrización no adiabática añade, por
+ejemplo, el defecto de entalpía
+\begin{equation}
+  \Delta h=h-h_{\mathrm{ad}}(Z,c)
+  \label{eq:enthalpy-defect}
+\end{equation}
+La \cref{eq:enthalpy-defect} introduce esa coordenada independiente. Fiorina y colaboradores mostraron una
+formulación FPI no adiabática \cite{Fiorina2003}, y Proch y Kempf aplicaron un
+FGM premezclado con pérdidas de calor a una cámara de turbina
+\cite{ProchKempf2015}.
+
+Añadir dimensiones mejora cobertura, pero produce crecimiento combinatorio. Si
+cada eje tiene \(n_j\) nodos, el número de estados es
+\begin{equation}
+  N_{\mathrm{tabla}}=\prod_{j=1}^{d}n_j.
+  \label{eq:curse-dimensionality}
+\end{equation}
+La \cref{eq:curse-dimensionality} cuantifica la ``maldición de dimensionalidad''
+y refuerza la necesidad de acelerar la
+generación y, en una etapa posterior, estudiar muestreo adaptativo, compresión o
+interpolantes dispersos.
+
+\section{Flujo extremo a extremo}
+
+El generador recibe el mecanismo, las composiciones de combustible y oxidante,
+la presión, la temperatura de entrada, el modelo de transporte y una secuencia
+de \(\phi\) o \(Z\). La \cref{tab:fgm-end-to-end} agrupa el flujo en cuatro
+etapas, cada una con una salida verificable antes de continuar.
+
+\begin{table}[htbp]
+\centering
+\caption{Flujo secuencial de construcción de una tabla FGM.}
+\label{tab:fgm-end-to-end}
+\begin{tabularx}{\textwidth}{@{}p{0.09\textwidth}p{0.25\textwidth}YY@{}}
+\toprule
+\textbf{Etapa} & \textbf{Operación} & \textbf{Salida} & \textbf{Control} \\
+\midrule
+1 & Normalizar entradas, ordenar el barrido y convertir \(Z\leftrightarrow\phi\).
+& Casos físicos y claves de caché. & Mecanismo, corrientes y configuración
+numérica forman parte de la identidad. \\
+2 & Resolver las llamas con continuación local y certificar cada una. & Perfiles
+laminares aceptados. & Ninguna llama rechazada entra en la tabla. \\
+3 & Extraer campos, transformar \(z\mapsto c\) y construir la malla común. &
+Campos interpolados sobre \((Z,c)\). & Monotonicidad, cobertura de extremos y
+ausencia de extrapolación material. \\
+4 & Validar dimensiones, conservación y metadatos; escribir resultados. & Tabla
+NPZ y figuras diagnósticas. & La salida permite reconstruir el comando y la
+configuración. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+La \cref{fig:software-architecture} muestra cómo ambos solvers entregan sus
+perfiles a un único posprocesado, definido por las mismas coordenadas FGM.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[node distance=7mm and 13mm,
+  box/.style={draw,rounded corners,fill=azulTFM!6,text width=3.35cm,
+              minimum height=10mm,align=center},
+  dat/.style={draw,fill=verdeTFM!7,text width=3.35cm,minimum height=10mm,
+              align=center},
+  arr/.style={-{Latex[length=2mm]},thick}]
+  \node[box] (cli) {Generador FGM y opciones};
+  \node[box,below left=of cli] (v2) {Solver V2};
+  \node[box,below right=of cli] (ct) {Solver Cantera de referencia};
+  \node[box,below=of v2] (res) {Residual + Jacobiano block-tridiagonal};
+  \node[dat,below=of res] (backend) {Backend nativo: termo, cinética, transporte};
+  \node[box,below=18mm of cli] (common) {Matemática FGM compartida};
+  \node[dat,below=of common] (npz) {Tabla NPZ + metadatos};
+  \draw[arr] (cli)--(v2);
+  \draw[arr] (cli)--(ct);
+  \draw[arr] (v2)--(res);
+  \draw[arr] (res)--(backend);
+  \draw[arr] (v2)--(common);
+  \draw[arr] (ct)--(common);
+  \draw[arr] (common)--(npz);
+\end{tikzpicture}
+\caption{Arquitectura lógica. Ambos solvers convergen en el mismo posprocesado
+FGM, por lo que la comparación no depende de definiciones distintas de \(Z\) o
+\(c\).}
+\label{fig:software-architecture}
+\end{figure}
+
+Esta definición permite medir dos tiempos distintos. El \emph{solve time} suma
+solo la resolución de flamelets; el tiempo extremo a extremo incluye inversión
+de coordenadas, importaciones, compilación JIT, interpolación y escritura. La
+comparación principal reporta ambos cuando están disponibles.
+
+\section{Parametrización del barrido}
+
+Los valores de \(\phi\) se ordenan de pobre a rico para que flamelets adyacentes
+sean físicamente próximos. Si el usuario proporciona \(Z\), la inversión de
+\cref{eq:bilger-Z} se realiza mediante bisección sobre \(\log\phi\):
+\begin{equation}
+  \log\phi_{m}=\frac{1}{2}
+  (\log\phi_{\min}+\log\phi_{\max}).
+  \label{eq:log-bisection}
+\end{equation}
+La bisección de \cref{eq:log-bisection} trata de forma más simétrica mezclas
+pobres y ricas. En la
+implementación inicial se recargaba el mecanismo en cada evaluación de la
+función. Reutilizar una única fase redujo el preprocesamiento de tres objetivos
+desde \SI{5.740}{\second} hasta \SI{0.0145}{\second}, sin diferencia numérica en
+\(\phi\). Es una aceleración del mapa de entrada, no del solver de llama.
+
+La correspondencia depende de las composiciones exactas de combustible y
+oxidante. Por tanto, una tabla no debe reutilizar un mapa \(Z\leftrightarrow\phi\)
+de otro combustible aunque el mecanismo sea el mismo.
+
+\section{Continuación por perfiles}
+
+Si \(\vect{x}(\phi_i)\) es una llama aceptada, puede interpolarse a la malla
+inicial del siguiente problema y usarse como semilla. Para dos soluciones
+previas se define un predictor secante,
+\begin{equation}
+  \vect{x}_{i+1}^{\mathrm{pred}}=
+  \vect{x}_{i}+\gamma
+  \frac{\phi_{i+1}-\phi_i}{\phi_i-\phi_{i-1}}
+  \left(\vect{x}_{i}-\vect{x}_{i-1}\right),
+  \label{eq:secant-predictor}
+\end{equation}
+El predictor de \cref{eq:secant-predictor} usa \(\gamma=0.7\) y un factor secante
+limitado a \([-0.5,1]\). Antes de combinar
+los perfiles, ambos se expresan sobre una malla compatible y se corrigen
+fracciones másicas.
+
+Una continuación sin límites presupone que la rama es casi lineal para cualquier
+salto. Los ensayos mostraron lo contrario: una semilla lejana podía inducir una
+trayectoria no lineal larga y una malla innecesariamente densa. Se introdujo la
+región de confianza multiplicativa
+\begin{equation}
+  \frac{1}{1.15}\le\frac{\phi_{i+1}}{\phi_i}\le1.15.
+  \label{eq:phi-trust-region}
+\end{equation}
+La \cref{eq:phi-trust-region} limita la reutilización local. Fuera de ella se
+reinicia desde la conjetura física robusta y se elimina también
+el historial secante. La regla no busca detectar una bifurcación con rigor
+matemático; es una protección empírica, explícita y reproducible contra
+extrapolación no local.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[x=1.25cm,y=1cm]
+  \draw[-{Latex}] (0,0)--(8.2,0) node[right]{\(\phi\)};
+  \foreach \x/\lab in {0.5/{0.7},2.5/{0.9},3.5/{1.0},4.5/{1.1},7.5/{1.4}}{
+    \draw (\x,0.08)--(\x,-0.08) node[below=2mm]{\lab};
+    \fill[azulTFM] (\x,0) circle (2.2pt);
+  }
+  \draw[-{Latex},very thick,verdeTFM,bend left=35] (2.5,0.18) to
+    node[above]{continuación local} (3.5,0.18);
+  \draw[-{Latex},very thick,verdeTFM,bend left=35] (3.5,0.18) to
+    node[above]{local} (4.5,0.18);
+  \draw[-{Latex},very thick,naranjaTFM,dashed,bend left=42] (0.5,0.35) to
+    node[above]{reinicio: salto \(>15\%\)} (2.5,0.35);
+  \draw[-{Latex},very thick,naranjaTFM,dashed,bend left=42] (4.5,0.35) to
+    node[above]{reinicio} (7.5,0.35);
+\end{tikzpicture}
+\caption{Interpretación de la región de confianza para el barrido amplio. La
+continuación es un modelo local de la rama, no una obligación de reutilizar cada
+perfil anterior.}
+\label{fig:trust-region-phi}
+\end{figure}
+
+La \cref{fig:trust-region-phi} distingue visualmente la continuación local de los
+saltos que obligan a reiniciar.
+
+\section{Caché de semillas certificadas}
+
+La caché persistente almacena únicamente soluciones que cumplieron todos los
+criterios. La clave incorpora, entre otros campos:
+
+\begin{itemize}
+  \item mecanismo y composición de combustible/oxidante;
+  \item \(T\), \(p\), \(\phi\), ancho y transporte;
+  \item base del gradiente difusivo y activación Soret;
+  \item tolerancias estacionarias y transitorias;
+  \item criterios base y estrictos de refinamiento;
+  \item regla de aceptación y versión de la configuración.
+\end{itemize}
+
+Así se evita reutilizar una llama calculada con física o tolerancias distintas.
+La caché contiene la malla y el estado completo, no solo \(\Su\). Al cargarla se
+revalida forma, especies y finitud; un archivo incompleto no se considera una
+semilla válida.
+
+El término ``con caché'' debe interpretarse correctamente. No significa que el
+resultado final se copie sin resolver: el perfil aceptado se usa como semilla y
+el solver confirma la solución bajo la configuración actual. El ahorro procede
+de evitar el arranque frío y la construcción progresiva de la malla.
+
+\section{Paralelismo controlado}
+
+En un barrido frío, el flamelet \(i+1\) depende del perfil \(i\). Lanzarlos todos
+en paralelo elimina la continuación y replica el coste más difícil de arranque;
+los ensayos fueron más lentos. El generador frío es por ello secuencial.
+
+Cuando todas las semillas exactas ya existen, cada flamelet puede revalidarse de
+forma independiente y se habilitan procesos paralelos. Los hilos de química se
+reparten entre procesos para impedir \emph{oversubscription}. Para tres llamas
+cacheadas se midieron \SI{5.8}{\second} con dos trabajadores,
+\SI{4.1}{\second} con tres trabajadores y cuatro hilos Numba por proceso, y
+\SI{4.4}{\second} con tres trabajadores y un hilo. La configuración automática
+selecciona tres procesos y cuatro hilos en la máquina de ensayo.
+
+Por tanto, caché y paralelo sí pueden trabajar juntos, pero representan el
+escenario de regeneración. No se debe presentar ese tiempo como si fuera el coste
+de construir por primera vez la tabla.
+
+\section{Extracción de campos}
+
+Para cada llama aceptada se almacenan:
+
+\begin{equation}
+  \left\{
+  \phi,Z,\Su,N,t_{\mathrm{solve}},T(z),u(z),\rho(z),c_p(z),
+  \lambda(z),\dot q(z),\beta_c(z),\dot\omega_c(z),Y_k(z)
+  \right\}.
+  \label{eq:stored-flame-fields}
+\end{equation}
+La \cref{eq:stored-flame-fields} distingue magnitudes globales de perfiles
+nodales. Los campos \(\rho,c_p,\lambda,\dot q\) se derivan de forma consistente
+con el mecanismo. Si \(a_k\) son los pesos de \cref{eq:progress-beta}, la fuente
+másica normalizada de progreso se calcula como
+\begin{equation}
+  \dot\omega_c=
+  \frac{\displaystyle\sum_k a_kW_k\dot\omega_k^{\mathrm{mol}}}
+  {\beta_{c,\mathrm b}-\beta_{c,\mathrm u}},
+  \qquad [\dot\omega_c]=\si{\kilogram\per\cubic\metre\per\second}.
+  \label{eq:progress-source}
+\end{equation}
+La misma definición y los mismos pesos se usan en ambas rutas; si el denominador
+no permite parametrizar el progreso, el flamelet se rechaza en vez de producir
+una fuente mal condicionada.
+En la versión actual, el posprocesado puntual de estos campos usa temporalmente
+la interfaz de \Cantera; no interviene en la convergencia del solver nativo. Esta
+dependencia está documentada para evitar afirmar que toda la cadena es
+independiente de \Cantera.
+
+Las velocidades y temperaturas son útiles para validación; las composiciones y
+términos fuente forman el contenido principal del manifold. La tabla conserva
+los nombres de especies y metadatos, de forma que un consumidor no dependa de un
+orden implícito.
+
+\section{Monotonización e interpolación en progreso}
+
+Para cada flamelet se calcula \(c(z)\) mediante \cref{eq:progress-c}. Se ordenan
+los nodos por \(c\); valores duplicados dentro de tolerancia se agrupan y se
+promedian los campos. Se añaden \(c=0\) y \(c=1\) si el ruido numérico impide
+alcanzarlos exactamente. El algoritmo conserva un registro del intervalo
+original para detectar extrapolaciones.
+
+La malla adaptativa común se construye con un indicador compuesto,
+\begin{equation}
+  g(c)=w_T\widehat{\abs{T'(c)}}+
+  w_q\widehat{\abs{\dot q'(c)}}+
+  \sum_{k\in\mathcal{S}}w_k
+  \left[\widehat{\abs{Y'_k(c)}}+\eta_k\widehat{Y_k(c)}\right],
+  \label{eq:global-progress-indicator}
+\end{equation}
+En la \cref{eq:global-progress-indicator}, el sombrero denota normalización
+robusta y \(\mathcal{S}\) un conjunto de especies relevantes. El término de
+concentración evita ignorar una especie minoritaria ancha cuyo gradiente máximo
+sea pequeño. Se calcula un indicador \(g_i(c)\) por flamelet y se usa la
+envolvente puntual
+\begin{equation}
+  g_{\mathrm{global}}(c)=\max_i g_i(c),
+  \label{eq:global-progress-envelope}
+\end{equation}
+antes de aplicar \cref{eq:cdf-progress}. El máximo protege una estructura
+estrecha que solo aparezca en una mezcla; una media podría diluirla.
+
+La interpolación lineal monotónica se prefiere en esta etapa por trazabilidad.
+Interpolantes cúbicos podrían reducir error con menos nodos, pero deben limitarse
+para no producir fracciones negativas ni sobreoscilaciones en \(\dot q\).
+
+\section{Validación de la tabla}
+
+Una tabla se considera estructuralmente válida si:
+
+\begin{enumerate}
+  \item todos los ejes están ordenados y no contienen duplicados;
+  \item \(c\in[0,1]\) y \(Z\) pertenece al intervalo solicitado;
+  \item no aparecen NaN ni infinitos;
+  \item \(T>0\), \(\rho>0\), \(c_p>0\), \(\lambda>0\) y las fracciones están
+        dentro de tolerancia;
+  \item \(\sum_kY_k\) es unitaria después de interpolación;\par
+  \item los extremos recuperan estados frescos y quemados coherentes;
+  \item cada fila de mezcla procede de una llama aceptada;
+  \item los metadatos permiten reconstruir el comando.
+\end{enumerate}
+
+La validación paramétrica retira sucesivamente una mezcla interior, reconstruye
+sus campos a partir de las filas vecinas y compara con el flamelet retenido. Así
+se comprueba la resolución en \(Z\), no solo que la tabla reproduce sus propios
+nodos. El capítulo siguiente muestra que cinco mezclas bastan para una
+demostración del flujo, pero no para una tabla de producción.
+
+\section{Diseño de la comparación justa}
+
+La comparación entre \Vdos y \Cantera fija:
+
+\begin{itemize}
+  \item mecanismo GRI-Mech 3.0;
+  \item combustible CH\(_4\) y oxidante aire;
+  \item \(T=\SI{300}{\kelvin}\), \(p=\SI{1}{\atmosphere}\);
+  \item dominio inicial \(L=\SI{0.03}{\metre}\);
+  \item transporte promediado por mezcla, sin Soret;
+  \item mismos valores de \(\phi\);
+  \item criterios estrictos equivalentes \((2.5,0.04,0.08,0.003)\);
+  \item convergencia de malla obligatoria;
+  \item aceptación tipo Cantera con guarda de residual.
+\end{itemize}
+
+Cada solver adapta su propia malla. Se reportan sus nodos finales, pues imponer
+exactamente la malla de uno al otro cambiaría la pregunta desde ``tiempo para una
+solución certificada'' a ``tiempo sobre una discretización dada''. Esta segunda
+comparación se usa solamente para aislar kernels o comprobar equivalencia
+lineal.
+
+La referencia es una llamada directa a \codigo{FreeFlame}; ambas rutas entregan
+sus perfiles al mismo posprocesado FGM. Por tanto, los tiempos responden a la
+pregunta ``V2 frente a \codigo{FreeFlame} bajo este protocolo'' y no se
+extrapolan a otras herramientas de tabulación.
+
+\section{Reproducibilidad}
+
+El repositorio conserva un comando principal para la llama individual y dos
+generadores FGM. Las salidas voluminosas y cachés se regeneran localmente y están
+ignoradas por control de versiones. Cada corrida debe registrar:
+
+\begin{itemize}
+  \item fecha, revisión Git y estado limpio/sucio;
+  \item sistema operativo, CPU, memoria y versiones de Python/Numba/SciPy/Cantera;
+  \item variables de hilos;
+  \item opciones completas y semilla de caché;
+  \item tiempo de calentamiento y tiempo medido;
+  \item resumen JSON/NPZ y figuras.
+\end{itemize}
+
+La máquina puede variar su frecuencia y compartir recursos. Para el resultado
+final se requieren repeticiones alternadas V2--Cantera y se reportará mediana,
+rango intercuartílico y mejor/peor caso, no una única cifra favorable.
+
+% =============================================================================
+\chapter{Verificación numérica, rendimiento y aplicación FGM}
+\label{chap:resultados}
+\chaptermark{Verificación numérica y rendimiento}
+
+\section{Estatus de la evidencia}
+
+Este capítulo contiene una campaña reproducible ejecutada el 3 de septiembre de
+2026 en una CPU AMD Ryzen 9 7845HX, con Python 3.11.0, Cantera 3.2.0, NumPy
+2.4.6, SciPy 1.17.1 y Numba 0.65.1. Las magnitudes de solución, conservación y
+comparación numérica se consideran verificadas para los casos indicados. Los tiempos
+son ejecuciones únicas de diagnóstico y se presentan como preliminares hasta
+completar repeticiones alternadas.
+
+Se distinguen cinco bloques de evidencia:
+
+\begin{enumerate}
+  \item convergencia espacial del caso estequiométrico;
+  \item conservación y comparación de perfiles en cinco mezclas;
+  \item rendimiento de \Vdos frente a \Cantera;
+  \item ablaciones de la continuación y de la sustitución lineal por bloques;
+  \item validación estructural y por exclusión de la tabla FGM.
+\end{enumerate}
+
+\resultadoverificado{Todos los cuadros numéricos marcados como verificados en
+este capítulo proceden de perfiles y metadatos guardados por los generadores; no
+son datos sintéticos. El alcance se limita a CH\(_4\)--aire con GRI-Mech 3.0.}
+
+\section{Jerarquía de verificación del solver laminar}
+
+La pregunta principal no es cuántas tablas pueden generarse, sino si una llama
+individual representa correctamente las ecuaciones discretizadas. La evidencia
+se organiza desde el nivel algebraico hasta el físico, como resume la
+\cref{tab:verification-hierarchy}.
+
+\begin{table}[htbp]
+\centering
+\caption{Jerarquía para verificar la resolución numérica de una llama
+premezclada laminar.}
+\label{tab:verification-hierarchy}
+\begin{tabularx}{\textwidth}{@{}p{0.19\textwidth}Y Y@{}}
+\toprule
+\textbf{Nivel} & \textbf{Pregunta} & \textbf{Evidencia requerida} \\
+\midrule
+Algebraico & ¿Se resolvió el sistema discreto? & Residual, norma ponderada,
+límites y estado de Newton/PTC. \\
+Conservativo & ¿Se conservan masa y cierre de composición? & Variación del
+flujo másico y error de \(\sum_kY_k=1\) sobre cada perfil. \\
+Espacial & ¿La solución es independiente de malla y dominio? & Secuencia de
+refinamiento, nodos, gradientes de borde y errores de perfil. \\
+Comparativo & ¿Concuerda con una implementación independiente? & \(\Su\),
+\(T\), \(\dot q\) y especies frente a \Cantera. \\
+Físico & ¿El modelo representa el fenómeno real? & Comparación experimental y
+sensibilidad al mecanismo y al transporte. \\
+Rendimiento & ¿Cuánto cuesta llegar a una solución aceptada? & Tiempo de pared,
+perfil, repeticiones y memoria después de superar los niveles anteriores. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Este orden impide aceptar una aceleración que simplemente reduzca nodos o relaje
+criterios. En esta tesis se cubren los niveles algebraico, conservativo, espacial
+y comparativo dentro del modelo adoptado; la validación experimental permanece
+fuera del alcance. El tiempo solo se compara entre estados que superan la misma
+aceptación numérica. La generación FGM se evalúa después, como uso repetido de
+ese solver verificado.
+
+\section{Comparación de perfiles de referencia}
+\label{sec:single-flame-results}
+
+La comparación de perfiles usa la fila \(\phi=1\) del barrido, a
+\SI{300}{\kelvin}, \SI{1}{\atmosphere} y con los criterios estrictos
+\((2.5,0.04,0.08,0.003)\). Antes de interpolar se desplaza cada coordenada para
+hacer coincidir el punto donde
+\(T=T_{\mathrm u}+0.5(T_{\mathrm b}-T_{\mathrm u})\); así el modo de traslación
+no se contabiliza como error de forma. La \cref{fig:strict-profile-phi1}
+compara temperatura, liberación de calor y especies principales.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.98\textwidth]{perfil_estricto_phi1.pdf}
+\caption{Perfiles estrictos para \(\phi=1\), alineados por la temperatura media
+del salto térmico.}
+\label{fig:strict-profile-phi1}
+\end{figure}
+
+Para cada campo \(q\), ambos perfiles se llevan a una coordenada común y se
+calculan
+\begin{align}
+  E_2(q)&=\frac{\norm{q_{\Vdos}-q_{\Cantera}}_2}
+  {\norm{q_{\Cantera}}_2+\epsilon},
+  \label{eq:error-L2}\\
+  \Delta_\infty(q)&=\max\abs{q_{\Vdos}-q_{\Cantera}}.
+  \label{eq:error-Linf}
+\end{align}
+En el caso estequiométrico se obtuvieron \(E_2(T)=\SI{0.0456}{\percent}\),
+\(\Delta_\infty(T)=\SI{2.44}{\kelvin}\), \(E_2(\dot q)=\SI{0.602}{\percent}\) y
+una diferencia de \(\Su\) de \SI{0.445}{\percent}. El pequeño \(\epsilon\) solo
+regulariza campos casi nulos; para especies se acompaña el error relativo con el
+error absoluto.
+
+\section{Convergencia de malla y suficiencia del dominio}
+
+La malla adaptativa produce discretizaciones distintas entre solvers. Para una
+magnitud \(q\), la diferencia del nivel \(r\) respecto de la referencia espacial
+más fina se mide mediante
+\begin{equation}
+  \delta_q^{(r)}=
+  \frac{\abs{q^{(r)}-q^{(\mathrm{ref})}}}
+  {\abs{q^{(\mathrm{ref})}}+q_{\mathrm{abs}}},
+  \label{eq:mesh-cycle-change}
+\end{equation}
+La \cref{eq:mesh-cycle-change} evita amplificar trazas mediante
+\(q_{\mathrm{abs}}\). Para perfiles, las soluciones se alinean e interpolan
+antes de calcular \cref{eq:error-L2,eq:error-Linf}.
+
+Se resolvió el caso estequiométrico desde cero con cuatro niveles de criterio.
+La malla ``ultra'' \((2.1,0.02,0.04,0.001)\) es la referencia más fina de esta
+secuencia. Todos los casos expandieron el dominio a \SI{0.06}{\metre}.
+
+\begin{table}[htbp]
+\centering
+\caption{Convergencia espacial del caso \(\phi=1\). Los tiempos son ejecuciones
+únicas y no constituyen todavía una estadística de rendimiento.}
+\label{tab:mesh-convergence-pending}
+\begin{tabular}{@{}llrrr@{}}
+\toprule
+\textbf{Nivel} & \textbf{Solver} & \textbf{Nodos} &
+\(\boldsymbol{\Su}\) \textbf{[m/s]} &
+\(\boldsymbol{\delta_{\Su}}\) \textbf{[\%]} \\
+\midrule
+Gruesa & V2 & 109 & 0.3860049 & 2.582 \\
+       & Cantera & 105 & 0.3873169 & 2.889 \\
+Base   & V2 & 150 & 0.3810358 & 1.262 \\
+       & Cantera & 149 & 0.3820550 & 1.491 \\
+Estricta & V2 & 261 & 0.3788377 & 0.678 \\
+         & Cantera & 275 & 0.3788137 & 0.630 \\
+Ultra    & V2 & 505 & 0.3762875 & 0.000 \\
+         & Cantera & 517 & 0.3764409 & 0.000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.90\textwidth]{convergencia_malla_phi1.pdf}
+\caption{Velocidad de llama frente al número de nodos para la secuencia de
+refinamiento.}
+\label{fig:mesh-convergence-phi1}
+\end{figure}
+
+La diferencia V2--Cantera es \SI{0.0064}{\percent} en el nivel estricto y
+\SI{0.0407}{\percent} en el ultra. Sin embargo, el cambio estricta--ultra de cada
+solver aún es aproximadamente \SIrange{0.63}{0.68}{\percent}. Por tanto, la
+secuencia demuestra convergencia hacia valores concordantes, pero no justifica
+atribuir al nivel estricto una incertidumbre espacial inferior al
+\SI{0.1}{\percent}.
+
+El nivel estricto de esta secuencia se obtuvo como llama individual desde frío.
+No es la misma trayectoria adaptativa que la fila \(\phi=1\) del barrido: allí
+cada solver recibe su propia continuación y termina con 264 y 343 nodos, frente
+a 261 y 275 en la ejecución individual. Esta dependencia del camino explica que
+la discrepancia de \(\Su\) sea \SI{0.445}{\percent} en el barrido aunque sea
+\SI{0.0064}{\percent} en el arranque frío. Lejos de ocultarla, la comparación
+refuerza la necesidad de la referencia ultra y de informar malla y semilla junto
+con cada resultado.
+
+\section{Conservación y coherencia física}
+
+La conservación de flujo másico se cuantifica mediante
+\begin{equation}
+  E_m=\frac{\max_j\abs{\rho_j u_j-\overline{\dot m}}}
+  {\abs{\overline{\dot m}}+\epsilon},
+  \qquad
+  \overline{\dot m}=\frac{1}{N}\sum_j\rho_j u_j,
+  \label{eq:mass-flow-error}
+\end{equation}
+y la normalización de composición con
+\begin{equation}
+  E_Y=\max_j\abs{1-\sum_kY_{k,j}}.
+  \label{eq:species-sum-error}
+\end{equation}
+Las \cref{eq:mass-flow-error,eq:species-sum-error} controlan continuidad y cierre
+de composición. En las cinco mezclas estrictas, el peor valor de \(E_m\) fue
+\(1.40\times10^{-6}\) para V2 y \(7.35\times10^{-8}\) para Cantera; el peor
+\(E_Y\) fue \(4.26\times10^{-10}\) y \(1.96\times10^{-10}\), respectivamente.
+La \cref{fig:conservation-sweep} muestra que los errores se mantienen pequeños
+en todo el barrido.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.91\textwidth]{conservacion_barrido.pdf}
+\caption{Errores de flujo másico y suma de fracciones en el barrido estricto.}
+\label{fig:conservation-sweep}
+\end{figure}
+
+Las pendientes térmicas relativas en ambos bordes quedaron por debajo del
+umbral 0.02; el máximo fue 0.00387 en V2 y 0.000734 en Cantera. Entre las cinco
+mezclas, el error máximo de perfil fue \(E_2(T)=\SI{0.145}{\percent}\),
+\(\Delta_\infty(T)=\SI{6.40}{\kelvin}\) y
+\(E_2(\dot q)=\SI{2.52}{\percent}\), todos en \(\phi=1.4\). Estas métricas
+complementan a \(\Su\): una velocidad cercana por sí sola no certificaría la
+estructura de la llama.
+
+\section{Protocolo de medida temporal}
+
+El tiempo de una llama incluye inicialización, globalización, adaptación y
+expansión de dominio hasta la aceptación. En el barrido se informa además de la
+suma de los tiempos exclusivos de resolución. No se emplea el residual bruto
+\(\norm{\vect F}_\infty\) como medida comparativa de exactitud: sus componentes
+tienen unidades y escalas distintas y, para V2, funciona únicamente como guarda
+contra estados patológicos. La exactitud se evalúa mediante la norma ponderada,
+conservación, convergencia de malla y errores de perfil.
+
+En la secuencia individual ultra, V2 empleó \SI{14.66}{\second} y Cantera
+\SI{27.69}{\second}. Esta razón de \(1.89\times\) coincide con la escala del
+barrido, pero sigue siendo una observación de una sola ejecución. No se presenta
+como intervalo estadístico ni se descompone en porcentajes aditivos por kernel.
+
+\section{Aplicación complementaria: barrido FGM y región de confianza}
+
+Se evaluaron cinco flamelets con
+\(\phi=[0.7,0.9,1.0,1.1,1.4]\), refinamiento estricto, caché desactivada y
+convergencia de malla obligatoria. Los dos solvers comenzaron con los criterios
+estrictos, adaptaron su propia malla y pudieron expandir el dominio. La
+\cref{tab:broad-sweep-final} reúne magnitud física, coste y tamaño final sin usar
+el residual bruto como indicador de exactitud.
+
+\begin{table}[htbp]
+\centering
+\caption{Barrido estricto en frío con continuación local. Los tiempos son una
+ejecución reproducible.}
+\label{tab:broad-sweep-final}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}rrrrrrrr@{}}
+\toprule
+\(\boldsymbol{\phi}\) & \multicolumn{3}{c}{\textbf{V2}} &&
+\multicolumn{3}{c}{\textbf{Cantera}}\\
+\cmidrule(lr){2-4}\cmidrule(lr){6-8}
+& \textbf{Tiempo [s]} & \textbf{Nodos} & \(\boldsymbol{\Su}\) \textbf{[m/s]} &&
+\textbf{Tiempo [s]} & \textbf{Nodos} & \(\boldsymbol{\Su}\) \textbf{[m/s]}\\
+\midrule
+0.7 & 9.57 & 271 & 0.1940860 && 18.36 & 276 & 0.1941428\\
+0.9 & 6.64 & 254 & 0.3385254 && 15.55 & 340 & 0.3367645\\
+1.0 & 1.14 & 264 & 0.3782542 &&  2.32 & 343 & 0.3765803\\
+1.1 & 2.90 & 274 & 0.3815459 &&  4.33 & 344 & 0.3799863\\
+1.4 & 8.07 & 259 & 0.1399376 && 20.83 & 396 & 0.1415198\\
+\midrule
+Suma & 28.32 & -- & -- && 61.38 & -- & --\\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+Los cinco casos \Vdos fueron aceptados. La razón de tiempos exclusivos de
+resolución es
+\begin{equation}
+  S_{t,5\phi}=\frac{61.3822}{28.3165}=2.168.
+  \label{eq:broad-speedup}
+\end{equation}
+La \cref{eq:broad-speedup} usa exclusivamente los tiempos de resolución de las
+cinco llamas. La diferencia máxima relativa de \(\Su\) fue
+\SI{1.118}{\percent}, en \(\phi=1.4\). El resultado temporal del lote es
+\(2.17\times\), pero no se generaliza más allá de esta ejecución hasta disponer
+de repeticiones alternadas.
+
+\section{Atribución de la mejora}
+\label{sec:performance-attribution}
+
+La comparación V2--Cantera recoge la arquitectura completa y no permite asignar
+una fracción del ahorro a cada kernel. Para aislar el aporte de la continuación
+acotada se repitió el mismo barrido V2 desactivando únicamente
+\cref{eq:phi-trust-region}. Todas las demás opciones y criterios de aceptación se
+mantuvieron.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.91\textwidth]{ablacion_continuacion.pdf}
+\caption{Ablación de la región de confianza. La escala logarítmica muestra el
+coste concentrado en los saltos \(0.7\to0.9\) y \(1.1\to1.4\).}
+\label{fig:continuation-ablation}
+\end{figure}
+
+El tiempo acumulado disminuyó de \SI{153.84}{\second} sin límite a
+\SI{28.32}{\second} con el radio 1.15: una reducción del
+\SI{81.6}{\percent} y una razón interna de \(5.43\times\). En los saltos no
+locales, la continuación irrestricta produjo mallas de 325 y 384 nodos y tiempos
+de \SI{80.73}{\second} y \SI{60.34}{\second}; el reinicio protegido resolvió los
+mismos casos con 254 y 259 nodos en \SI{6.64}{\second} y
+\SI{8.07}{\second}. Esta es la mejora causalmente atribuible a la regla de
+confianza. El resto de la ventaja frente a Cantera corresponde al conjunto del
+solver y no se descompone artificialmente.
+
+\subsection{Ablación de la sustitución por bloques compilada}
+\label{sec:block-substitution-ablation}
+
+La segunda ablación mantiene el residual, el Jacobiano, la factorización
+pivotada, la continuación y el refinamiento; solo cambia cómo se aplican los
+factores a cada lado derecho. La referencia ejecuta una llamada de sustitución
+densa por bloque. La variante productiva fusiona el recorrido espacial descrito
+en \cref{eq:block-pivoted-lu} en un kernel compilado. Se ejecutaron dos pares de
+barridos completos de cinco llamas, sin caché y con aceptación obligatoria.
+
+\begin{table}[htbp]
+\centering
+\caption{Ablación pareada de la sustitución lineal. Los tiempos son la suma de
+los cinco flamelets; la factorización pivotada es idéntica en ambas rutas.}
+\label{tab:block-substitution-ablation}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+\textbf{Par} & \textbf{Por bloque [s]} & \textbf{Fusionada [s]} &
+\textbf{Reducción [\%]} & \textbf{Aceleración} \\
+\midrule
+1 & 36.9689 & 33.1981 & 10.20 & 1.114 \\
+2 & 37.3083 & 32.1509 & 13.82 & 1.160 \\
+\midrule
+Mediana & 37.1386 & 32.6745 & 12.02 & 1.137 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Todos los flamelets fueron aceptados y cada par terminó con los mismos nodos.
+La máxima diferencia absoluta de \(\Su\) fue
+\(1.19\times10^{-11}\ \mathrm{m\,s^{-1}}\). Después de proyectar a la tabla
+común, las diferencias máximas fueron \SI{0.107}{\kelvin} en temperatura y
+\(1.45\times10^{-5}\) en fracción másica. Estas últimas proceden de cambios de
+redondeo acumulados durante la trayectoria no lineal y permanecen por debajo de
+las discrepancias V2--Cantera documentadas en la verificación de perfiles. La
+mejora del \SI{12.0}{\percent} es, por tanto, atribuible al modo de sustitución y
+no a una relajación del criterio de aceptación.
+
+Como comprobación temporal independiente de la campaña principal, se intercaló
+un barrido Cantera entre dos barridos V2 ya optimizados. Cantera acumuló
+\SI{66.70}{\second}; V2 obtuvo \SI{32.15}{\second} antes y
+\SI{35.62}{\second} después, con mediana envolvente de
+\SI{33.88}{\second} y razón \(1.97\times\). Este ensayo confirma que la ventaja
+persiste tras la optimización, pero no se combina con los tiempos de
+\cref{tab:broad-sweep-final} ni sustituye las siete repeticiones previstas para
+una estimación estadística.
+
+\section{Validación de la tabla FGM}
+
+La tabla demostrativa contiene cinco filas en \(Z\), 241 nodos comunes en \(c\)
+y las 53 especies de GRI-Mech 3.0. Después de interpolar, el máximo error de
+suma de fracciones fue \(4.26\times10^{-10}\) en V2 y
+\(1.96\times10^{-10}\) en Cantera. Esta comprobación demuestra consistencia
+estructural, pero no mide resolución entre filas.
+
+Para ello se retiraron sucesivamente \(\phi=0.9,1.0,1.1\) y cada perfil se
+reconstruyó linealmente con sus vecinos. La \cref{tab:fgm-cross-validation}
+recoge la validación cruzada de la tabla V2.
+
+\begin{table}[htbp]
+\centering
+\caption{Error de exclusión de una mezcla interior en la tabla V2.}
+\label{tab:fgm-cross-validation}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}rrrrr@{}}
+\toprule
+\(\boldsymbol{\phi}\) & \(\boldsymbol{E_2(T)}\) \textbf{[\%]} &
+\(\boldsymbol{E_2(\dot q)}\) \textbf{[\%]} &
+\(\boldsymbol{E_2(\dot\omega_c)}\) \textbf{[\%]} &
+\(\boldsymbol{\max|\Delta Y_k|}\) \\
+\midrule
+0.9 & 1.605 & 5.602 & 8.897 & 0.00621 \\
+1.0 & 2.036 & 11.541 & 11.137 & 0.00996 \\
+1.1 & 2.907 & 27.891 & 26.251 & 0.00561 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.90\textwidth]{validacion_cruzada_fgm.pdf}
+\caption{Error de validación cruzada al retener mezclas interiores.}
+\label{fig:fgm-cross-validation}
+\end{figure}
+
+El error de \(\dot q\) alcanza \SI{27.9}{\percent}, con un comportamiento casi
+idéntico en la tabla construida desde Cantera. La limitación es, por tanto, la
+separación de las filas en \(Z\), no el solver que generó los flamelets. La tabla
+de cinco mezclas valida el flujo de trabajo y el contrato de datos, pero no debe
+emplearse como cierre de una simulación CFD. Una tabla de producción requiere
+muestreo adaptativo en \(Z\) hasta cumplir una tolerancia de validación externa.
+
+\section{Trabajo experimental restante}
+\label{sec:campana-pendiente}
+
+La verificación de malla, dominio, conservación y perfiles ya está cubierta para
+el caso y el barrido indicados. Antes de convertir los tiempos preliminares en
+una afirmación estadística y de ampliar el dominio de aplicación quedan las
+tareas de \cref{tab:final-campaign-matrix}.
+
+\begin{longtable}{@{}p{0.22\textwidth}p{0.33\textwidth}p{0.33\textwidth}@{}}
+\caption{Extensiones necesarias para generalizar los resultados.}
+\label{tab:final-campaign-matrix}\\
+\toprule
+\textbf{Objetivo} & \textbf{Diseño mínimo} & \textbf{Criterio de cierre} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Objetivo} & \textbf{Diseño mínimo} & \textbf{Criterio de cierre} \\
+\midrule
+\endhead
+Estadística temporal & Al menos siete repeticiones alternadas V2--Cantera, con
+calentamiento y estado de caché declarados. & Mediana, rango intercuartílico e
+intervalo de la razón de tiempos. \\
+Dominio físico & Variar \(\phi\), \(T_{\mathrm{in}}\), presión y al menos un
+segundo mecanismo. & Aceptación, conservación, malla y perfiles en cada caso. \\
+Transporte preferencial & H\(_2\) con multicomponente y Soret. & Separar error
+de modelo de error numérico frente a una referencia independiente. \\
+Tabla de producción & Insertar filas adaptativamente en \(Z\). & Cumplir una
+tolerancia de validación cruzada para \(T\), \(\dot q\), \(\dot\omega_c\) y
+especies seleccionadas. \\
+\bottomrule
+\end{longtable}
+
+
+\section{Amenazas a la validez}
+
+\subsection{Variabilidad temporal}
+
+Compilación JIT, cachés del sistema operativo, frecuencia dinámica y procesos de
+fondo pueden cambiar el tiempo. Se separará la primera ejecución de las
+repeticiones calientes y se alternará el orden de los solvers. No se seleccionará
+el mejor tiempo aislado como resultado central.
+
+\subsection{Equivalencia de criterios}
+
+Dos interfaces pueden interpretar de modo ligeramente distinto slope, curve y
+prune. La tesis reporta tanto los umbrales como nodos y error de perfil. Una
+prueba complementaria en malla común aísla las diferencias de residual, pero no
+sustituye la comparación extremo a extremo.
+
+\subsection{Dependencia del mecanismo}
+
+GRI30 no representa todos los combustibles ni toda la química de NOx. Una
+aceleración en metano puede cambiar con el número de especies, reacciones de
+presión variable y transporte. Generalizar la conclusión requiere al menos un
+segundo mecanismo de mayor rigidez; en esta tesis se mantiene como trabajo
+futuro y no como evidencia ya obtenida.
+
+\subsection{Referencia frente a verdad experimental}
+
+Concordar con \Cantera valida implementación relativa, no el mecanismo frente a
+experimentos. La exactitud física depende de la cinética, transporte y
+condiciones. Cuando se incorporen datos experimentales, sus incertidumbres deben
+reportarse separadamente del error numérico.
+
+\section{Discusión global}
+
+Los resultados apoyan la hipótesis principal. La estructura por bloques hace
+competitiva la resolución directa, y la separación entre factorización pivotada
+y sustitución fusionada reduce el coste repetitivo sin cambiar el sistema;
+PTC-SER reduce el coste del rescate; la continuación local evita resolver cada
+llama desde cero; y la región de confianza impide que esa misma continuación se
+vuelva perjudicial. La mejora más reveladora es precisamente matemática: modelar
+\(\vect{x}(\phi)\) como suave solo en un vecindario y reiniciar fuera de él.
+
+El resultado principal no es un microbenchmark de un kernel. El tiempo se reduce
+cuando la estructura local, la globalización y la elección de semilla disminuyen
+conjuntamente el trabajo hasta una llama aceptada. La ablación identifica qué
+parte puede atribuirse de forma causal al límite de continuación; la diferencia
+V2--Cantera, en cambio, corresponde a la arquitectura completa y no debe
+repartirse en porcentajes independientes.
+
+El margen temporal observado justifica continuar la plataforma, pero no declarar
+superioridad universal. \Cantera ofrece cobertura y validación mucho más amplias;
+V2 aporta control y rendimiento en una familia delimitada. Mantener ambas rutas
+convierte cualquier discrepancia en una señal diagnóstica y evita validar el
+solver contra sí mismo.
+
+% =============================================================================
+\chapter{Conclusiones y trabajo futuro}
+\label{chap:conclusiones}
+
+\section{Conclusiones}
+
+Se ha formulado un método reproducible para la resolución numérica de llamas
+premezcladas laminares y se ha aplicado a la generación de tablas FGM. El solver
+1D especializado combina conservación de masa, especies y
+energía; transporte promediado por mezcla; malla adaptativa; Newton amortiguado;
+PTC-SER; Jacobiano local por bloques; factorización pivotada con sustitución
+compilada; y backend termoquímico nativo.
+
+Las conclusiones principales son:
+
+\begin{enumerate}
+  \item \textbf{La llama libre debe tratarse como un problema de contorno con
+        autovalor.} La velocidad de propagación se obtiene junto con el perfil y
+        la condición de anclaje elimina únicamente la indeterminación espacial.
+
+  \item \textbf{La verificación precede al rendimiento.} Residual, conservación,
+        independencia de malla, suficiencia de dominio y comparación de perfiles
+        son requisitos anteriores a declarar una aceleración.
+
+  \item \textbf{La estructura matemática es aprovechable.} El orden por puntos
+        y la dependencia local producen un Jacobiano tridiagonal por bloques que
+        se resuelve mediante factorizaciones densas pequeñas. Conservar LAPACK
+        para el pivotado y fusionar únicamente las sustituciones redujo la
+        mediana pareada del barrido de \SI{37.14}{\second} a
+        \SI{32.67}{\second}, sin cambiar nodos ni \(\Su\) de forma material.
+
+  \item \textbf{PTC no necesita resolver cada estado transitorio hasta
+        convergencia.} Una corrección linealmente implícita con SER, seguida de
+        rescate BE solo cuando falla, reduce el coste de globalización sin cambiar
+        la raíz estacionaria buscada.
+
+  \item \textbf{V2 supera a la referencia en los casos medidos, dentro de su
+        alcance.} En la secuencia ultra del caso \(\phi=1\), V2 y Cantera
+        difirieron \SI{0.041}{\percent} en \(\Su\). En el barrido estricto, los
+        errores máximos alineados fueron \SI{0.145}{\percent} en temperatura y
+        \SI{2.52}{\percent} en liberación de calor, y la razón temporal fue
+        \(2.17\times\). Esta última se informa como preliminar hasta completar
+        repeticiones alternadas.
+
+  \item \textbf{Cantera conserva un papel esencial.} Es referencia independiente,
+        fuente de equilibrio inicial y apoyo temporal de posprocesado. La tesis
+        demuestra ventaja de especialización, no invalidez de la herramienta
+        general.
+
+  \item \textbf{La contribución diferenciadora es la continuación protegida por
+        certificación.} Una llama solo se reutiliza si fue aceptada y si el nuevo
+        \(\phi\) satisface la región multiplicativa de confianza. La ablación con
+        el límite desactivado aísla el ahorro y evita atribuirlo a otros kernels.
+
+  \item \textbf{Una tabla estructuralmente correcta no es necesariamente una
+        tabla resuelta en el espacio paramétrico.} Con cinco mezclas, la
+        validación por exclusión alcanzó \SI{27.9}{\percent} de error en
+        \(\dot q\); por ello el resultado FGM actual es una demostración
+        verificada y no un cierre listo para CFD.
+\end{enumerate}
+
+La contribución central es una arquitectura orientada al coste de obtener una
+llama certificada, no una nueva formulación de los balances. Combina localidad
+en \(z\), separación algebraico--diferencial, factorización estable con
+sustitución compilada, adaptación de malla y evaluación termoquímica por lotes;
+sobre esa base, la continuación acotada explota la suavidad local en \(\phi\) sin
+convertir una extrapolación lejana en una obligación algorítmica.
+
+\section{Respuesta a los objetivos}
+
+El modelo, el carácter libre de la llama y las condiciones de contorno se
+derivaron en el \cref{chap:modelo}; la discretización, globalización no lineal y
+malla adaptativa se documentaron en el \cref{chap:numerico}. El
+\cref{chap:resultados} cerró, para metano--aire, la verificación espacial, de
+dominio, conservación y perfiles, y separó esa evidencia de los tiempos de una
+sola ejecución. La construcción \((Z,c)\), la continuación protegida y la fuente
+de progreso constituyen la aplicación complementaria; su validación cruzada
+identificó cuantitativamente la resolución paramétrica aún necesaria.
+
+\section{Prioridad inmediata: consolidación del solver laminar}
+
+El trabajo futuro de mayor prioridad es ampliar el dominio de validez sin perder
+la jerarquía de certificación ya demostrada. Se propone el siguiente orden:
+
+\begin{enumerate}
+  \item completar repeticiones temporales alternadas y reportar mediana e
+        incertidumbre;
+  \item repetir la verificación al variar temperatura, presión y mecanismo;
+  \item incorporar transporte multicomponente y Soret para H\(_2\);
+  \item convertir la región fija de confianza en un radio adaptativo basado en
+        aceptación y coste observado;
+  \item insertar filas en \(Z\) hasta satisfacer la validación cruzada;
+  \item contrastar velocidades con datos experimentales cuya incertidumbre esté
+        documentada.
+\end{enumerate}
+
+Una línea numérica de interés es estudiar orden espacial sin perder robustez. El
+upwind de primer orden favorece convergencia, pero introduce difusión numérica.
+Puede ensayarse una estrategia defect-correction: converger primero con upwind y
+corregir gradualmente hacia un esquema limitado de mayor orden. La adopción
+dependerá de demostrar reducción de error en una secuencia de mallas, no solo de
+obtener un perfil visualmente más pronunciado.
+
+También debe separarse el error de modelo del error de solver. Comparar
+transporte promediado por mezcla, multicomponente y Soret sobre una misma malla
+permite cuantificar cuánto de la discrepancia en \(\Su\) procede de las ecuaciones
+y cuánto de su resolución. Esta prueba es especialmente importante antes de
+aplicar V2 a combustibles ricos en hidrógeno.
+
+\section{Extensiones prioritarias de la contribución}
+
+Las extensiones se concentran en las dos limitaciones demostradas por los
+resultados: el radio de confianza fijo y la baja resolución en \(Z\). En lugar de
+prescribir todos los \(\phi\), se puede comenzar con extremos y un
+punto central. Para cada intervalo se estima el error de interpolación de campos
+relevantes,
+\begin{equation}
+  \eta_i=\max_{q\in\mathcal{Q}}
+  \frac{\norm{q_{\mathrm{mid}}-\mathcal{I}(q_i,q_{i+1})}}
+  {s_q},
+  \label{eq:parametric-adaptivity}
+\end{equation}
+La \cref{eq:parametric-adaptivity} define el error local de inserción; se añade un
+flamelet solo si \(\eta_i\) supera tolerancia. Esto reduce el
+número de llamas y sitúa nuevos estados donde la validación los exige.
+
+El radio 1.15 puede evolucionar de constante empírica a regla adaptativa. Un
+paso que converge con bajo coste ampliaría moderadamente la vecindad; un rechazo,
+una expansión grande de malla o un coste superior al arranque frío la reduciría.
+La adopción de esta mejora requerirá una ablación frente al radio fijo sobre varios
+mecanismos, sin cambiar los criterios de aceptación.
+
+\section{Cierre}
+
+La resolución numérica de una llama premezclada laminar no depende de encontrar
+un ``solver mágico''. El avance medido surgió de formular correctamente el
+problema libre, explotar su estructura, perfilar y probar hipótesis en casos
+completos. Ese ciclo constituye la contribución
+transferible del TFM. FGM demuestra después que una mejora de la llama individual
+se multiplica al resolver familias enteras. Sobre una verificación física más
+amplia, ambas piezas pueden formar una plataforma científica para combustibles y
+manifolds futuros.
+
+% =============================================================================
+\appendix
+\chapter{Derivación del sistema discreto}
+\label{app:discreto}
+
+\section{Notación de malla}
+
+Para evitar ambigüedad en una malla no uniforme, se definen
+\begin{equation}
+  h_j^-=z_j-z_{j-1},\qquad h_j^+=z_{j+1}-z_j,
+  \qquad h_j^c=h_j^-+h_j^+.
+  \label{eq:appendix-mesh-spacing}
+\end{equation}
+Una derivada central de primer orden exacta para polinomios cuadráticos es
+\begin{equation}
+  (D_c\psi)_j=
+  -\frac{h_j^+}{h_j^-h_j^c}\psi_{j-1}
+  +\frac{h_j^+-h_j^-}{h_j^-h_j^+}\psi_j
+  +\frac{h_j^-}{h_j^+h_j^c}\psi_{j+1}.
+  \label{eq:nonuniform-centered-first}
+\end{equation}
+El solver permite mezclarla con la aproximación aguas arriba,
+\begin{equation}
+  (D\psi)_j=\theta(D_{\mathrm{up}}\psi)_j
+  +(1-\theta)(D_c\psi)_j,
+  \qquad 0\le\theta\le1,
+  \label{eq:upwind-blend}
+\end{equation}
+y usa \(\theta=1\) en la configuración productiva.
+
+\section{Continuidad y anclaje}
+
+Sea \(m_j=\rho_j u_j\). Antes del anclaje se aplica una diferencia hacia
+delante,
+\begin{equation}
+  F_{u,j}=-\frac{m_{j+1}-m_j}{h_j^+},\qquad j<j_a,
+  \label{eq:continuity-left-anchor}
+\end{equation}
+y después una diferencia hacia atrás,
+\begin{equation}
+  F_{u,j}=-\frac{m_j-m_{j-1}}{h_j^-},\qquad j>j_a.
+  \label{eq:continuity-right-anchor}
+\end{equation}
+En \(j=j_a\) se usa la rama de anclaje de
+\cref{eq:continuity-residual-main}. Las ecuaciones propagan el mismo
+flujo a ambos lados sin crear una fila que abarque simultáneamente
+\(j_a-1,j_a,j_a+1\). Esta elección conserva el ancho por bloques.
+
+En la entrada, la continuidad discreta es
+\begin{equation}
+  F_{u,0}=-\frac{m_1-m_0}{z_1-z_0},
+  \label{eq:inlet-continuity-discrete}
+\end{equation}
+y en la salida
+\begin{equation}
+  F_{u,N-1}=m_{N-1}-m_{N-2}.
+  \label{eq:outlet-continuity-discrete}
+\end{equation}
+La distinta escala de la última fila se absorbe en las tolerancias y en el
+Jacobiano; una versión completamente normalizada podría dividir por el último
+intervalo, pero alteraría la trayectoria numérica y debe validarse antes de
+cambiar la referencia.
+
+\section{Flujo difusivo corregido}
+
+La forma preliminar de \cref{eq:preliminary-diffusion-flux} no garantiza suma
+cero cuando cada especie usa un coeficiente \(D_k\) diferente. Definiendo
+\(S_J=\sum_k J_k^*\), la corrección de \cref{eq:corrected-diffusion-flux}
+produce
+\begin{equation}
+  \sum_{k=1}^{K}J_k=\sum_kJ_k^*-\left(\sum_kY_{k,j}\right)S_J
+  =S_J-S_J=0.
+  \label{eq:flux-correction-proof}
+\end{equation}
+La identidad presupone \(\sum_kY_{k,j}=1\). Pequeñas desviaciones durante Newton
+rompen la cancelación al nivel de la desviación de masa; por eso las fronteras y
+las transferencias de malla imponen normalización explícita.
+
+Si se eligen gradientes másicos, el flujo preliminar cambia a
+\begin{equation}
+  J_k^*=-\rho D_k\frac{\dd Y_k}{\dd z},
+  \label{eq:mass-gradient-flux}
+\end{equation}
+pero se conserva la corrección. Esta opción sirve para experimentos de
+sensibilidad y no debe mezclarse con una referencia molar sin indicarlo.
+
+\section{Especies interiores}
+
+Integrar \cref{eq:species-continuous} sobre un volumen de control centrado en
+\(j\), de anchura aproximada \(h_j^c/2\), da
+\begin{equation}
+  \rho_j u_j(DY_k)_j+
+  \frac{J_{k,j+1/2}-J_{k,j-1/2}}{h_j^c/2}
+  -\dot\omega_{k,j}=0.
+  \label{eq:species-fv-derivation}
+\end{equation}
+Al multiplicar por \(-1/\rho_j\) se recupera
+\cref{eq:species-residual-discrete}. La división por densidad reduce la variación
+entre gas fresco y quemado. La raíz permanece inalterada porque
+\(\rho_j>0\).
+
+En la frontera izquierda se discretiza el balance total de especie:
+\begin{equation}
+  F_{Y_k,0}=-(J_{k,1/2}+m_0Y_{k,0})+m_0Y_{k,\mathrm{in}}.
+  \label{eq:species-inlet-discrete}
+\end{equation}
+El signo sigue la orientación positiva hacia el dominio. En la salida productiva
+se impone
+\begin{equation}
+  F_{Y_k,N-1}=Y_{k,N-1}-Y_{k,N-2},
+  \label{eq:species-outlet-zero-gradient}
+\end{equation}
+salvo la fila reemplazada por suma unitaria. La opción de flujo total usa
+\(J_{k,N-1/2}+m_{N-1}Y_{k,N-1}\), pero debe seleccionarse de forma explícita.
+
+\section{Energía interior}
+
+Definiendo el flujo conductivo de cara
+\begin{equation}
+  q_{c,j+1/2}=-\lambda_{j+1/2}
+  \frac{T_{j+1}-T_j}{h_j^+},
+  \label{eq:conductive-face-flux}
+\end{equation}
+su divergencia discreta es
+\begin{equation}
+  (Dq_c)_j=\frac{2(q_{c,j+1/2}-q_{c,j-1/2})}{h_j^c}.
+  \label{eq:conductive-divergence}
+\end{equation}
+El flujo de especie empleado en la contribución de entalpía se promedia,
+\begin{equation}
+  \overline{J}_{k,j}=\frac{J_{k,j-1/2}+J_{k,j+1/2}}{2},
+  \label{eq:species-face-average}
+\end{equation}
+y \(\dd h_k/\dd z\) se aproxima en la dirección aguas arriba. El residual
+implementado puede escribirse como
+\begin{equation}
+  F_{T,j}=\frac{-\rho_j u_jc_{p,j}(D T)_j
+  -(Dq_c)_j
+  -\sum_k\left[
+  \frac{h_{k,j}^{\mathrm{mol}}}{W_k}\dot\omega_{k,j}^{\mathrm{mass}}
+  +\frac{\overline{J}_{k,j}}{W_k}(D h_k^{\mathrm{mol}})_j\right]}
+  {\rho_jc_{p,j}},
+  \label{eq:energy-implemented-residual}
+\end{equation}
+que reproduce directamente el producto por \(W_k^{-1}\) del código. El signo
+negativo de \((Dq_c)_j\) aparece porque el residual implementado es el opuesto
+del balance físico de \cref{eq:energy-continuous}; multiplicar una ecuación por
+\(-1\) no altera su raíz.
+
+En la entrada,
+\begin{equation}
+  F_{T,0}=T_0-\Tin,
+  \label{eq:temperature-inlet-discrete}
+\end{equation}
+y en la salida
+\begin{equation}
+  F_{T,N-1}=T_{N-1}-T_{N-2}.
+  \label{eq:temperature-outlet-discrete}
+\end{equation}
+
+\section{Residual pseudo-transitorio}
+
+El residual BE exacto usado en el rescate es
+\begin{equation}
+  \vect{G}(\vect{x};\vect{x}^{n},\Delta\tau)=
+  \vect{F}(\vect{x})-\frac{\mat M}{\Delta\tau}
+  (\vect{x}-\vect{x}^{n}).
+  \label{eq:BE-residual}
+\end{equation}
+Su Jacobiano es
+\begin{equation}
+  \mat J_G=\mat J_F-\frac{\mat M}{\Delta\tau}.
+  \label{eq:BE-jacobian}
+\end{equation}
+Resolver \(\vect G=0\) mediante varias iteraciones de Newton produce el rescate
+robusto. Evaluar una sola linealización en \(\vect{x}^n\) produce exactamente
+\cref{eq:ptc-linear-correction}. La ruta productiva intenta primero esta última.
+
+Cuando \(\Delta\tau\to\infty\), \(\mat J_G\to\mat J_F\) y PTC se aproxima a
+Newton estacionario. Cuando \(\Delta\tau\) es pequeño, el término diagonal
+estabiliza las variables diferenciales. Las filas algebraicas no se desplazan,
+por lo que continuidad, anclaje y fronteras se satisfacen en cada corrección.
+
+\section{Perturbación del Jacobiano}
+
+Para una variable \(x_i\), una diferencia hacia delante usa
+\begin{equation}
+  J_{:,i}\approx\frac{\vect F(\vect{x}+\delta_i\vect e_i)
+  -\vect F(\vect{x})}{\delta_i},
+  \qquad
+  \delta_i=\delta_{\mathrm{abs}}+\delta_{\mathrm{rel}}\abs{x_i}.
+  \label{eq:FD-jacobian-column}
+\end{equation}
+La perturbación debe superar ruido redondo sin cruzar límites físicos. Para
+fracciones muy pequeñas domina \(\delta_{\mathrm{abs}}\); para temperatura y
+velocidad domina el término relativo.
+
+La evaluación local mantiene transporte congelado. En consecuencia, el
+Jacobiano es una aproximación consistente con un método quasi-Newton, no la
+derivada exacta de todos los kernels. La convergencia se decide siempre con el
+residual completo actualizado.
+
+\clearpage
+\section{Mapa de la derivación discreta}
+
+La \cref{tab:appendix-equation-map} permite recorrer la derivación sin perder la
+relación entre stencil, frontera y residual principal.
+
+\begin{table}[htbp]
+\centering
+\scriptsize
+\caption{Referencias cruzadas de la derivación discreta.}
+\label{tab:appendix-equation-map}
+\begin{tabularx}{\textwidth}{@{}p{0.20\textwidth}YY@{}}
+\toprule
+\textbf{Bloque} & \textbf{Ecuaciones} & \textbf{Resultado} \\
+\midrule
+Malla y convección &
+\Cref{eq:appendix-mesh-spacing,eq:nonuniform-centered-first,eq:upwind-blend} &
+Define geometría no uniforme y mezcla entre esquema central y aguas arriba. \\
+Continuidad &
+\Cref{eq:continuity-left-anchor,eq:continuity-right-anchor,eq:inlet-continuity-discrete,eq:outlet-continuity-discrete} &
+Propaga el mismo flujo másico a ambos lados del anclaje. \\
+Difusión y especies &
+\Cref{eq:flux-correction-proof,eq:mass-gradient-flux,eq:species-fv-derivation,eq:species-inlet-discrete,eq:species-outlet-zero-gradient} &
+Demuestra suma nula del flujo y completa las filas de especie. \\
+Energía &
+\Cref{eq:conductive-face-flux,eq:conductive-divergence,eq:species-face-average,eq:energy-implemented-residual,eq:temperature-inlet-discrete,eq:temperature-outlet-discrete} &
+Relaciona flujos de cara, residual térmico y fronteras. \\
+Pseudo-tiempo & \Cref{eq:BE-residual,eq:BE-jacobian} & Distingue el rescate BE
+completo de una sola corrección PTC. \\
+Jacobiano & \Cref{eq:FD-jacobian-column} & Fija la perturbación relativa--absoluta
+de cada columna local. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\chapter{Algoritmos de producción}
+\label{app:algoritmos}
+
+El método, su jerarquía de rescate y la atribución temporal se presentan en el
+cuerpo principal, especialmente en la \cref{sec:ptc-ser} y la
+\cref{sec:performance-attribution}. Este apéndice expresa las decisiones como
+secuencias conceptuales, sin depender de un lenguaje de programación.
+
+\section{Solver de una llama}
+
+El \cref{alg:single-flame} expresa la lógica productiva sin detalles de interfaz.
+Las líneas de rescate y adaptación son esenciales: omitirlas transformaría el
+método en un Newton simple con menor región de convergencia.
+
+\begin{table}[htbp]
+\centering
+\caption{Secuencia de resolución y certificación de una llama.}
+\label{alg:single-flame}
+\begin{tabularx}{\textwidth}{@{}p{0.08\textwidth}Y@{}}
+\toprule
+\textbf{Paso} & \textbf{Operación} \\
+\midrule
+1 & Construir la malla inicial y el estado físico, o transferir una semilla
+certificada. \\
+2 & Intentar Newton amortiguado; si no globaliza, intentar una corrección
+PTC--SER y, si esta se rechaza, un paso BE convergido. \\
+3 & Repetir hasta satisfacer norma ponderada, guarda de residual y límites de
+estado. \\
+4 & Expandir el dominio si un borde no representa un estado asintótico. \\
+5 & Aplicar ratio, pendiente, curvatura y poda; transferir el estado y volver al
+paso 2 si cambia la malla. \\
+6 & Emitir una solución solo si convergen el problema no lineal, la malla y el
+dominio; en otro caso, registrar rechazo. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Paso PTC-SER}
+
+\begin{table}[htbp]
+\centering
+\caption{Una corrección PTC--SER linealmente implícita.}
+\label{alg:ptc-step}
+\begin{tabularx}{\textwidth}{@{}p{0.08\textwidth}Y@{}}
+\toprule
+\textbf{Paso} & \textbf{Operación} \\
+\midrule
+1 & Evaluar \(\vect F_n\) y construir
+\(\mat J_F-\mat M/\Delta\tau_n\). \\
+2 & Resolver una sola vez la corrección de \cref{eq:ptc-linear-correction}. \\
+3 & Probar niveles de amortiguamiento sobre esa misma corrección, descartando
+estados no finitos, no físicos o que incumplan la guarda de crecimiento. \\
+4 & Si se acepta, actualizar \(\Delta\tau\) con \cref{eq:ser-update}; si todos
+los niveles fallan, reducir el paso y activar el rescate BE. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+El punto distintivo del flujo es que el amortiguamiento no vuelve a factorizar:
+todos sus candidatos reutilizan la corrección del paso 2.
+
+\section{Barrido FGM con continuación local}
+
+\begin{table}[htbp]
+\centering
+\caption{Barrido frío con continuación local certificada.}
+\label{alg:fgm-sweep}
+\begin{tabularx}{\textwidth}{@{}p{0.08\textwidth}Y@{}}
+\toprule
+\textbf{Paso} & \textbf{Operación} \\
+\midrule
+1 & Ordenar los valores de \(\phi\) y resolver el primero desde el estado
+físico. \\
+2 & Para el siguiente valor, comprobar
+\(1/1.15\le\phi_{i+1}/\phi_i\le1.15\). \\
+3 & Dentro de la región, transferir el último perfil aceptado y, con dos
+estados, formar el predictor secante amortiguado. \\
+4 & Fuera de la región, borrar el historial local y reiniciar desde el estado
+físico. \\
+5 & Incorporar el perfil a la familia solo si supera la certificación completa. \\
+6 & Construir el eje común, interpolar los campos y validar la tabla. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Construcción del eje adaptativo de progreso}
+
+\begin{table}[htbp]
+\centering
+\caption{Construcción del eje adaptativo común en progreso.}
+\label{alg:c-grid}
+\begin{tabularx}{\textwidth}{@{}p{0.08\textwidth}Y@{}}
+\toprule
+\textbf{Paso} & \textbf{Operación} \\
+\midrule
+1 & Monotonizar \(c\) de cada flamelet, agrupar duplicados y asegurar sus
+extremos. \\
+2 & Interpolar los campos diagnósticos a un eje denso temporal. \\
+3 & Calcular \(g_i(c)\) y formar la envolvente
+\(g_{\mathrm{global}}=\max_i g_i\). \\
+4 & Integrar el monitor regularizado para obtener \(G(c)\). \\
+5 & Invertir valores uniformes de \(G\) y obtener el eje común adaptativo. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Usar el máximo entre flamelets protege estructuras estrechas presentes solo en
+una mezcla. Una media podría diluirlas. Para tablas grandes puede emplearse un
+percentil alto que reduzca sensibilidad a un único perfil ruidoso, acompañado de
+un detector de anomalías.
+
+\chapter{Configuración, tolerancias y trazabilidad}
+\label{app:configuracion}
+
+\section{Caso base}
+
+La \cref{tab:base-physical-config} reúne la configuración que acompaña a todos
+los resultados de referencia.
+
+\begin{longtable}{@{}p{0.34\textwidth}p{0.24\textwidth}p{0.30\textwidth}@{}}
+\caption{Configuración física de referencia.}
+\label{tab:base-physical-config}\\
+\toprule
+\textbf{Parámetro} & \textbf{Valor} & \textbf{Observación} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Parámetro} & \textbf{Valor} & \textbf{Observación} \\
+\midrule
+\endhead
+Mecanismo & GRI-Mech 3.0 & 53 especies; validar archivo exacto. \\
+Combustible & CH\(_4\) & Composición pura en el caso base. \\
+Oxidante & aire & Composición definida en el comando/configuración. \\
+Temperatura de entrada & \SI{300}{\kelvin} & Uniforme en corriente fresca. \\
+Presión & \SI{1}{\atmosphere} & Constante. \\
+Ancho inicial & \SI{0.03}{\metre} & Expandible si el borde no es plano. \\
+Transporte & mixture-averaged & Gradiente molar corregido. \\
+Soret & desactivado & Activarlo para H\(_2\) requiere nueva validación. \\
+Malla inicial & 8 nodos & Bootstrap fijo intermedio desactivado. \\
+\bottomrule
+\end{longtable}
+
+\section{Parámetros no lineales}
+
+Los valores productivos y su justificación se registran en
+\cref{tab:nonlinear-config}.
+
+\begin{longtable}{@{}p{0.38\textwidth}p{0.18\textwidth}p{0.32\textwidth}@{}}
+\caption{Parámetros productivos del solver no lineal.}
+\label{tab:nonlinear-config}\\
+\toprule
+\textbf{Parámetro} & \textbf{Valor} & \textbf{Justificación} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Parámetro} & \textbf{Valor} & \textbf{Justificación} \\
+\midrule
+\endhead
+Tolerancia estacionaria relativa & \(10^{-4}\) & Compatible con aceptación base. \\
+Tolerancia estacionaria absoluta & \(10^{-9}\) & Protege especies pequeñas. \\
+Tolerancia transitoria relativa & \(10^{-4}\) & Misma escala relativa. \\
+Tolerancia transitoria absoluta & \(10^{-11}\) & Mayor exigencia en rescate. \\
+Norma ponderada de paso & \(<1\) & Criterio principal con guarda residual. \\
+Máximo de damping & 7 & Factor entre niveles \(\sqrt{2}\). \\
+Edad máxima de Jacobiano & 20 & Valor fijo en todos los casos comparativos. \\
+Factor SER & 1.1 & Valor fijo en todos los casos comparativos. \\
+Clip SER & \([0.2,5.0]\) & Limita cambios extremos. \\
+Crecimiento residual permitido & 10 & Rechaza correcciones divergentes. \\
+Solver lineal & Tridiagonal por bloques híbrido & Factorización pivotada de los
+bloques con LAPACK y sustituciones fusionadas compiladas, sin formar inversas. \\
+\bottomrule
+\end{longtable}
+
+\section{Refinamiento y dominio}
+
+La \cref{tab:refinement-config} separa la fase base de la fase estricta.
+
+\begin{table}[htbp]
+\centering
+\caption{Criterios de refinamiento usados en la comparación estricta.}
+\label{tab:refinement-config}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+\textbf{Etapa} & \textbf{Ratio} & \textbf{Slope} & \textbf{Curve} &
+\textbf{Prune} \\
+\midrule
+Base & 3.0 & 0.08 & 0.12 & 0.010 \\
+Estricta & 2.5 & 0.04 & 0.08 & 0.003 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Se permiten seis ciclos adaptativos. El dominio puede duplicarse con factor 2
+hasta el límite configurado; la pendiente relativa de borde de referencia es
+0.02. Estos valores deben figurar junto a cualquier tiempo, porque una malla no
+convergida puede parecer artificialmente rápida.
+
+\section{Variables de entorno}
+
+La \cref{tab:thread-config} documenta el reparto de hilos y procesos de la
+máquina de referencia.
+
+\begin{table}[htbp]
+\centering
+\caption{Control de paralelismo en la máquina de referencia.}
+\label{tab:thread-config}
+\begin{tabularx}{\textwidth}{@{}p{0.30\textwidth}p{0.18\textwidth}Y@{}}
+\toprule
+\textbf{Variable/opción} & \textbf{Base} & \textbf{Motivo} \\
+\midrule
+\codigo{OPENBLAS\_NUM\_THREADS} & 1 & Evitar coste de hilos en bloques densos
+pequeños. \\
+\codigo{NUMBA\_NUM\_THREADS} & 4 & Mejor resultado del kernel secuencial en
+la máquina medida. \\
+\codigo{--numba-kinetics-}\newline\codigo{threads} & automático/4 & Permite repartir hilos entre
+procesos FGM. \\
+Número de procesos & 1 frío; hasta \(N_\phi\) cacheado & Conservar continuación
+fría y explotar independencia cacheada. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Numba compila funciones numéricas a través de LLVM \cite{LamNumba2015}; SciPy
+proporciona acceso a rutinas lineales optimizadas \cite{VirtanenSciPy2020}. Las
+versiones exactas forman parte del entorno experimental y deben conservarse con
+cualquier campaña que pretenda comparar tiempos.
+
+\section{Reglas de cambio de configuración}
+
+Para impedir que una aceleración rompa silenciosamente la solución, toda
+modificación productiva debe superar:
+
+\begin{enumerate}
+  \item pruebas unitarias de propiedades y conservación;
+  \item misma llama sobre malla fija, con diferencias cercanas al redondeo cuando
+        el cambio pretende ser algebraicamente equivalente;
+  \item barrido FGM frío con aceptación completa;
+  \item comparación de \(\Su,T,\dot q,Y_k\) y nodos;
+  \item al menos cinco repeticiones alternadas de tiempo;
+  \item actualización del registro de decisiones.
+\end{enumerate}
+
+Una mejora que cambia ligeramente la trayectoria puede terminar en otra malla
+igualmente válida. En ese caso no se exige identidad bit a bit; se exige
+convergencia de malla y error físico cuantificado.
+
+\chapter{Reproducción de resultados y formato de datos}
+\label{app:reproducibilidad}
+
+\section{Procedimiento reproducible}
+
+La campaña se ejecuta desde dos puntos de entrada equivalentes: uno resuelve con
+V2 y otro con \codigo{FreeFlame}. Ambos reciben la misma lista de \(\phi\), el
+mismo mecanismo, transporte, criterios de malla y resolución \((Z,c)\), y ambos
+usan el mismo posprocesado. Cada ejecución guarda argumentos, versiones, tiempos,
+estado de aceptación, perfiles nodales y tabla final. Un tercer proceso de
+análisis lee esos archivos, alinea los frentes y produce las métricas y figuras
+del \cref{chap:resultados}. Los comandos literales permanecen junto a los
+generadores para evitar que la tesis dependa de una sintaxis de interfaz.
+
+\section{Lista de comprobación antes de medir}
+
+\begin{enumerate}
+  \item Guardar la revisión y el estado del árbol de trabajo.
+  \item Registrar la versión del intérprete y de las dependencias.
+  \item Registrar CPU, memoria y política de energía.
+  \item Fijar variables de hilos y cerrar cargas ajenas evitables.
+  \item Decidir si se mide JIT frío o caliente y etiquetarlo.
+  \item Vaciar únicamente la caché específica si el ensayo es frío; no borrar
+        resultados ajenos ni usar rutas amplias.
+  \item Ejecutar una ronda de calentamiento separada.
+  \item Alternar el orden Cantera/V2 entre repeticiones.
+  \item Conservar todas las corridas hasta consolidar estadísticas.
+  \item Generar un resumen inmutable con hash de cada NPZ.
+\end{enumerate}
+
+\section{Esquema de la tabla NPZ}
+
+La \cref{tab:npz-schema} es el contrato mínimo entre el generador y cualquier
+consumidor de la tabla.
+
+\begin{longtable}{@{}p{0.25\textwidth}p{0.18\textwidth}p{0.45\textwidth}@{}}
+\caption{Campos principales producidos por el generador FGM.}
+\label{tab:npz-schema}\\
+\toprule
+\textbf{Campo} & \textbf{Forma conceptual} & \textbf{Contenido} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Campo} & \textbf{Forma conceptual} & \textbf{Contenido} \\
+\midrule
+\endhead
+\codigo{phi\_grid} & \((N_Z,)\) & Relaciones de equivalencia resueltas. \\
+\codigo{Z\_grid} & \((N_Z,)\) & Fracciones de mezcla Bilger. \\
+\codigo{c\_grid} & \((N_c,)\) & Malla común de progreso. \\
+\codigo{Su} & \((N_Z,)\) & Velocidad de llama por mezcla. \\
+\codigo{solve\_ok} & \((N_Z,)\) & Indicador de terminación del solve. \\
+\codigo{final\_accepted} & \((N_Z,)\) & Aceptación conjunta del flamelet. \\
+\codigo{residual\_inf} & \((N_Z,)\) & Guarda final de residual registrada. \\
+\codigo{weighted\_step\_}\newline\codigo{norm} & \((N_Z,)\) & Norma ponderada final. \\
+\codigo{n\_points} & \((N_Z,)\) & Nodos de la llama antes de proyección. \\
+\codigo{solve\_time} & \((N_Z,)\) & Tiempo exclusivo por flamelet. \\
+\codigo{T} & \((N_Z,N_c)\) & Temperatura tabulada. \\
+\codigo{u} & \((N_Z,N_c)\) & Velocidad axial tabulada. \\
+\codigo{rho} & \((N_Z,N_c)\) & Densidad. \\
+\codigo{cp\_mass} & \((N_Z,N_c)\) & Capacidad calorífica másica. \\
+\codigo{conductivity} & \((N_Z,N_c)\) & Conductividad térmica. \\
+\codigo{qdot} & \((N_Z,N_c)\) & Liberación volumétrica de calor. \\
+\codigo{beta} & \((N_Z,N_c)\) & Progreso no normalizado. \\
+\codigo{omega\_c} & \((N_Z,N_c)\) & Fuente normalizada de progreso. \\
+\codigo{Y} & \((N_Z,K,N_c)\) & Fracciones másicas. \\
+\bottomrule
+\end{longtable}
+
+El consumidor debe consultar los nombres de especies y metadatos, no asumir que
+\(K=53\). Antes de guardar el NPZ, el generador valida automáticamente este
+contrato y registra el diagnóstico en los metadatos.
+
+\section{Pruebas estructurales de la tabla}
+
+Los ejes deben ser estrictamente crecientes, \(c\) debe incluir exactamente 0 y
+1 y las magnitudes termodinámicas deben ser finitas y positivas donde
+corresponda. Las fracciones másicas deben respetar su tolerancia inferior y sumar
+uno; todas las filas deben proceder de flamelets aceptados y las dimensiones de
+campos, ejes y especies deben coincidir. Esta prueba se ejecuta antes de la
+persistencia y detiene la generación ante cualquier incumplimiento. Para
+\(\dot q\) y \(\dot\omega_c\) no se impone positividad global, pues pueden
+existir regiones locales de signo contrario; sí se exige finitud y forma
+dimensional correcta.
+
+\section{Plantilla de registro de corrida}
+
+La \cref{tab:run-record-template} evita publicar un tiempo sin la configuración
+necesaria para reproducirlo.
+
+\begin{longtable}{@{}p{0.35\textwidth}p{0.53\textwidth}@{}}
+\caption{Ficha que debe acompañar cada resultado definitivo.}
+\label{tab:run-record-template}\\
+\toprule
+\textbf{Campo} & \textbf{Valor} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Campo} & \textbf{Valor} \\
+\midrule
+\endhead
+Revisión Git de partida & \codigo{8f18efe9fcc1} \\
+Estado del árbol & Cambios locales documentados; no se afirma árbol limpio. \\
+Fecha y zona horaria & 3 de septiembre de 2026; America/Guayaquil. \\
+CPU / núcleos / memoria & AMD Ryzen 9 7845HX; 12 núcleos, 24 hilos;
+\SI{32}{\giga\byte}. \\
+Sistema operativo & Microsoft Windows 11 Home. \\
+Python / NumPy / SciPy / Numba / Cantera & 3.11.0 / 2.4.6 / 1.17.1 / 0.65.1 /
+3.2.0. \\
+Mecanismo y hash & GRI-Mech 3.0; SHA-256 con prefijo
+\codigo{06650B1E0EE0}; hash completo en metadatos. \\
+Combustible / oxidante & CH\(_4\) / O\(_2\):1, N\(_2\):3.76. \\
+\(T,p,\phi,L\) & \SI{300}{\kelvin}; \SI{1}{\atmosphere};
+\(\phi=[0.7,0.9,1.0,1.1,1.4]\); \(L_0=\SI{0.03}{\metre}\). \\
+Transporte / Soret & Promediado por mezcla, gradiente molar / desactivado. \\
+Refinamiento & Ratio 2.5, slope 0.04, curve 0.08, prune 0.003; convergencia de
+malla obligatoria. \\
+Hilos y procesos & Un proceso; cuatro hilos de cinética V2; un hilo BLAS. \\
+Estado de caché & Fría; lectura y escritura de semillas desactivadas. \\
+Configuración literal & Guardada en los metadatos de cada ejecución. \\
+Salidas / hash & \codigo{v2\_strict\_final} (prefijo \codigo{6F8CAC7F57F2}) y
+\codigo{cantera\_strict\_direct} (prefijo \codigo{CDE1869C0FFA}). \\
+Aceptación & Cinco de cinco flamelets aceptados en ambas rutas. \\
+Nota temporal & Ejecución única; no representa todavía una distribución
+estadística. \\
+\bottomrule
+\end{longtable}
+
+\chapter{Mapa de trazabilidad de afirmaciones}
+\label{app:traceability}
+
+La \cref{tab:claim-traceability} distingue resultados medidos, condiciones de
+uso y límites que impiden generalizarlos fuera del alcance evaluado.
+
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.28\textwidth}
+>{\raggedright\arraybackslash}p{0.30\textwidth}
+>{\raggedright\arraybackslash}p{0.30\textwidth}@{}}
+\caption{Origen y condición de las afirmaciones principales.}
+\label{tab:claim-traceability}\\
+\toprule
+\textbf{Afirmación} & \textbf{Evidencia} & \textbf{Condición de uso} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Afirmación} & \textbf{Evidencia} & \textbf{Condición de uso} \\
+\midrule
+\endhead
+V2 y Cantera convergen espacialmente al mismo valor & Nivel ultra: 0.3762875 y
+0.3764409 m/s, diferencia de 0.0407\%. & Caso \(\phi=1\), CH\(_4\)--aire,
+GRI-Mech 3.0. \\
+V2 reduce el tiempo del barrido & Suma de solve 28.3165 s frente a 61.3822 s;
+razón \(2.168\times\). & Una ejecución estricta en frío; resultado temporal
+preliminar. \\
+La región de confianza reduce el coste & 153.8411 s sin cota frente a 28.3165 s
+con radio 1.15. & Ablación interna; resto de la configuración constante. \\
+La sustitución compilada reduce el coste lineal & Medianas pareadas 37.1386 s
+frente a 32.6745 s; reducción de 12.02\%. & Dos pares de barridos completos;
+misma factorización, aceptación y número de nodos. \\
+Los perfiles concuerdan en el barrido & Máximos \(E_2(T)=0.145\%\) y
+\(E_2(\dot q)=2.52\%\). & Frentes alineados por \(T_{50}\); cinco mezclas. \\
+La tabla es estructuralmente consistente & Error máximo de suma de masa
+\(4.26\times10^{-10}\) para V2. & Tabla de cinco filas y 241 puntos en \(c\). \\
+Cinco mezclas no forman una tabla de producción & Validación por exclusión:
+\(E_2(\dot q)\) hasta 27.9\%. & Demostración FGM; requiere más resolución en
+\(Z\). \\
+\bottomrule
+\end{longtable}
+
+Este mapa deberá ampliarse si se incorporan nuevos combustibles o repeticiones.
+Su propósito es que cada cifra de la defensa pueda remontarse a un archivo o a
+una fuente y que cada propuesta se identifique como tal.
+
+% =============================================================================
+\cleardoublepage
+\phantomsection
+\addcontentsline{toc}{chapter}{Referencias bibliogr\'aficas}
+\bibliographystyle{unsrt}
+\bibliography{referencias}
+
+\end{document}

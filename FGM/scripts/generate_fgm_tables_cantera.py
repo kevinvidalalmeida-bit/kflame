@@ -37,7 +37,14 @@ from fgm_common import (
     parse_progress_weights,
     parse_species_list,
     parse_z_values,
+    validate_fgm_table,
 )
+
+CANTERA_REFERENCE_WORKFLOW = "direct_cantera_freeflame"
+CANTERA_REFERENCE_SOLVER = "ct.FreeFlame"
+EXTERNAL_FLAMELET_TABLE_TOOL_USED = False
+EXTERNAL_FLAMELET_TABLE_TOOL = None
+TABLE_BUILDER = "repo_fgm_common"
 
 
 # ---------------------------------------------------------------------------
@@ -57,7 +64,9 @@ class FlameRecord:
     T: np.ndarray
     rho: np.ndarray
     cp_mass: np.ndarray
+    conductivity: np.ndarray
     qdot: np.ndarray
+    omega_c: np.ndarray
     Y: np.ndarray
     c: np.ndarray
     beta: np.ndarray
@@ -123,6 +132,7 @@ def solve_flame_cantera(
     T = np.asarray(flame.T, dtype=float)
     rho = np.asarray(flame.density, dtype=float)
     cp_mass = np.asarray(flame.cp_mass, dtype=float)
+    conductivity = np.asarray(flame.thermal_conductivity, dtype=float)
     qdot = np.asarray(flame.heat_release_rate, dtype=float)
     Y = np.asarray(flame.Y, dtype=float)
 
@@ -132,6 +142,22 @@ def solve_flame_cantera(
         T=T,
         progress_weights=progress_weights,
     )
+    beta_span = float(beta[-1] - beta[0])
+    if abs(beta_span) <= 1.0e-14:
+        raise RuntimeError(
+            f"La variable de progreso no define una fuente normalizada en phi={phi:g}."
+        )
+    molecular_weights = np.asarray(flame.gas.molecular_weights, dtype=float)
+    net_rates_mass = (
+        np.asarray(flame.net_production_rates, dtype=float)
+        * molecular_weights[:, None]
+    )
+    omega_beta = np.zeros_like(T)
+    species_index = {name: k for k, name in enumerate(flame.gas.species_names)}
+    for species, weight in progress_weights.items():
+        if species in species_index:
+            omega_beta += float(weight) * net_rates_mass[species_index[species]]
+    omega_c = omega_beta / beta_span
 
     rec = FlameRecord(
         phi=float(phi),
@@ -141,7 +167,8 @@ def solve_flame_cantera(
         width_m=float(z[-1] - z[0]),
         Su_m_per_s=float(u[0]),
         z=z, u=u, T=T, rho=rho, cp_mass=cp_mass,
-        qdot=qdot, Y=Y, c=c, beta=beta,
+        conductivity=conductivity, qdot=qdot, omega_c=omega_c,
+        Y=Y, c=c, beta=beta,
     )
     return rec, flame.to_array(normalize=True)
 
@@ -169,7 +196,8 @@ def write_raw_profiles(out_dir: Path, records: list[FlameRecord], species_names:
             phi=np.array([rec.phi], dtype=float),
             Z=np.array([rec.Z], dtype=float),
             z=rec.z, u=rec.u, T=rec.T, rho=rec.rho,
-            cp_mass=rec.cp_mass, qdot=rec.qdot,
+            cp_mass=rec.cp_mass, conductivity=rec.conductivity,
+            qdot=rec.qdot, omega_c=rec.omega_c,
             Y=rec.Y, c=rec.c, beta=rec.beta,
             species_names=np.array(species_names, dtype=object),
         )
@@ -199,7 +227,9 @@ def build_tables(
     u_tab    = np.zeros((n_phi, n_c), dtype=float)
     rho_tab  = np.zeros((n_phi, n_c), dtype=float)
     cp_tab   = np.zeros((n_phi, n_c), dtype=float)
+    conductivity_tab = np.zeros((n_phi, n_c), dtype=float)
     qdot_tab = np.zeros((n_phi, n_c), dtype=float)
+    omega_c_tab = np.zeros((n_phi, n_c), dtype=float)
     beta_tab = np.zeros((n_phi, n_c), dtype=float)
     Y_tab    = np.zeros((n_phi, n_sp, n_c), dtype=float)
 
@@ -207,13 +237,16 @@ def build_tables(
         c_u, base = monotonicize_on_c(
             rec.c,
             {"T": rec.T, "u": rec.u, "rho": rec.rho,
-             "cp": rec.cp_mass, "qdot": rec.qdot, "beta": rec.beta},
+             "cp": rec.cp_mass, "conductivity": rec.conductivity,
+             "qdot": rec.qdot, "omega_c": rec.omega_c, "beta": rec.beta},
         )
         T_tab[i]    = np.interp(c_grid, c_u, base["T"])
         u_tab[i]    = np.interp(c_grid, c_u, base["u"])
         rho_tab[i]  = np.interp(c_grid, c_u, base["rho"])
         cp_tab[i]   = np.interp(c_grid, c_u, base["cp"])
+        conductivity_tab[i] = np.interp(c_grid, c_u, base["conductivity"])
         qdot_tab[i] = np.interp(c_grid, c_u, base["qdot"])
+        omega_c_tab[i] = np.interp(c_grid, c_u, base["omega_c"])
         beta_tab[i] = np.interp(c_grid, c_u, base["beta"])
         for k in range(n_sp):
             c_k, out_k = monotonicize_on_c(rec.c, {"Y": rec.Y[k]})
@@ -225,7 +258,8 @@ def build_tables(
         "c_grid":   c_grid,
         "Su": Su, "n_points": n_points, "width": width, "solve_time": solve_time,
         "T": T_tab, "u": u_tab, "rho": rho_tab, "cp_mass": cp_tab,
-        "qdot": qdot_tab, "beta": beta_tab, "Y": Y_tab,
+        "conductivity": conductivity_tab, "qdot": qdot_tab,
+        "omega_c": omega_c_tab, "beta": beta_tab, "Y": Y_tab,
     }
 
 
@@ -265,13 +299,13 @@ def build_argparser() -> argparse.ArgumentParser:
                    help="Límite superior de phi para invertir Z->phi.")
 
     # Refinamiento Cantera
-    p.add_argument("--ratio",             type=float, default=3.0)
-    p.add_argument("--slope",             type=float, default=0.08)
-    p.add_argument("--curve",             type=float, default=0.12)
-    p.add_argument("--prune",             type=float, default=0.01)
+    p.add_argument("--ratio",             type=float, default=2.5)
+    p.add_argument("--slope",             type=float, default=0.04)
+    p.add_argument("--curve",             type=float, default=0.08)
+    p.add_argument("--prune",             type=float, default=0.003)
     p.add_argument("--max-grid-points",   type=int,   default=1600)
     p.add_argument("--grid-min",          type=float, default=0.0)
-    p.add_argument("--tight-refine-passes", type=int, default=1)
+    p.add_argument("--tight-refine-passes", type=int, default=0)
     p.add_argument("--tight-ratio",       type=float, default=2.5)
     p.add_argument("--tight-slope",       type=float, default=0.04)
     p.add_argument("--tight-curve",       type=float, default=0.08)
@@ -352,6 +386,8 @@ def main() -> None:
     print("FGM TABLE GENERATOR (Cantera) — Z-C space")
     print("=" * 70)
     print(f"Cantera version : {ct.__version__}")
+    print(f"Reference flow  : {CANTERA_REFERENCE_WORKFLOW}")
+    print("External tool   : none (Streamline Flamelet Table Tool not invoked)")
     print(f"Output          : {out_dir.resolve()}")
     print(f"mode            : {'Z-grid' if z_mode else 'phi-grid'}")
     print(f"phis            : {phi_vals}")
@@ -407,6 +443,7 @@ def main() -> None:
     )
 
     tables = build_tables(records=records, species_names=species_names, c_grid=c_grid)
+    table_validation = validate_fgm_table(tables)
 
     np.savez_compressed(
         out_dir / "fgm_table.npz",
@@ -423,6 +460,22 @@ def main() -> None:
 
     meta = {
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "solver_backend": "cantera",
+        "reference_workflow": CANTERA_REFERENCE_WORKFLOW,
+        "reference_solver": CANTERA_REFERENCE_SOLVER,
+        "cantera_solve_call": "flame.solve(auto=True, refine_grid=True)",
+        "tight_refine_solve_call": "flame.solve(auto=False, refine_grid=True)",
+        "external_flamelet_table_tool_used": EXTERNAL_FLAMELET_TABLE_TOOL_USED,
+        "external_flamelet_table_tool": EXTERNAL_FLAMELET_TABLE_TOOL,
+        "table_builder": TABLE_BUILDER,
+        "timing_scope": (
+            "direct Cantera ct.FreeFlame solve plus optional tight refine passes; "
+            "excludes any external Streamline Flamelet Table Tool execution"
+        ),
+        "continuation_seed_policy": (
+            "previous accepted ct.FreeFlame solution array is reused sequentially "
+            "with flame.set_initial_guess(data=...) when available"
+        ),
         "cantera_version": ct.__version__,
         "args": vars(args),
         "mode": "Z-grid" if z_mode else "phi-grid",
@@ -430,8 +483,23 @@ def main() -> None:
         "n_species": len(species_names),
         "species_names": species_names,
         "used_progress_species": used_progress_species,
+        "table_field_units": {
+            "T": "K",
+            "u": "m/s",
+            "rho": "kg/m^3",
+            "cp_mass": "J/(kg K)",
+            "conductivity": "W/(m K)",
+            "qdot": "W/m^3",
+            "omega_c": "kg/(m^3 s)",
+            "Y": "1",
+        },
+        "omega_c_definition": (
+            "sum_k(a_k W_k omega_k_molar)/(beta_b-beta_u), "
+            "with the progress weights stored in args.progress_species"
+        ),
         "n_phi": len(phi_vals),
         "n_c": int(c_grid.size),
+        "table_validation": table_validation,
         "Z_range": [float(tables["Z_grid"].min()), float(tables["Z_grid"].max())],
         "Z_st": Z_st,
         "runtime_s": float(time.perf_counter() - t_global0),

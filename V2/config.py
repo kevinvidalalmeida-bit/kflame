@@ -20,6 +20,10 @@ class FlameCase:
     soret_enabled: bool = False
     outlet_species_bc: str = "zero_gradient"  # "zero_gradient" | "cantera_flux"
 
+    # Discretizacion convectiva:
+    # 1.0 = upwind puro (robusto, default actual), 0.0 = central.
+    upwind_factor: float = 1.0
+
     # Malla inicial
     cantera_seed_grid: bool = True
     adaptive_grid: bool = True

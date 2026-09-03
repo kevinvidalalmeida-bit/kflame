@@ -102,7 +102,9 @@ def write_single_flamelet(
     T_row: np.ndarray,
     rho_row: np.ndarray,
     cp_row: np.ndarray,
+    conductivity_row: np.ndarray,
     qdot_row: np.ndarray,
+    omega_c_row: np.ndarray,
     Su: float,
     Y_rows: dict[str, np.ndarray],     # {nombre_especie: array(n_c)}
     pressure: float,
@@ -134,7 +136,9 @@ def write_single_flamelet(
             ("T [K]",             T_row),
             ("rho [kg/m3]",       rho_row),
             ("cp_mass [J/kg/K]",  cp_row),
+            ("conductivity [W/m/K]", conductivity_row),
             ("qdot [J/m3/s]",     qdot_row),
+            ("omega_c [kg/m3/s]", omega_c_row),
         ]:
             f.write(f"  {name} [{n_c}]\n")
             f.write(_fmt_array(arr) + "\n\n")
@@ -169,7 +173,9 @@ def write_full_table(
     T_tab   = np.asarray(table["T"],       dtype=float)
     rho_tab = np.asarray(table["rho"],     dtype=float)
     cp_tab  = np.asarray(table["cp_mass"], dtype=float)
+    conductivity_tab = np.asarray(table["conductivity"], dtype=float)
     q_tab   = np.asarray(table["qdot"],    dtype=float)
+    omega_c_tab = np.asarray(table["omega_c"], dtype=float)
     Y_tab   = np.asarray(table["Y"],       dtype=float)
     Su_arr  = np.asarray(table["Su"],      dtype=float)
 
@@ -221,7 +227,9 @@ def write_full_table(
             ("T [K]",            T_tab),
             ("rho [kg/m3]",      rho_tab),
             ("cp_mass [J/kg/K]", cp_tab),
+            ("conductivity [W/m/K]", conductivity_tab),
             ("qdot [J/m3/s]",    q_tab),
+            ("omega_c [kg/m3/s]", omega_c_tab),
         ]:
             f.write(f"{field_name} [{n_Z}x{n_c}]\n")
             for i in range(n_Z):
@@ -249,12 +257,16 @@ def write_summary_csv(path: Path, table: dict) -> None:
     c_grid  = np.asarray(table["c_grid"], dtype=float)
     T_tab   = np.asarray(table["T"],      dtype=float)
     q_tab   = np.asarray(table["qdot"],   dtype=float)
+    omega_c_tab = np.asarray(table["omega_c"], dtype=float)
 
     with path.open("w", encoding="utf-8") as f:
-        f.write("Z,c,T_K,qdot_Jm3s\n")
+        f.write("Z,c,T_K,qdot_Jm3s,omega_c_kgm3s\n")
         for i, Z in enumerate(Z_grid):
             for j, c in enumerate(c_grid):
-                f.write(f"{Z:.6f},{c:.6f},{T_tab[i,j]:.4f},{q_tab[i,j]:.4e}\n")
+                f.write(
+                    f"{Z:.6f},{c:.6f},{T_tab[i,j]:.4f},"
+                    f"{q_tab[i,j]:.4e},{omega_c_tab[i,j]:.4e}\n"
+                )
 
     print(f"  CSV de verificación: {path.resolve()}")
 
@@ -326,7 +338,7 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 65)
-    print("FGM TABLE EXPORTER  →  FlameMaster (.fla) format")
+    print("FGM TABLE EXPORTER  ->  FlameMaster (.fla) format")
     print("=" * 65)
     print(f"Leyendo : {npz_path.resolve()}")
 
@@ -379,7 +391,7 @@ def main() -> None:
         created_at=created_at,
     )
     size_mb = full_path.stat().st_size / 1e6
-    print(f"  → {full_path.name}  ({size_mb:.2f} MB)")
+    print(f"  -> {full_path.name}  ({size_mb:.2f} MB)")
 
     # ----------------------------------------------------------------
     # 2) Flamelets individuales (opcional)  →  flamelet_Z_XXXXX.fla
@@ -390,7 +402,9 @@ def main() -> None:
         T_tab   = np.asarray(table["T"],       dtype=float)
         rho_tab = np.asarray(table["rho"],     dtype=float)
         cp_tab  = np.asarray(table["cp_mass"], dtype=float)
+        conductivity_tab = np.asarray(table["conductivity"], dtype=float)
         q_tab   = np.asarray(table["qdot"],    dtype=float)
+        omega_c_tab = np.asarray(table["omega_c"], dtype=float)
         Y_tab   = np.asarray(table["Y"],       dtype=float)
 
         fl_dir = out_dir / "single_flamelets"
@@ -414,7 +428,9 @@ def main() -> None:
                 T_row=T_tab[i],
                 rho_row=rho_tab[i],
                 cp_row=cp_tab[i],
+                conductivity_row=conductivity_tab[i],
                 qdot_row=q_tab[i],
+                omega_c_row=omega_c_tab[i],
                 Su=float(Su_arr[i]),
                 Y_rows=Y_rows,
                 pressure=float(args.pressure),
@@ -425,7 +441,7 @@ def main() -> None:
                 progress_species=prog_species,
                 created_at=created_at,
             )
-        print(f"  → {fl_dir.resolve()}")
+        print(f"  -> {fl_dir.resolve()}")
     else:
         print(f"\n[2/3] Flamelets individuales omitidos (usa --single-flamelets).")
 

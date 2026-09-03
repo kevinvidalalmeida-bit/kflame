@@ -25,6 +25,11 @@ from problem import FreeFlameProblem
 from solver import SolveOptions, solve_free_flame
 from state import unpack_state
 
+CANTERA_REFERENCE_WORKFLOW = "direct_cantera_freeflame"
+CANTERA_REFERENCE_SOLVER = "ct.FreeFlame"
+V2_REFERENCE_WORKFLOW = "v2_native_freeflame"
+EXTERNAL_FLAMELET_TABLE_TOOL_USED = False
+
 
 def _resolve_mechanism(mech: str) -> str:
     path = Path(mech)
@@ -49,10 +54,10 @@ def _default_case() -> FlameCase:
         transport_model="mixture-averaged",
         flux_gradient_basis="molar",
         soret_enabled=False,
-        ratio=10.0,
-        slope=0.8,
-        curve=0.8,
-        prune=-0.1,
+        ratio=2.5,
+        slope=0.04,
+        curve=0.08,
+        prune=0.003,
     )
 
 
@@ -79,6 +84,7 @@ def _cantera_solve(case: FlameCase, loglevel: int = 0, prev_ct_data: dict | None
         curve=case.curve,
         prune=case.prune,
     )
+    flame.set_max_grid_points(flame.flame, 1600)
 
     if prev_ct_data is not None:
         z_old = prev_ct_data["z"]
@@ -110,6 +116,7 @@ def _v2_solve(
     profile: bool = True,
     verbose: bool = False,
     prev_v2_data: dict | None = None,
+    compiled_block_substitution: bool = True,
 ) -> dict:
     materials_dir = Path(__file__).resolve().parent / "materiales"
     mat_path = str(materials_dir)
@@ -127,10 +134,17 @@ def _v2_solve(
         verbose=bool(verbose),
         profile=bool(profile),
         jacobian_mode="block_tridiag",
+        compiled_block_substitution=bool(compiled_block_substitution),
         refine_ratio=case.ratio,
         refine_slope=case.slope,
         refine_curve=case.curve,
         refine_prune=case.prune,
+        refine_max_points=1600,
+        max_refine_passes=6,
+        require_grid_convergence=True,
+        acceptance_criterion="cantera",
+        weighted_step_norm_limit=1.0,
+        residual_guard_inf=1.0e4,
         max_total_time_s=300.0,
     )
 
@@ -190,6 +204,7 @@ def run(
     verbose_ours: bool = False,
     prev_ct_data: dict | None = None,
     prev_v2_data: dict | None = None,
+    compiled_block_substitution: bool = True,
 ) -> tuple[Path, dict, dict]:
     if case is None:
         case = _default_case()
@@ -203,6 +218,7 @@ def run(
         profile=True,
         verbose=verbose_ours,
         prev_v2_data=prev_v2_data,
+        compiled_block_substitution=compiled_block_substitution,
     )
 
     z_ct = cantera["z"]
@@ -212,6 +228,8 @@ def run(
     Y_ours_on_ct = _interp_species(z_ours, ours["Y"], z_ct)
 
     summary = {
+        "comparison_scope": "direct_cantera_freeflame_vs_v2_native_freeflame",
+        "external_flamelet_table_tool_used": EXTERNAL_FLAMELET_TABLE_TOOL_USED,
         "case": {
             "mechanism": case.mech,
             "fuel": case.fuel,
@@ -220,6 +238,7 @@ def run(
             "T_in": case.T_in,
             "P": case.P,
             "transport_model": case.transport_model,
+            "upwind_factor_v2": float(getattr(case, "upwind_factor", 1.0)),
             "refine": {
                 "ratio": case.ratio,
                 "slope": case.slope,
@@ -228,18 +247,27 @@ def run(
             },
         },
         "cantera": {
+            "solver_backend": "cantera",
+            "reference_workflow": CANTERA_REFERENCE_WORKFLOW,
+            "reference_solver": CANTERA_REFERENCE_SOLVER,
+            "solve_call": "flame.solve(auto=True)",
+            "external_flamelet_table_tool_used": EXTERNAL_FLAMELET_TABLE_TOOL_USED,
             "time_s": cantera["time_s"],
             "n_points": cantera["n_points"],
             "width": cantera["width"],
             "Su": cantera["Su"],
         },
         "v2": {
+            "solver_backend": "v2_native",
+            "reference_workflow": V2_REFERENCE_WORKFLOW,
+            "external_flamelet_table_tool_used": EXTERNAL_FLAMELET_TABLE_TOOL_USED,
             "ok": ours["ok"],
             "time_s": ours["time_s"],
             "n_points": ours["n_points"],
             "width": ours["width"],
             "Su": ours["Su"],
             "Finf_final": ours["report"].get("Finf_final"),
+            "compiled_block_substitution": bool(compiled_block_substitution),
         },
         "metrics": {
             "dSu": ours["Su"] - cantera["Su"],
@@ -291,17 +319,35 @@ def main() -> None:
     parser.add_argument("--loglevel", type=int, default=0, help="Cantera solve loglevel.")
     parser.add_argument("--max-products", type=int, default=6)
     parser.add_argument(
+        "--upwind-factor",
+        type=float,
+        default=1.0,
+        help="V2 convective weight: 1.0=upwind, 0.0=centered. Cantera reference is unchanged.",
+    )
+    parser.add_argument(
         "--verbose-ours",
         action="store_true",
         help="Print detailed progress from the V2 solver.",
     )
+    parser.add_argument(
+        "--compiled-block-substitution",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Use the fused compiled substitution for the block-tridiagonal LU.",
+    )
     args = parser.parse_args()
+    if not 0.0 <= float(args.upwind_factor) <= 1.0:
+        raise SystemExit("--upwind-factor must be between 0.0 and 1.0")
 
+    case = _default_case()
+    case.upwind_factor = float(args.upwind_factor)
     run_dir, _, _ = run(
         args.output_root,
+        case=case,
         loglevel=args.loglevel,
         max_products=args.max_products,
         verbose_ours=args.verbose_ours,
+        compiled_block_substitution=args.compiled_block_substitution,
     )
     print(run_dir.resolve())
 

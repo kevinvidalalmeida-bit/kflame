@@ -1,0 +1,495 @@
+{
+  "campaign_root": "FGM/resultados/revision_20260903",
+  "profile_metrics": [
+    {
+      "phi": 0.7,
+      "Su_v2": 0.19408598168260796,
+      "Su_cantera": 0.19414279222485192,
+      "Su_error_percent": 0.029262246407873695,
+      "nodes_v2": 271,
+      "nodes_cantera": 276,
+      "width_v2_m": 0.06,
+      "width_cantera_m": 0.06,
+      "mass_flow_error_v2": 1.398488932955882e-06,
+      "mass_flow_error_cantera": 2.19471363524128e-08,
+      "mass_fraction_sum_error_v2": 4.2613146344905317e-10,
+      "mass_fraction_sum_error_cantera": 1.2510048552627495e-10,
+      "edge_slope_left_v2": 7.295724728732363e-11,
+      "edge_slope_right_v2": 4.148871229050371e-06,
+      "edge_slope_left_cantera": 4.643242675210522e-11,
+      "edge_slope_right_cantera": 1.9010461526889527e-06,
+      "burned_temperature_v2_K": 1842.3488530363056,
+      "burned_temperature_cantera_K": 1842.1965528103187,
+      "temperature_l2_dynamic": 0.00011055805697058933,
+      "temperature_linf_K": 0.7638760528988655,
+      "qdot_l2_relative": 0.0008260917797290159,
+      "qdot_linf_relative": 0.0009358635708989321,
+      "species": {
+        "CH4": {
+          "l2_relative": 8.465306011229438e-05,
+          "linf_absolute": 2.308207660104561e-05
+        },
+        "O2": {
+          "l2_relative": 0.0001726087819480073,
+          "linf_absolute": 5.447803807631657e-05
+        },
+        "CO2": {
+          "l2_relative": 0.00024265912904233186,
+          "linf_absolute": 4.5127591889543295e-05
+        },
+        "H2O": {
+          "l2_relative": 8.681167782919443e-05,
+          "linf_absolute": 6.187995829348616e-05
+        },
+        "CO": {
+          "l2_relative": 0.0005999123845294376,
+          "linf_absolute": 1.190466938214604e-05
+        },
+        "OH": {
+          "l2_relative": 0.0010102918627884472,
+          "linf_absolute": 1.7610079549638079e-06
+        }
+      }
+    },
+    {
+      "phi": 0.9,
+      "Su_v2": 0.3385253943943602,
+      "Su_cantera": 0.33676446250162545,
+      "Su_error_percent": 0.522897184475408,
+      "nodes_v2": 254,
+      "nodes_cantera": 340,
+      "width_v2_m": 0.03,
+      "width_cantera_m": 0.06,
+      "mass_flow_error_v2": 1.9400997951232074e-08,
+      "mass_flow_error_cantera": 2.0747817469365592e-11,
+      "mass_fraction_sum_error_v2": 8.303491227934501e-11,
+      "mass_fraction_sum_error_cantera": 2.80109269112927e-12,
+      "edge_slope_left_v2": 5.592938756535912e-10,
+      "edge_slope_right_v2": 0.001295761016289517,
+      "edge_slope_left_cantera": 2.1165405499039825e-12,
+      "edge_slope_right_cantera": 2.322373149784614e-05,
+      "burned_temperature_v2_K": 2139.5628180213785,
+      "burned_temperature_cantera_K": 2139.150836852487,
+      "temperature_l2_dynamic": 0.0003938666233602304,
+      "temperature_linf_K": 1.4891407769918032,
+      "qdot_l2_relative": 0.006933323166919959,
+      "qdot_linf_relative": 0.007843613476027812,
+      "species": {
+        "CH4": {
+          "l2_relative": 0.00014206570413546752,
+          "linf_absolute": 4.856702420379805e-05
+        },
+        "O2": {
+          "l2_relative": 0.00035902914128287333,
+          "linf_absolute": 0.00011743167938696453
+        },
+        "CO2": {
+          "l2_relative": 0.0016572620212817297,
+          "linf_absolute": 0.0003171602294971543
+        },
+        "H2O": {
+          "l2_relative": 0.0009814358624521205,
+          "linf_absolute": 0.00013936851811342799
+        },
+        "CO": {
+          "l2_relative": 0.006371371738899094,
+          "linf_absolute": 0.00010846498358371703
+        },
+        "OH": {
+          "l2_relative": 0.007136643311760005,
+          "linf_absolute": 2.751833390255906e-05
+        }
+      }
+    },
+    {
+      "phi": 1.0,
+      "Su_v2": 0.3782542443421439,
+      "Su_cantera": 0.3765803018983975,
+      "Su_error_percent": 0.44451141902744745,
+      "nodes_v2": 264,
+      "nodes_cantera": 343,
+      "width_v2_m": 0.03,
+      "width_cantera_m": 0.06,
+      "mass_flow_error_v2": 1.0965422356474067e-07,
+      "mass_flow_error_cantera": 8.867796540746618e-09,
+      "mass_fraction_sum_error_v2": 3.7332381630506006e-10,
+      "mass_fraction_sum_error_cantera": 1.9627510727815434e-10,
+      "edge_slope_left_v2": 1.248299149468821e-10,
+      "edge_slope_right_v2": 0.0038658058718877676,
+      "edge_slope_left_cantera": 7.997710602023096e-11,
+      "edge_slope_right_cantera": 0.0004986960097223775,
+      "burned_temperature_v2_K": 2226.484567447173,
+      "burned_temperature_cantera_K": 2230.0240176643715,
+      "temperature_l2_dynamic": 0.00045586909484799954,
+      "temperature_linf_K": 2.444452036172379,
+      "qdot_l2_relative": 0.0060232150433582,
+      "qdot_linf_relative": 0.006524262073494024,
+      "species": {
+        "CH4": {
+          "l2_relative": 0.0002733599782654115,
+          "linf_absolute": 0.00010256948597480581
+        },
+        "O2": {
+          "l2_relative": 0.0003617809966107682,
+          "linf_absolute": 0.00033495685055834334
+        },
+        "CO2": {
+          "l2_relative": 0.0018065841891878904,
+          "linf_absolute": 0.0003466239346320982
+        },
+        "H2O": {
+          "l2_relative": 0.0010058908129449424,
+          "linf_absolute": 0.0001471916758883987
+        },
+        "CO": {
+          "l2_relative": 0.005073058397862684,
+          "linf_absolute": 0.0001391089451901889
+        },
+        "OH": {
+          "l2_relative": 0.006567047673627335,
+          "linf_absolute": 2.693671210770394e-05
+        }
+      }
+    },
+    {
+      "phi": 1.1,
+      "Su_v2": 0.3815459358612117,
+      "Su_cantera": 0.3799862673189884,
+      "Su_error_percent": 0.41045392330297964,
+      "nodes_v2": 274,
+      "nodes_cantera": 344,
+      "width_v2_m": 0.03,
+      "width_cantera_m": 0.06,
+      "mass_flow_error_v2": 2.978292371900781e-07,
+      "mass_flow_error_cantera": 3.002908873807191e-10,
+      "mass_fraction_sum_error_v2": 6.593203760729693e-11,
+      "mass_fraction_sum_error_cantera": 1.0683631757046896e-10,
+      "edge_slope_left_v2": 1.1853945049846453e-10,
+      "edge_slope_right_v2": 0.003358251514945125,
+      "edge_slope_left_cantera": 9.18935781364576e-12,
+      "edge_slope_right_cantera": 0.000734387379326026,
+      "burned_temperature_v2_K": 2208.7134129571923,
+      "burned_temperature_cantera_K": 2212.521919354017,
+      "temperature_l2_dynamic": 0.00035648765106195083,
+      "temperature_linf_K": 2.3237815100507078,
+      "qdot_l2_relative": 0.005512656209107845,
+      "qdot_linf_relative": 0.006022547293125462,
+      "species": {
+        "CH4": {
+          "l2_relative": 0.000264749514744049,
+          "linf_absolute": 0.00010500595570227256
+        },
+        "O2": {
+          "l2_relative": 0.0002603279351486153,
+          "linf_absolute": 0.0003237380712190485
+        },
+        "CO2": {
+          "l2_relative": 0.0020521146684784257,
+          "linf_absolute": 0.00032658271793419014
+        },
+        "H2O": {
+          "l2_relative": 0.0011244119166831216,
+          "linf_absolute": 0.000166247513580714
+        },
+        "CO": {
+          "l2_relative": 0.0027527092259525335,
+          "linf_absolute": 0.00013460268636002887
+        },
+        "OH": {
+          "l2_relative": 0.007868695820619595,
+          "linf_absolute": 3.3041575234802646e-05
+        }
+      }
+    },
+    {
+      "phi": 1.4,
+      "Su_v2": 0.13993756019378023,
+      "Su_cantera": 0.1415197644324679,
+      "Su_error_percent": 1.1180093784304397,
+      "nodes_v2": 259,
+      "nodes_cantera": 396,
+      "width_v2_m": 0.06,
+      "width_cantera_m": 0.06,
+      "mass_flow_error_v2": 2.0273648998794355e-08,
+      "mass_flow_error_cantera": 7.352034349831259e-08,
+      "mass_fraction_sum_error_v2": 1.525561899029526e-10,
+      "mass_fraction_sum_error_cantera": 1.7058998658114888e-10,
+      "edge_slope_left_v2": 7.806158506300074e-10,
+      "edge_slope_right_v2": 1.6486951209515005e-05,
+      "edge_slope_left_cantera": 7.199789313643376e-10,
+      "edge_slope_right_cantera": 2.064772844445519e-05,
+      "burned_temperature_v2_K": 1978.7714046593871,
+      "burned_temperature_cantera_K": 1981.1790966062786,
+      "temperature_l2_dynamic": 0.0014531725322356722,
+      "temperature_linf_K": 6.40102651864845,
+      "qdot_l2_relative": 0.025165959021224937,
+      "qdot_linf_relative": 0.030202114962022353,
+      "species": {
+        "CH4": {
+          "l2_relative": 0.0005305328958669361,
+          "linf_absolute": 0.00023977651773628497
+        },
+        "O2": {
+          "l2_relative": 0.0005678709032119576,
+          "linf_absolute": 0.0006578536199151608
+        },
+        "CO2": {
+          "l2_relative": 0.002890870018376423,
+          "linf_absolute": 0.0002474356396982621
+        },
+        "H2O": {
+          "l2_relative": 0.003178369200885644,
+          "linf_absolute": 0.0006758096208209774
+        },
+        "CO": {
+          "l2_relative": 0.0008391808282563584,
+          "linf_absolute": 0.0002849000362161458
+        },
+        "OH": {
+          "l2_relative": 0.03577707010378459,
+          "linf_absolute": 9.806224167329997e-06
+        }
+      }
+    }
+  ],
+  "mesh_metrics": [
+    {
+      "solver": "v2",
+      "level": "coarse",
+      "Su_m_per_s": 0.3860049025615169,
+      "nodes": 109,
+      "width_m": 0.06,
+      "solve_time_s": 9.72526310000103,
+      "Su_change_to_ultra_percent": 2.582442658687687
+    },
+    {
+      "solver": "cantera",
+      "level": "coarse",
+      "Su_m_per_s": 0.38731686157002493,
+      "nodes": 105,
+      "width_m": 0.06,
+      "solve_time_s": 14.980469699992682,
+      "Su_change_to_ultra_percent": 2.889166556834552
+    },
+    {
+      "solver": "v2",
+      "level": "base",
+      "Su_m_per_s": 0.3810357995375842,
+      "nodes": 150,
+      "width_m": 0.06,
+      "solve_time_s": 9.405569700000342,
+      "Su_change_to_ultra_percent": 1.2618824206309878
+    },
+    {
+      "solver": "cantera",
+      "level": "base",
+      "Su_m_per_s": 0.3820550036788267,
+      "nodes": 149,
+      "width_m": 0.06,
+      "solve_time_s": 15.922922900004778,
+      "Su_change_to_ultra_percent": 1.4913751702904205
+    },
+    {
+      "solver": "v2",
+      "level": "strict",
+      "Su_m_per_s": 0.3788377358668582,
+      "nodes": 261,
+      "width_m": 0.06,
+      "solve_time_s": 12.814826899993932,
+      "Su_change_to_ultra_percent": 0.6777376624527934
+    },
+    {
+      "solver": "cantera",
+      "level": "strict",
+      "Su_m_per_s": 0.3788136782847252,
+      "nodes": 275,
+      "width_m": 0.06,
+      "solve_time_s": 20.152376900005038,
+      "Su_change_to_ultra_percent": 0.6303301153791803
+    },
+    {
+      "solver": "v2",
+      "level": "ultra",
+      "Su_m_per_s": 0.37628749380226056,
+      "nodes": 505,
+      "width_m": 0.06,
+      "solve_time_s": 14.655622300007963,
+      "Su_change_to_ultra_percent": 0.0
+    },
+    {
+      "solver": "cantera",
+      "level": "ultra",
+      "Su_m_per_s": 0.3764408581889683,
+      "nodes": 517,
+      "width_m": 0.06,
+      "solve_time_s": 27.694556100002956,
+      "Su_change_to_ultra_percent": 0.0
+    }
+  ],
+  "table_validation": {
+    "v2_strict_final": {
+      "n_c": 241,
+      "mass_fraction_sum_error": 4.261236918878808e-10,
+      "leave_one_out": [
+        {
+          "phi": 0.9,
+          "temperature_l2_dynamic": 0.016048546560846838,
+          "temperature_linf_K": 39.978618187479015,
+          "qdot_l2_relative": 0.05601937339943472,
+          "omega_c_l2_relative": 0.0889746316636589,
+          "species_linf_absolute": 0.0062087580317856245
+        },
+        {
+          "phi": 1.0,
+          "temperature_l2_dynamic": 0.02035648701129968,
+          "temperature_linf_K": 63.33005572151774,
+          "qdot_l2_relative": 0.11541057901188755,
+          "omega_c_l2_relative": 0.1113655970956577,
+          "species_linf_absolute": 0.009962687250229668
+        },
+        {
+          "phi": 1.1,
+          "temperature_l2_dynamic": 0.029069101814740293,
+          "temperature_linf_K": 45.176793824594824,
+          "qdot_l2_relative": 0.27890552091202103,
+          "omega_c_l2_relative": 0.2625070628786198,
+          "species_linf_absolute": 0.005614705016900909
+        }
+      ]
+    },
+    "cantera_strict_direct": {
+      "n_c": 241,
+      "mass_fraction_sum_error": 1.9627288683210509e-10,
+      "leave_one_out": [
+        {
+          "phi": 0.9,
+          "temperature_l2_dynamic": 0.015083926767490399,
+          "temperature_linf_K": 37.11062175834604,
+          "qdot_l2_relative": 0.055209868025778576,
+          "omega_c_l2_relative": 0.08805507963557177,
+          "species_linf_absolute": 0.006073720479591635
+        },
+        {
+          "phi": 1.0,
+          "temperature_l2_dynamic": 0.02114999156251593,
+          "temperature_linf_K": 65.8912916321683,
+          "qdot_l2_relative": 0.11712945878444876,
+          "omega_c_l2_relative": 0.11346199534675125,
+          "species_linf_absolute": 0.010303881068856338
+        },
+        {
+          "phi": 1.1,
+          "temperature_l2_dynamic": 0.028651828755821493,
+          "temperature_linf_K": 45.73344820975126,
+          "qdot_l2_relative": 0.2781161887505492,
+          "omega_c_l2_relative": 0.26168845827900244,
+          "species_linf_absolute": 0.005786834355244852
+        }
+      ]
+    }
+  },
+  "continuation_ablation": {
+    "bounded": {
+      "solve_time_s": [
+        9.57040959999722,
+        6.638884200001485,
+        1.1426379999902565,
+        2.898553400009405,
+        8.066001799990772
+      ],
+      "nodes": [
+        271,
+        254,
+        264,
+        274,
+        259
+      ],
+      "Su": [
+        0.19408598168260796,
+        0.3385253943943602,
+        0.3782542443421439,
+        0.3815459358612117,
+        0.13993756019378023
+      ],
+      "total_solve_time_s": 28.316486999989138
+    },
+    "unbounded": {
+      "solve_time_s": [
+        9.324749999999767,
+        80.7345662000007,
+        1.0586515000031795,
+        2.381835799998953,
+        60.341331799994805
+      ],
+      "nodes": [
+        271,
+        325,
+        329,
+        329,
+        384
+      ],
+      "Su": [
+        0.19408598168260796,
+        0.33653869502709616,
+        0.37620712108849536,
+        0.3796253081905301,
+        0.14067698377507154
+      ],
+      "total_solve_time_s": 153.8411352999974
+    },
+    "speedup": 5.432917413097762,
+    "time_reduction_percent": 81.59368302582358
+  },
+  "strict_batch_comparison": {
+    "v2": {
+      "solve_time_s": [
+        9.57040959999722,
+        6.638884200001485,
+        1.1426379999902565,
+        2.898553400009405,
+        8.066001799990772
+      ],
+      "nodes": [
+        271,
+        254,
+        264,
+        274,
+        259
+      ],
+      "Su": [
+        0.19408598168260796,
+        0.3385253943943602,
+        0.3782542443421439,
+        0.3815459358612117,
+        0.13993756019378023
+      ],
+      "total_solve_time_s": 28.316486999989138
+    },
+    "cantera": {
+      "solve_time_s": [
+        18.355756599994493,
+        15.549885300002643,
+        2.317745799999102,
+        4.327369999999064,
+        20.831485200003954
+      ],
+      "nodes": [
+        276,
+        340,
+        343,
+        344,
+        396
+      ],
+      "Su": [
+        0.19414279222485192,
+        0.33676446250162545,
+        0.3765803018983975,
+        0.3799862673189884,
+        0.1415197644324679
+      ],
+      "total_solve_time_s": 61.382242899999255
+    },
+    "solve_speedup": 2.167720978242209,
+    "max_Su_error_percent": 1.1180093784304397
+  }
+}

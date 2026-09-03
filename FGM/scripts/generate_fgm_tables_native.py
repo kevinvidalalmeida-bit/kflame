@@ -48,18 +48,32 @@ from fgm_common import (
     parse_progress_weights,
     parse_species_list,
     parse_z_values,
+    validate_fgm_table,
 )
 
 
 _CONTINUATION_MAX_PHI_RATIO = 1.15
+V2_REFERENCE_WORKFLOW = "v2_native_freeflame"
+V2_REFERENCE_SOLVER = "solve_free_flame"
+EXTERNAL_FLAMELET_TABLE_TOOL_USED = False
+EXTERNAL_FLAMELET_TABLE_TOOL = None
+TABLE_BUILDER = "repo_fgm_common"
 
 
-def _is_local_phi_step(phi_from: float, phi_to: float) -> bool:
+def _is_local_phi_step(
+    phi_from: float,
+    phi_to: float,
+    max_ratio: float = _CONTINUATION_MAX_PHI_RATIO,
+) -> bool:
     """Return whether a multiplicative phi step is safe for continuation."""
     if phi_from <= 0.0 or phi_to <= 0.0:
         return False
+    if not np.isfinite(max_ratio) or max_ratio <= 0.0:
+        return True
+    max_ratio = max(float(max_ratio), 1.0)
     ratio = float(phi_to) / float(phi_from)
-    return (1.0 / _CONTINUATION_MAX_PHI_RATIO) <= ratio <= _CONTINUATION_MAX_PHI_RATIO
+    return (1.0 / max_ratio) <= ratio <= max_ratio
+
 
 v2_path = Path(__file__).resolve().parent.parent.parent / "V2"
 v2_dir = str(v2_path)
@@ -111,7 +125,9 @@ class FlameRecord:
     T: np.ndarray
     rho: np.ndarray
     cp_mass: np.ndarray
+    conductivity: np.ndarray
     qdot: np.ndarray
+    omega_c: np.ndarray
     Y: np.ndarray
     c: np.ndarray
     beta: np.ndarray
@@ -163,16 +179,18 @@ def build_continuation_seed(
     prev_prev_solution: dict[str, np.ndarray] | None,
     use_predictor: bool,
     predictor_damping: float,
+    trust_ratio: float = _CONTINUATION_MAX_PHI_RATIO,
 ) -> dict[str, np.ndarray] | None:
     if prev_solution is None or "z" not in prev_solution or "x" not in prev_solution:
         return None
 
     # Parameter continuation is a local method. A distant flame profile can
     # send the nonlinear solve through a much denser adaptive mesh than a cold
-    # start. Keep the seed only inside a 15 % multiplicative trust region.
+    # start. Keep the seed only inside the configured multiplicative trust
+    # region; a non-positive value is reserved for the unbounded ablation.
     if "phi" in prev_solution:
         phi_prev = float(np.asarray(prev_solution["phi"]).ravel()[0])
-        if not _is_local_phi_step(phi_prev, float(phi)):
+        if not _is_local_phi_step(phi_prev, float(phi), trust_ratio):
             return None
 
     z_prev = np.asarray(prev_solution.get("z"), dtype=float)
@@ -194,7 +212,7 @@ def build_continuation_seed(
         phi0 = float(np.asarray(prev_prev_solution.get("phi")).ravel()[0])
         phi1 = float(np.asarray(prev_solution.get("phi")).ravel()[0])
         dphi = phi1 - phi0
-        if abs(dphi) > 1.0e-14 and _is_local_phi_step(phi0, phi1):
+        if abs(dphi) > 1.0e-14 and _is_local_phi_step(phi0, phi1, trust_ratio):
             z0 = np.asarray(prev_prev_solution.get("z"), dtype=float)
             x0 = np.asarray(prev_prev_solution.get("x"), dtype=float)
             expected0 = int(z0.size) * (2 + n_sp)
@@ -250,6 +268,7 @@ def seed_cache_key(args: argparse.Namespace, resolved_mech: str) -> str:
         "flux_gradient_basis": str(args.flux_gradient_basis),
         "soret_enabled": bool(args.soret_enabled),
         "outlet_species_bc": str(args.outlet_species_bc),
+        "upwind_factor": float(args.upwind_factor),
         "T_in": float(args.T_in),
         "P": float(args.P),
         "width": float(args.width),
@@ -338,6 +357,7 @@ def make_solve_options(args: argparse.Namespace) -> SolveOptions:
     opts.jac_threshold = float(args.jac_threshold)
     opts.jacobian_mode = str(args.jacobian_mode)
     opts.precompute_jacobian_thermo = bool(args.precompute_jacobian_thermo)
+    opts.compiled_block_substitution = bool(args.compiled_block_substitution)
     opts.max_refine_passes = int(args.max_refine_passes)
     opts.require_grid_convergence = bool(args.require_grid_convergence)
     opts.auto_bootstrap_grids = bool(args.auto_bootstrap_grids)
@@ -375,6 +395,7 @@ def solve_flame_native(
         flux_gradient_basis=args.flux_gradient_basis,
         soret_enabled=args.soret_enabled,
         outlet_species_bc=args.outlet_species_bc,
+        upwind_factor=float(args.upwind_factor),
         ratio=args.ratio,
         slope=args.slope,
         curve=args.curve,
@@ -415,6 +436,7 @@ def solve_flame_native(
             prev_prev_solution=prev_prev_solution,
             use_predictor=not bool(args.disable_continuation_predictor),
             predictor_damping=float(args.continuation_predictor_damping),
+            trust_ratio=float(args.continuation_trust_ratio),
         )
 
         x0 = None
@@ -450,8 +472,16 @@ def solve_flame_native(
             tight_opts.refine_slope = float(args.tight_slope)
             tight_opts.refine_curve = float(args.tight_curve)
             tight_opts.refine_prune = float(args.tight_prune)
-            tight_opts.max_refine_passes = tight_passes
-            tight_opts.require_grid_convergence = True
+            # A tight stage is a new adaptive problem, not a single cosmetic
+            # pass.  Give it at least the normal refinement budget; otherwise
+            # ``--tight-refine-passes 1 --require-grid-convergence`` rejects a
+            # valid flame merely because the first strict grid still has marks.
+            tight_opts.max_refine_passes = max(
+                tight_passes, int(args.max_refine_passes)
+            )
+            tight_opts.require_grid_convergence = bool(
+                args.require_grid_convergence
+            )
             x_sol, solve_ok, tight_report = solve_free_flame(
                 problem, options=tight_opts, x0=x_sol
             )
@@ -518,16 +548,26 @@ def solve_flame_native(
     Y = np.asarray(x_reshaped[:, 2:], dtype=float).T # Shape: (n_species, n_points)
     z = np.asarray(problem.z, dtype=float)
 
-    # Usar Cantera temporalmente para extraer densidad, cp y calor liberado
+    # Posprocesado común de los campos tabulados. Cantera no interviene en la
+    # convergencia V2; se usa aquí para evaluar todos los campos con la misma
+    # convención que la referencia.
     rho = np.zeros_like(T)
     cp_mass = np.zeros_like(T)
+    conductivity = np.zeros_like(T)
     qdot = np.zeros_like(T)
+    omega_beta = np.zeros_like(T)
+    species_index = {name: k for k, name in enumerate(gas.species_names)}
 
     for j in range(z.size):
         gas.TPY = T[j], args.P, Y[:, j]
         rho[j] = gas.density
         cp_mass[j] = gas.cp_mass
+        conductivity[j] = gas.thermal_conductivity
         qdot[j] = gas.heat_release_rate
+        net_rates_mass = gas.net_production_rates * gas.molecular_weights
+        for species, weight in progress_weights.items():
+            if species in species_index:
+                omega_beta[j] += float(weight) * net_rates_mass[species_index[species]]
 
     c, beta, _ = compute_progress_variable(
         species_names=list(gas.species_names),
@@ -535,6 +575,12 @@ def solve_flame_native(
         T=T,
         progress_weights=progress_weights,
     )
+    beta_span = float(beta[-1] - beta[0])
+    if abs(beta_span) <= 1.0e-14:
+        raise RuntimeError(
+            f"La variable de progreso no define una fuente normalizada en phi={phi:g}."
+        )
+    omega_c = omega_beta / beta_span
 
     rec = FlameRecord(
         phi=float(phi),
@@ -549,7 +595,8 @@ def solve_flame_native(
         width_m=float(z[-1] - z[0]),
         Su_m_per_s=float(u[0]),
         z=z, u=u, T=T, rho=rho, cp_mass=cp_mass,
-        qdot=qdot, Y=Y, c=c, beta=beta,
+        conductivity=conductivity, qdot=qdot, omega_c=omega_c,
+        Y=Y, c=c, beta=beta,
     )
     next_solution = {
         "phi": np.array([float(phi)], dtype=float),
@@ -619,7 +666,8 @@ def write_raw_profiles(out_dir: Path, records: list[FlameRecord], species_names:
             residual_inf=np.array([rec.residual_inf], dtype=float),
             weighted_step_norm=np.array([rec.weighted_step_norm], dtype=float),
             z=rec.z, u=rec.u, T=rec.T, rho=rec.rho,
-            cp_mass=rec.cp_mass, qdot=rec.qdot,
+            cp_mass=rec.cp_mass, conductivity=rec.conductivity,
+            qdot=rec.qdot, omega_c=rec.omega_c,
             Y=rec.Y, c=rec.c, beta=rec.beta,
             species_names=np.array(species_names, dtype=object),
         )
@@ -653,7 +701,9 @@ def build_tables(
     u_tab    = np.zeros((n_phi, n_c), dtype=float)
     rho_tab  = np.zeros((n_phi, n_c), dtype=float)
     cp_tab   = np.zeros((n_phi, n_c), dtype=float)
+    conductivity_tab = np.zeros((n_phi, n_c), dtype=float)
     qdot_tab = np.zeros((n_phi, n_c), dtype=float)
+    omega_c_tab = np.zeros((n_phi, n_c), dtype=float)
     beta_tab = np.zeros((n_phi, n_c), dtype=float)
     Y_tab    = np.zeros((n_phi, n_sp, n_c), dtype=float)
 
@@ -661,13 +711,16 @@ def build_tables(
         c_u, base = monotonicize_on_c(
             rec.c,
             {"T": rec.T, "u": rec.u, "rho": rec.rho,
-             "cp": rec.cp_mass, "qdot": rec.qdot, "beta": rec.beta},
+             "cp": rec.cp_mass, "conductivity": rec.conductivity,
+             "qdot": rec.qdot, "omega_c": rec.omega_c, "beta": rec.beta},
         )
         T_tab[i]    = np.interp(c_grid, c_u, base["T"])
         u_tab[i]    = np.interp(c_grid, c_u, base["u"])
         rho_tab[i]  = np.interp(c_grid, c_u, base["rho"])
         cp_tab[i]   = np.interp(c_grid, c_u, base["cp"])
+        conductivity_tab[i] = np.interp(c_grid, c_u, base["conductivity"])
         qdot_tab[i] = np.interp(c_grid, c_u, base["qdot"])
+        omega_c_tab[i] = np.interp(c_grid, c_u, base["omega_c"])
         beta_tab[i] = np.interp(c_grid, c_u, base["beta"])
         for k in range(n_sp):
             c_k, out_k = monotonicize_on_c(rec.c, {"Y": rec.Y[k]})
@@ -681,7 +734,8 @@ def build_tables(
         "residual_inf": residual_inf, "weighted_step_norm": weighted_step_norm,
         "n_points": n_points, "width": width, "solve_time": solve_time,
         "T": T_tab, "u": u_tab, "rho": rho_tab, "cp_mass": cp_tab,
-        "qdot": qdot_tab, "beta": beta_tab, "Y": Y_tab,
+        "conductivity": conductivity_tab, "qdot": qdot_tab,
+        "omega_c": omega_c_tab, "beta": beta_tab, "Y": Y_tab,
     }
 
 
@@ -702,6 +756,8 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--outlet-species-bc", type=str, default="zero_gradient",
                    choices=("zero_gradient", "cantera_flux"),
                    help="Salida de especies: zero_gradient reproduce Outlet de Cantera FreeFlame; cantera_flux usa la condicion cruda de Flow1D.")
+    p.add_argument("--upwind-factor", type=float, default=1.0,
+                   help="Peso convectivo: 1.0=upwind puro, 0.0=central; experimental para ensayar esquemas tipo Lapointe.")
     p.add_argument("--T-in",             type=float, default=300.0)
     p.add_argument("--P",                type=float, default=101325.0)
     p.add_argument("--width",            type=float, default=0.03)
@@ -727,17 +783,32 @@ def build_argparser() -> argparse.ArgumentParser:
                    help="Límite superior de phi para invertir Z->phi.")
 
     # Refinamiento tipo Cantera
-    p.add_argument("--ratio",             type=float, default=10.0)
-    p.add_argument("--slope",             type=float, default=0.8)
-    p.add_argument("--curve",             type=float, default=0.8)
-    p.add_argument("--prune",             type=float, default=-0.001)
-    p.add_argument("--max-grid-points",   type=int,   default=500)
+    p.add_argument("--ratio",             type=float, default=2.5)
+    p.add_argument("--slope",             type=float, default=0.04)
+    p.add_argument("--curve",             type=float, default=0.08)
+    p.add_argument("--prune",             type=float, default=0.003)
+    p.add_argument("--max-grid-points",   type=int,   default=1600)
     p.add_argument("--max-refine-passes", type=int,   default=6,
                    help="Máximo de ciclos solve/refine por flamelet.")
-    p.add_argument("--require-grid-convergence", action="store_true",
-                   help="Rechaza el flamelet si llega al máximo de refinamientos sin converger la malla.")
+    p.add_argument(
+        "--require-grid-convergence",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Rechaza el flamelet si llega al máximo de refinamientos sin "
+            "converger la malla (activo por defecto)."
+        ),
+    )
     p.add_argument("--grid-min",          type=float, default=0.0)
-    p.add_argument("--tight-refine-passes", type=int, default=0)
+    p.add_argument(
+        "--tight-refine-passes",
+        type=int,
+        default=0,
+        help=(
+            "Activa una segunda etapa con los criterios tight; su presupuesto "
+            "es al menos --max-refine-passes. Cero la desactiva."
+        ),
+    )
     p.add_argument("--tight-ratio",       type=float, default=2.5)
     p.add_argument("--tight-slope",       type=float, default=0.04)
     p.add_argument("--tight-curve",       type=float, default=0.08)
@@ -768,6 +839,12 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--precompute-jacobian-thermo", action=argparse.BooleanOptionalAction,
                    default=True,
                    help="Precalcula termoquimica perturbada de todo el Jacobiano block_tridiag.")
+    p.add_argument(
+        "--compiled-block-substitution",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Fusiona en Numba las sustituciones de la LU block-tridiagonal.",
+    )
     p.add_argument("--allow-failed-flamelets", action="store_true",
                    help="Permite guardar la tabla aunque algun flamelet no converja.")
     p.add_argument("--disable-continuation", action="store_true",
@@ -776,6 +853,15 @@ def build_argparser() -> argparse.ArgumentParser:
                    help="Desactiva predictor secante entre flamelets.")
     p.add_argument("--continuation-predictor-damping", type=float, default=0.7,
                    help="Amortiguamiento del predictor secante en phi.")
+    p.add_argument(
+        "--continuation-trust-ratio",
+        type=float,
+        default=_CONTINUATION_MAX_PHI_RATIO,
+        help=(
+            "Razon multiplicativa maxima para reutilizar una semilla en phi; "
+            "0 desactiva solo esta cota para la ablacion no acotada."
+        ),
+    )
     p.add_argument("--restart-insert-anchor", action="store_true",
                    help="Inserta un punto exacto de ancla de T tambien en reinicios.")
     p.add_argument("--auto-bootstrap-grids", action=argparse.BooleanOptionalAction,
@@ -796,9 +882,9 @@ def build_argparser() -> argparse.ArgumentParser:
                    help="Hilos Numba por proceso; 0 divide los CPU entre workers.")
 
     # Tabla FGM
-    p.add_argument("--n-c",            type=int,   default=81)
-    p.add_argument("--c-fine",         type=int,   default=401)
-    p.add_argument("--refine-bias",    type=float, default=2.0)
+    p.add_argument("--n-c",            type=int,   default=241)
+    p.add_argument("--c-fine",         type=int,   default=2001)
+    p.add_argument("--refine-bias",    type=float, default=5.0)
     p.add_argument("--progress-species", type=str,
                    default="CO2:1.0,H2O:1.0,CO:1.0,H2:0.5")
     p.add_argument("--indicator-species", type=str,
@@ -820,6 +906,8 @@ def build_argparser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = build_argparser().parse_args()
+    if not 0.0 <= float(args.upwind_factor) <= 1.0:
+        raise SystemExit("--upwind-factor debe estar entre 0.0 y 1.0")
     t_global0 = time.perf_counter()
     bilger_gas = ct.Solution(args.mech)
 
@@ -869,6 +957,8 @@ def main() -> None:
     print("FGM TABLE GENERATOR (V2 native CPU) - Z-C space")
     print("=" * 70)
     print(f"Cantera version : {ct.__version__}")
+    print(f"Reference flow  : {V2_REFERENCE_WORKFLOW}")
+    print("External tool   : none (Streamline Flamelet Table Tool not invoked)")
     print(f"Output          : {out_dir.resolve()}")
     print(
         "refine          : "
@@ -881,6 +971,7 @@ def main() -> None:
         f"initial_grid={args.initial_grid_points}, "
         "transient=PTC-SER/BE-fallback, "
         f"damp=step_norm/{args.damp_factor:g}, "
+        f"upwind_factor={args.upwind_factor:g}, "
         f"jacobian={args.jacobian_mode}, "
         "transient_linear=direct"
     )
@@ -1116,6 +1207,7 @@ def main() -> None:
     )
 
     tables = build_tables(records=records, species_names=species_names, c_grid=c_grid)
+    table_validation = validate_fgm_table(tables)
 
     np.savez_compressed(
         out_dir / "fgm_table.npz",
@@ -1132,6 +1224,16 @@ def main() -> None:
 
     meta = {
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "solver_backend": "v2_native",
+        "reference_workflow": V2_REFERENCE_WORKFLOW,
+        "reference_solver": V2_REFERENCE_SOLVER,
+        "external_flamelet_table_tool_used": EXTERNAL_FLAMELET_TABLE_TOOL_USED,
+        "external_flamelet_table_tool": EXTERNAL_FLAMELET_TABLE_TOOL,
+        "table_builder": TABLE_BUILDER,
+        "timing_scope": (
+            "V2 native solve plus configured continuation/cache/parallel policy; "
+            "excludes any external Streamline Flamelet Table Tool execution"
+        ),
         "cantera_version": ct.__version__,
         "args": vars(args),
         "mode": "Z-grid" if z_mode else "phi-grid",
@@ -1139,18 +1241,36 @@ def main() -> None:
         "n_species": len(species_names),
         "species_names": species_names,
         "used_progress_species": used_progress_species,
+        "table_field_units": {
+            "T": "K",
+            "u": "m/s",
+            "rho": "kg/m^3",
+            "cp_mass": "J/(kg K)",
+            "conductivity": "W/(m K)",
+            "qdot": "W/m^3",
+            "omega_c": "kg/(m^3 s)",
+            "Y": "1",
+        },
+        "omega_c_definition": (
+            "sum_k(a_k W_k omega_k_molar)/(beta_b-beta_u), "
+            "with the progress weights stored in args.progress_species"
+        ),
         "n_phi": len(phi_vals),
         "n_c": int(c_grid.size),
+        "table_validation": table_validation,
         "all_solve_ok": bool(np.all(tables["solve_ok"])),
         "max_residual_inf": float(np.nanmax(tables["residual_inf"])),
         "max_weighted_step_norm": float(np.nanmax(tables["weighted_step_norm"])),
         "all_final_accepted": bool(np.all(tables["final_accepted"])),
         "acceptance_criterion": str(args.acceptance_criterion),
         "residual_guard_inf": float(args.residual_guard_inf),
+        "upwind_factor": float(args.upwind_factor),
         "precompute_jacobian_thermo": bool(args.precompute_jacobian_thermo),
+        "compiled_block_substitution": bool(args.compiled_block_substitution),
         "openblas_num_threads": os.environ.get("OPENBLAS_NUM_THREADS", "auto"),
         "continuation_predictor_enabled": not bool(args.disable_continuation_predictor),
         "continuation_predictor_damping": float(args.continuation_predictor_damping),
+        "continuation_trust_ratio": float(args.continuation_trust_ratio),
         "restart_insert_anchor": bool(args.restart_insert_anchor),
         "seed_cache_dir": str(seed_cache_directory(args).resolve()),
         "seed_cache_used": seed_cache_used,

@@ -945,6 +945,7 @@ class SolveOptions:
     jac_threshold: float = 0.0
     jacobian_mode: str = "numba_local"
     precompute_jacobian_thermo: bool = True
+    compiled_block_substitution: bool = True
     alpha_min: float = 1e-10
 
     # Time-stepping (híbrido)
@@ -1039,6 +1040,9 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
     problem.jacobian_threshold = float(getattr(opts, "jac_threshold", 0.0))
     problem.jacobian_mode = str(getattr(opts, "jacobian_mode", "numba_local"))
     problem.precompute_jacobian_thermo = bool(getattr(opts, "precompute_jacobian_thermo", False))
+    problem.use_compiled_block_substitution = bool(
+        getattr(opts, "compiled_block_substitution", True)
+    )
     steady_fun = _make_steady_fun(problem)
     jac: JacobianState | None = None
     dt = float(opts.time_step)

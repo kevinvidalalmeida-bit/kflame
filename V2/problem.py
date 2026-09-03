@@ -80,6 +80,10 @@ class FreeFlameProblem:
         self.outlet_species_bc = str(
             getattr(case, "outlet_species_bc", "zero_gradient")
         ).strip().lower()
+        upwind_factor = float(getattr(case, "upwind_factor", 1.0))
+        if not np.isfinite(upwind_factor):
+            upwind_factor = 1.0
+        self.upwind_factor = float(np.clip(upwind_factor, 0.0, 1.0))
 
         # ---- Opciones de refinamiento ----
         self.refine_with_u = bool(getattr(case, "refine_with_u", True))

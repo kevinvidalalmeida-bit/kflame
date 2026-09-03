@@ -44,14 +44,18 @@ Ese directorio contiene:
 - `FGM/scripts/generate_fgm_tables_cantera.py`: generador FGM de referencia.
 - `FGM/scripts/fgm_common.py`: matemática y utilidades compartidas por ambos
   generadores, sin código duplicado.
-- `FGM/resultados/`: salidas generadas localmente; Git las ignora y no se
-  versionan.
-- `TESIS/`: material de la tesis conservado.
+- `FGM/resultados/`: salidas voluminosas generadas localmente; Git las ignora.
+- `evidence/tfm_20260903/`: resúmenes compactos y versionados de la evidencia
+  utilizada en la tesis.
+- `TESIS/TFM_FGM_FINAL.tex`: manuscrito maestro de la tesis.
+- `output/pdf/TFM_FGM_FINAL.pdf`: PDF final verificado.
 
 Los perfiles, cachés, respaldos, binarios compilados y scripts de ensayo se
 eliminaron del árbol de trabajo. La ruta de producción usa Newton amortiguado
 tipo Cantera, continuación pseudo-transitoria PTC-SER con rescate BE,
-Jacobiano block-tridiagonal y SciPy/LAPACK. En cada paso PTC se hace una sola
+Jacobiano block-tridiagonal y una ruta lineal híbrida. SciPy/LAPACK conserva la
+factorización pivotada de cada bloque; un kernel Numba fusiona las sustituciones
+hacia delante y atrás a lo largo de la malla. En cada paso PTC se hace una sola
 corrección lineal y el paso temporal se adapta con la reducción del residual;
 si esa corrección falla, el solver vuelve al Euler implícito totalmente
 convergido. En el generador FGM, la ruta fría usa por defecto
@@ -74,6 +78,10 @@ validar la configuración final.
 Las variantes medidas y descartadas están registradas en
 [`DECISIONES_DESCARTADAS.md`](DECISIONES_DESCARTADAS.md). No deben volver a
 añadirse sin una validación end-to-end de FGM reproducible.
+
+La interpretación científica de los resultados, las pruebas todavía necesarias
+para un artículo y las extensiones matemáticas candidatas se mantienen en
+[`PAPER_ROADMAP.md`](PAPER_ROADMAP.md).
 
 La continuación FGM trata cada perfil previo como una aproximación local: lo
 reutiliza solo cuando la razón entre valores consecutivos de `phi` está entre

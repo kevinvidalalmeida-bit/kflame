@@ -210,7 +210,11 @@ def build_global_indicator(
         if species in species_indices
     ]
     epsilon = 1e-30
-    accumulated = np.zeros_like(c_fine)
+    # A common c-grid must retain a narrow feature even when it appears in a
+    # single mixture only.  An arithmetic mean diluted precisely those local
+    # structures as the number of flamelets increased; the envelope is the
+    # conservative monitor for a shared structured table.
+    envelope = np.zeros_like(c_fine)
 
     for record in records:
         c_unique, output = monotonicize_on_c(
@@ -249,15 +253,12 @@ def build_global_indicator(
             )
         if np.max(score) > 0.0:
             score /= np.max(score)
-        accumulated += np.interp(
-            c_fine,
-            c_unique,
-            score,
-            left=score[0],
-            right=score[-1],
+        local_indicator = np.interp(
+            c_fine, c_unique, score, left=score[0], right=score[-1]
         )
+        np.maximum(envelope, local_indicator, out=envelope)
 
-    return accumulated / float(len(records)) if records else np.ones_like(c_fine)
+    return envelope if records else np.ones_like(c_fine)
 
 
 def build_adaptive_c_grid(
@@ -287,3 +288,120 @@ def build_adaptive_c_grid(
     combined[0] = 0.0
     combined[-1] = 1.0
     return combined
+
+
+def validate_fgm_table(
+    table: dict[str, np.ndarray],
+    *,
+    mass_tolerance: float = 1.0e-6,
+    species_tolerance: float = 1.0e-8,
+) -> dict[str, float | int | bool]:
+    """Validate the numerical contract of a structured ``(Z, c)`` table.
+
+    This check runs before persistence so a completed generator cannot silently
+    publish an array with swapped axes, non-finite values, invalid endpoints, or
+    a composition that no longer sums to one after interpolation.
+    """
+
+    required = {
+        "phi_grid",
+        "Z_grid",
+        "c_grid",
+        "Su",
+        "T",
+        "u",
+        "rho",
+        "cp_mass",
+        "conductivity",
+        "qdot",
+        "omega_c",
+        "beta",
+        "Y",
+    }
+    missing = sorted(required.difference(table))
+    if missing:
+        raise ValueError(f"La tabla FGM no contiene los campos requeridos: {missing}")
+
+    phi = np.asarray(table["phi_grid"], dtype=float)
+    z_grid = np.asarray(table["Z_grid"], dtype=float)
+    c_grid = np.asarray(table["c_grid"], dtype=float)
+    if phi.ndim != 1 or z_grid.ndim != 1 or c_grid.ndim != 1:
+        raise ValueError("Los ejes phi, Z y c deben ser unidimensionales.")
+    if phi.size != z_grid.size or phi.size < 1 or c_grid.size < 2:
+        raise ValueError("Las dimensiones de los ejes FGM no son compatibles.")
+    if not (np.all(np.isfinite(phi)) and np.all(np.isfinite(z_grid)) and np.all(np.isfinite(c_grid))):
+        raise ValueError("Los ejes FGM contienen NaN o infinitos.")
+    if phi.size > 1 and (np.any(np.diff(phi) <= 0.0) or np.any(np.diff(z_grid) <= 0.0)):
+        raise ValueError("Los ejes phi y Z deben ser estrictamente crecientes.")
+    if np.any(np.diff(c_grid) <= 0.0) or c_grid[0] != 0.0 or c_grid[-1] != 1.0:
+        raise ValueError("El eje c debe ser estricto y tener extremos exactos 0 y 1.")
+
+    nz, nc = phi.size, c_grid.size
+    su = np.asarray(table["Su"], dtype=float)
+    if su.shape != (nz,) or not np.all(np.isfinite(su)):
+        raise ValueError("Su debe tener forma (N_Z,) y valores finitos.")
+
+    scalar_fields = (
+        "T",
+        "u",
+        "rho",
+        "cp_mass",
+        "conductivity",
+        "qdot",
+        "omega_c",
+        "beta",
+    )
+    arrays: dict[str, np.ndarray] = {}
+    for field in scalar_fields:
+        values = np.asarray(table[field], dtype=float)
+        if values.shape != (nz, nc):
+            raise ValueError(
+                f"{field} tiene forma {values.shape}; se esperaba {(nz, nc)}."
+            )
+        if not np.all(np.isfinite(values)):
+            raise ValueError(f"{field} contiene NaN o infinitos.")
+        arrays[field] = values
+
+    for field in ("T", "rho", "cp_mass", "conductivity"):
+        if np.any(arrays[field] <= 0.0):
+            raise ValueError(f"{field} debe ser estrictamente positivo.")
+
+    mass_fractions = np.asarray(table["Y"], dtype=float)
+    if mass_fractions.ndim != 3 or mass_fractions.shape[0] != nz or mass_fractions.shape[2] != nc:
+        raise ValueError(
+            "Y debe usar el orden (N_Z, N_especies, N_c); "
+            f"se recibió {mass_fractions.shape}."
+        )
+    if not np.all(np.isfinite(mass_fractions)):
+        raise ValueError("Y contiene NaN o infinitos.")
+    min_species = float(np.min(mass_fractions))
+    if min_species < -float(species_tolerance):
+        raise ValueError(
+            f"La fracción másica mínima ({min_species:.3e}) excede la tolerancia."
+        )
+    mass_sum_error = float(
+        np.max(np.abs(np.sum(mass_fractions, axis=1) - 1.0))
+    )
+    if mass_sum_error > float(mass_tolerance):
+        raise ValueError(
+            f"El error máximo de suma de fracciones ({mass_sum_error:.3e}) "
+            f"excede {mass_tolerance:.3e}."
+        )
+
+    for flag in ("solve_ok", "final_accepted"):
+        if flag in table:
+            values = np.asarray(table[flag], dtype=bool)
+            if values.shape != (nz,) or not np.all(values):
+                raise ValueError(f"Todos los flamelets deben satisfacer {flag}.")
+
+    return {
+        "valid": True,
+        "n_Z": int(nz),
+        "n_c": int(nc),
+        "n_species": int(mass_fractions.shape[1]),
+        "max_mass_fraction_sum_error": mass_sum_error,
+        "min_mass_fraction": min_species,
+        "min_temperature_K": float(np.min(arrays["T"])),
+        "min_density_kg_m3": float(np.min(arrays["rho"])),
+        "min_conductivity_W_mK": float(np.min(arrays["conductivity"])),
+    }
