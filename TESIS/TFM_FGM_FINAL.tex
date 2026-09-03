@@ -105,6 +105,13 @@
 \newcommand{\Vdos}{\textsc{V2}\xspace}
 \newcommand{\Cantera}{\textsc{Cantera}\xspace}
 \newcommand{\codigo}[1]{\texttt{#1}}
+\newcommand{\pendiente}[1]{%
+  \begin{center}
+  \fcolorbox{naranjaTFM}{naranjaTFM!7}{%
+    \begin{minipage}{0.90\textwidth}
+      \textbf{Resultado pendiente de campaña final.} #1
+    \end{minipage}}
+  \end{center}}
 \newcommand{\resultadoverificado}[1]{%
   \begin{center}
   \fcolorbox{verdeTFM}{verdeTFM!6}{%
@@ -2515,36 +2522,39 @@ La correspondencia depende de las composiciones exactas de combustible y
 oxidante. Por tanto, una tabla no debe reutilizar un mapa \(Z\leftrightarrow\phi\)
 de otro combustible aunque el mecanismo sea el mismo.
 
-\section{Continuación por perfiles}
+\section{Continuación paramétrica certificada}
 
-Si \(\vect{x}(\phi_i)\) es una llama aceptada, puede interpolarse a la malla
-inicial del siguiente problema y usarse como semilla. Para dos soluciones
-previas se define un predictor secante,
+La continuación exterior no debe confundirse con Newton--PTC--BE. Estos últimos
+son el corrector no lineal de una sola llama a parámetros fijos. La continuación
+opera entre llamas ya certificadas y usa la coordenada
 \begin{equation}
-  \vect{x}_{i+1}^{\mathrm{pred}}=
+  \lambda=\log\phi,
+  \label{eq:continuation-log-phi}
+\end{equation}
+de modo que cambios multiplicativos pobres y ricos tengan la misma escala.
+Para dos soluciones anteriores, transferidas primero a una malla común, el
+predictor secante es
+\begin{equation}
+  \vect{x}^{\mathrm{pred}}(\lambda_{i+1})=
   \vect{x}_{i}+\gamma
-  \frac{\phi_{i+1}-\phi_i}{\phi_i-\phi_{i-1}}
-  \left(\vect{x}_{i}-\vect{x}_{i-1}\right),
+  \frac{\lambda_{i+1}-\lambda_i}{\lambda_i-\lambda_{i-1}}
+  \left(\vect{x}_{i}-\mathcal I_{i-1\rightarrow i}\vect{x}_{i-1}\right).
   \label{eq:secant-predictor}
 \end{equation}
-El predictor de \cref{eq:secant-predictor} usa \(\gamma=0.7\) y un factor secante
-limitado a \([-0.5,1]\). Antes de combinar
-los perfiles, ambos se expresan sobre una malla compatible y se corrigen
-fracciones másicas.
+El factor \(\gamma=0.7\) se limita a un intervalo acotado y el estado se
+proyecta sobre límites de temperatura, especies no negativas, composición
+normalizada y condición de entrada. Con un único perfil previo se usa su copia
+proyectada; sin perfil certificado se inicia desde el estado físico.
 
-Una continuación sin límites presupone que la rama es casi lineal para cualquier
-salto. Los ensayos mostraron lo contrario: una semilla lejana podía inducir una
-trayectoria no lineal larga y una malla innecesariamente densa. Se introdujo la
-región de confianza multiplicativa
+La comparación histórica conserva una región de confianza fija como baseline:
 \begin{equation}
   \frac{1}{1.15}\le\frac{\phi_{i+1}}{\phi_i}\le1.15.
   \label{eq:phi-trust-region}
 \end{equation}
-La \cref{eq:phi-trust-region} limita la reutilización local. Fuera de ella se
-reinicia desde la conjetura física robusta y se elimina también
-el historial secante. La regla no busca detectar una bifurcación con rigor
-matemático; es una protección empírica, explícita y reproducible contra
-extrapolación no local.
+Fuera de \cref{eq:phi-trust-region}, esta estrategia fija reinicia desde la
+conjetura física. Es una referencia reproducible, pero no es todavía un
+predictor--corrector adaptativo: no cuantifica el error del predictor ni modifica
+el paso siguiente.
 
 \begin{figure}[htbp]
 \centering
@@ -2555,22 +2565,66 @@ extrapolación no local.
     \fill[azulTFM] (\x,0) circle (2.2pt);
   }
   \draw[-{Latex},very thick,verdeTFM,bend left=35] (2.5,0.18) to
-    node[above]{continuación local} (3.5,0.18);
+    node[above]{local} (3.5,0.18);
   \draw[-{Latex},very thick,verdeTFM,bend left=35] (3.5,0.18) to
-    node[above]{local} (4.5,0.18);
+    (4.5,0.18);
   \draw[-{Latex},very thick,naranjaTFM,dashed,bend left=42] (0.5,0.35) to
     node[above]{reinicio: salto \(>15\%\)} (2.5,0.35);
   \draw[-{Latex},very thick,naranjaTFM,dashed,bend left=42] (4.5,0.35) to
     node[above]{reinicio} (7.5,0.35);
 \end{tikzpicture}
-\caption{Interpretación de la región de confianza para el barrido amplio. La
-continuación es un modelo local de la rama, no una obligación de reutilizar cada
-perfil anterior.}
+\caption{Baseline de región de confianza fija para el barrido amplio. La
+continuación es local; los saltos no locales se reinician en esta referencia.}
 \label{fig:trust-region-phi}
 \end{figure}
 
-La \cref{fig:trust-region-phi} distingue visualmente la continuación local de los
-saltos que obligan a reiniciar.
+La \cref{fig:trust-region-phi} distingue la referencia fija de la continuación
+adaptativa introducida a continuación.
+
+\subsection{Predictor--corrector adaptativo certificado}
+
+El método productivo de continuación propone un punto en \(\lambda\), corrige la
+llama completa con la cadena Newton--PTC--BE y aplica exactamente el predicado de
+aceptación de \cref{eq:acceptance-predicate}. Tras una corrección aceptada, el
+defecto del predictor se mide sobre la malla final como
+\begin{equation}
+  \eta_p=\left[\frac{1}{Nn_v}\sum_{j,v}
+  \left(\frac{x_{j,v}^*-x_{j,v}^{\mathrm{pred}}}
+  {\varepsilon_{a,v}+\varepsilon_{r,v}\,\overline{\abs{x_v^*}}}\right)^2
+  \right]^{1/2}.
+  \label{eq:predictor-corrector-defect}
+\end{equation}
+La normalización de \cref{eq:predictor-corrector-defect} coincide con la usada
+para las correcciones no lineales y evita atribuir un defecto grande únicamente a
+las unidades de temperatura o a una especie traza.
+
+El paso \(\Delta\lambda\) se inicia en \(\log(1.15)\), se limita a
+\([\log(1.02),\log(1.20)]\) y, después de tres defectos secantes aceptados,
+usa su mediana \(\eta_{\rm ref}\) para actualizarse como
+\begin{equation}
+  \Delta\lambda_{i+1}=\operatorname{clip}\left[
+  \Delta\lambda_i\operatorname{clip}\left(
+  0.9\sqrt{\frac{\eta_{\rm ref}}{\max(\eta_p,\epsilon)}},0.5,1.25\right),
+  \log(1.02),\log(1.20)\right].
+  \label{eq:adaptive-continuation-step}
+\end{equation}
+Si el corrector falla, el estado de prueba no se guarda: se conserva el último
+flamelet certificado, se reduce el paso y se reintenta. Tras cuatro rechazos o
+al alcanzar el paso mínimo, se resuelve el objetivo mediante un arranque frío y
+se registra explícitamente la recuperación. Un defecto alto de un flamelet
+certificado reduce solo el paso posterior; no invalida una solución física.
+
+Cuando un objetivo solicitado requiere varios pasos, los puntos puente se
+incorporan como filas adicionales del manifold y quedan marcados de forma
+explícita. La traza de cada intento conserva parámetros inicial, objetivo y
+prueba, predictor empleado, defecto, refinamientos, expansiones de dominio,
+tiempo, aceptación, reintentos y paso siguiente. Por tanto, la caché acelera una
+semilla pero no sustituye ni la corrección ni la certificación.
+
+\pendiente{La campaña P0--P2 debe comparar arranque frío, región fija, puentes
+fijos y predictor--corrector adaptativo sobre las mismas condiciones. Hasta
+medirla, esta sección describe el método implementado y no atribuye una mejora
+temporal adicional.}
 
 \section{Caché de semillas certificadas}
 
@@ -2729,6 +2783,13 @@ La referencia es una llamada directa a \codigo{FreeFlame}; ambas rutas entregan
 sus perfiles al mismo posprocesado FGM. Por tanto, los tiempos responden a la
 pregunta ``V2 frente a \codigo{FreeFlame} bajo este protocolo'' y no se
 extrapolan a otras herramientas de tabulación.
+
+Cuando se evalúa una continuación con puentes, V2 guarda la secuencia final de
+relaciones de equivalencia, incluyendo las filas solicitadas y las añadidas por
+el controlador. La comparación con Cantera debe reproducir exactamente esa
+secuencia antes de contrastar tiempos o errores: las filas puente mejoran la
+resolución paramétrica de ambos métodos y no pueden convertirse en una ventaja
+de cobertura exclusiva de uno de ellos.
 
 \section{Reproducibilidad}
 
@@ -3269,10 +3330,11 @@ Las conclusiones principales son:
         demuestra ventaja de especialización, no invalidez de la herramienta
         general.
 
-  \item \textbf{La contribución diferenciadora es la continuación protegida por
-        certificación.} Una llama solo se reutiliza si fue aceptada y si el nuevo
-        \(\phi\) satisface la región multiplicativa de confianza. La ablación con
-        el límite desactivado aísla el ahorro y evita atribuirlo a otros kernels.
+  \item \textbf{La continuación debe estar protegida por certificación.} La
+        evidencia medida corresponde a la región multiplicativa fija: una llama
+        solo se reutiliza si fue aceptada y el nuevo \(\phi\) es local. El
+        predictor--corrector adaptativo ya implementado conserva ese certificado,
+        pero su ganancia queda pendiente de la ablación predefinida.
 
   \item \textbf{Una tabla estructuralmente correcta no es necesariamente una
         tabla resuelta en el espacio paramétrico.} Con cinco mezclas, la
@@ -3309,8 +3371,8 @@ la jerarquía de certificación ya demostrada. Se propone el siguiente orden:
         incertidumbre;
   \item repetir la verificación al variar temperatura, presión y mecanismo;
   \item incorporar transporte multicomponente y Soret para H\(_2\);
-  \item convertir la región fija de confianza en un radio adaptativo basado en
-        aceptación y coste observado;
+  \item ejecutar la ablación del predictor--corrector adaptativo frente a la
+        región fija, puentes fijos y arranque frío;
   \item insertar filas en \(Z\) hasta satisfacer la validación cruzada;
   \item contrastar velocidades con datos experimentales cuya incertidumbre esté
         documentada.
@@ -3346,11 +3408,12 @@ La \cref{eq:parametric-adaptivity} define el error local de inserción; se añad
 flamelet solo si \(\eta_i\) supera tolerancia. Esto reduce el
 número de llamas y sitúa nuevos estados donde la validación los exige.
 
-El radio 1.15 puede evolucionar de constante empírica a regla adaptativa. Un
-paso que converge con bajo coste ampliaría moderadamente la vecindad; un rechazo,
-una expansión grande de malla o un coste superior al arranque frío la reduciría.
-La adopción de esta mejora requerirá una ablación frente al radio fijo sobre varios
-mecanismos, sin cambiar los criterios de aceptación.
+El radio fijo ya cuenta con una implementación adaptativa basada en el defecto
+predictor--corrector de \cref{eq:predictor-corrector-defect}. Un paso corregido
+con defecto bajo amplía moderadamente la vecindad; un rechazo reduce el paso y
+activa una recuperación fría trazable si se agota el presupuesto. La adopción
+como ruta productiva requiere todavía la ablación frente al radio fijo sobre
+varios mecanismos, sin cambiar los criterios de aceptación.
 
 \section{Cierre}
 
@@ -3661,26 +3724,31 @@ los niveles fallan, reducir el paso y activar el rescate BE. \\
 El punto distintivo del flujo es que el amortiguamiento no vuelve a factorizar:
 todos sus candidatos reutilizan la corrección del paso 2.
 
-\section{Barrido FGM con continuación local}
+\section{Barrido FGM con predictor--corrector adaptativo}
 
 \begin{table}[htbp]
 \centering
-\caption{Barrido frío con continuación local certificada.}
+\caption{Barrido frío con predictor--corrector paramétrico certificado.}
 \label{alg:fgm-sweep}
 \begin{tabularx}{\textwidth}{@{}p{0.08\textwidth}Y@{}}
 \toprule
 \textbf{Paso} & \textbf{Operación} \\
 \midrule
-1 & Ordenar los valores de \(\phi\) y resolver el primero desde el estado
-físico. \\
-2 & Para el siguiente valor, comprobar
-\(1/1.15\le\phi_{i+1}/\phi_i\le1.15\). \\
-3 & Dentro de la región, transferir el último perfil aceptado y, con dos
-estados, formar el predictor secante amortiguado. \\
-4 & Fuera de la región, borrar el historial local y reiniciar desde el estado
-físico. \\
-5 & Incorporar el perfil a la familia solo si supera la certificación completa. \\
-6 & Construir el eje común, interpolar los campos y validar la tabla. \\
+1 & Ordenar los valores positivos de \(\phi\), definir
+\(\lambda=\log\phi\) y resolver el primer objetivo desde el estado físico. \\
+2 & Proponer el siguiente punto limitado por \(\Delta\lambda\); si no alcanza
+el objetivo solicitado, identificarlo como punto puente. \\
+3 & Transferir el último perfil aceptado y, con dos estados, formar el
+predictor secante de \cref{eq:secant-predictor}; proyectar el estado a límites
+físicos. \\
+4 & Corregir resolviendo la llama completa y aceptar solo si satisface el
+predicado de \cref{eq:acceptance-predicate}. \\
+5 & Tras una aceptación, calcular \(\eta_p\), actualizar el paso con
+\cref{eq:adaptive-continuation-step} y guardar la traza; tras un rechazo,
+reducir el paso sin guardar el estado de prueba. \\
+6 & Ante agotamiento de reintentos, realizar y etiquetar un arranque frío; las
+llamas certificadas, solicitadas o puente, forman las filas de la tabla. \\
+7 & Construir el eje común, interpolar los campos y validar la tabla. \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -3797,6 +3865,40 @@ hasta el límite configurado; la pendiente relativa de borde de referencia es
 0.02. Estos valores deben figurar junto a cualquier tiempo, porque una malla no
 convergida puede parecer artificialmente rápida.
 
+\section{Continuación paramétrica}
+
+La referencia fija usa la razón máxima de \SI{15}{\percent} de
+\cref{eq:phi-trust-region}. El predictor--corrector adaptativo conserva esa
+escala como paso inicial, pero controla el paso en \(\log\phi\) y registra cada
+intento. La configuración de referencia se resume en
+\cref{tab:continuation-config}.
+
+\begin{table}[htbp]
+\centering
+\caption{Parámetros de la continuación paramétrica certificada.}
+\label{tab:continuation-config}
+\begin{tabularx}{\textwidth}{@{}p{0.34\textwidth}p{0.18\textwidth}Y@{}}
+\toprule
+\textbf{Parámetro} & \textbf{Valor} & \textbf{Función} \\
+\midrule
+Coordenada & \(\lambda=\log\phi\) & Hace simétricos los cambios
+multiplicativos de mezcla. \\
+Paso inicial & \(\log(1.15)\) & Reproduce la escala de la región fija como
+condición inicial. \\
+Intervalo de paso & 1,02--1,20 & Evita tanto saltos
+no locales como subdivisiones inútiles. \\
+Referencia de defecto & Mediana de 3 secantes & Evita fijar una escala de
+error dependiente de un único combustible. \\
+Factor de seguridad / clip & \(0.9\), \([0.5,1.25]\) & Limita la variación
+del paso entre correcciones. \\
+Máximo de rechazos & 4 & Activa un arranque frío trazable, no una semilla
+oculta. \\
+Filas puente & Sí & Aumentan la resolución paramétrica de la tabla y quedan
+marcadas en sus metadatos. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
 \section{Variables de entorno}
 
 La \cref{tab:thread-config} documenta el reparto de hilos y procesos de la
@@ -3814,8 +3916,8 @@ máquina de referencia.
 pequeños. \\
 \codigo{NUMBA\_NUM\_THREADS} & 4 & Mejor resultado del kernel secuencial en
 la máquina medida. \\
-\codigo{--numba-kinetics-}\newline\codigo{threads} & automático/4 & Permite repartir hilos entre
-procesos FGM. \\
+Hilos de química por proceso & automático/4 & Permite repartir el trabajo
+entre procesos FGM sin sobreparalelismo. \\
 Número de procesos & 1 frío; hasta \(N_\phi\) cacheado & Conservar continuación
 fría y explotar independencia cacheada. \\
 \bottomrule
@@ -3858,7 +3960,11 @@ usan el mismo posprocesado. Cada ejecución guarda argumentos, versiones, tiempo
 estado de aceptación, perfiles nodales y tabla final. Un tercer proceso de
 análisis lee esos archivos, alinea los frentes y produce las métricas y figuras
 del \cref{chap:resultados}. Los comandos literales permanecen junto a los
-generadores para evitar que la tesis dependa de una sintaxis de interfaz.
+generadores para evitar que la tesis dependa de una sintaxis de interfaz. En
+continuación adaptativa se añade una traza estructurada por intento: parámetros
+inicial, objetivo y prueba, predictor, defecto, refinamiento, dominio,
+aceptación, recuperación y paso siguiente. Así se puede reproducir la ruta, no
+solo sus resultados finales.
 
 \section{Lista de comprobación antes de medir}
 
@@ -3898,6 +4004,12 @@ consumidor de la tabla.
 \codigo{Su} & \((N_Z,)\) & Velocidad de llama por mezcla. \\
 \codigo{solve\_ok} & \((N_Z,)\) & Indicador de terminación del solve. \\
 \codigo{final\_accepted} & \((N_Z,)\) & Aceptación conjunta del flamelet. \\
+\codigo{requested} & \((N_Z,)\) & Marca las condiciones solicitadas por el diseño
+experimental. \\
+\codigo{bridge} & \((N_Z,)\) & Identifica filas puente añadidas por la continuación
+adaptativa. \\
+\codigo{predictor\_kind} & \((N_Z,)\) & Arranque frío, copia proyectada o predictor secante. \\
+\codigo{prediction\_defect} & \((N_Z,)\) & Defecto \(\eta_p\) evaluado tras la corrección. \\
 \codigo{residual\_inf} & \((N_Z,)\) & Guarda final de residual registrada. \\
 \codigo{weighted\_step\_}\newline\codigo{norm} & \((N_Z,)\) & Norma ponderada final. \\
 \codigo{n\_points} & \((N_Z,)\) & Nodos de la llama antes de proyección. \\

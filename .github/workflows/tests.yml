@@ -41,8 +41,10 @@ jobs:
             V2/solver.py \
             V2/run_saved_comparison.py \
             FGM/scripts/fgm_common.py \
+            FGM/scripts/fgm_continuation.py \
             FGM/scripts/generate_fgm_tables_native.py \
-            FGM/scripts/generate_fgm_tables_cantera.py
+            FGM/scripts/generate_fgm_tables_cantera.py \
+            FGM/scripts/analyze_predictor_corrector_ablation.py
 
       - name: Run regression tests
         run: python -m unittest discover -s tests -v

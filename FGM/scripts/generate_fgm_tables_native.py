@@ -50,6 +50,7 @@ from fgm_common import (
     parse_z_values,
     validate_fgm_table,
 )
+from fgm_continuation import AdaptiveContinuationController, ContinuationConfig
 
 
 _CONTINUATION_MAX_PHI_RATIO = 1.15
@@ -131,6 +132,10 @@ class FlameRecord:
     Y: np.ndarray
     c: np.ndarray
     beta: np.ndarray
+    requested: bool = True
+    bridge: bool = False
+    predictor_kind: str = "cold"
+    prediction_defect: float = float("nan")
 
 
 def load_seed_profile_npz(path: Path, n_species: int, source: str = "auto") -> dict[str, np.ndarray]:
@@ -180,7 +185,7 @@ def build_continuation_seed(
     use_predictor: bool,
     predictor_damping: float,
     trust_ratio: float = _CONTINUATION_MAX_PHI_RATIO,
-) -> dict[str, np.ndarray] | None:
+) -> dict[str, Any] | None:
     if prev_solution is None or "z" not in prev_solution or "x" not in prev_solution:
         return None
 
@@ -201,6 +206,7 @@ def build_continuation_seed(
         return None
 
     x_seed = x_prev.copy()
+    predictor_kind = "copy"
     if (
         use_predictor
         and prev_prev_solution is not None
@@ -211,17 +217,27 @@ def build_continuation_seed(
     ):
         phi0 = float(np.asarray(prev_prev_solution.get("phi")).ravel()[0])
         phi1 = float(np.asarray(prev_solution.get("phi")).ravel()[0])
-        dphi = phi1 - phi0
-        if abs(dphi) > 1.0e-14 and _is_local_phi_step(phi0, phi1, trust_ratio):
+        lambda0 = float(np.log(phi0)) if phi0 > 0.0 else float("nan")
+        lambda1 = float(np.log(phi1)) if phi1 > 0.0 else float("nan")
+        lambda_target = float(np.log(phi)) if phi > 0.0 else float("nan")
+        dlambda = lambda1 - lambda0
+        if (
+            np.isfinite(lambda_target)
+            and abs(dlambda) > 1.0e-14
+            and _is_local_phi_step(phi0, phi1, trust_ratio)
+        ):
             z0 = np.asarray(prev_prev_solution.get("z"), dtype=float)
             x0 = np.asarray(prev_prev_solution.get("x"), dtype=float)
             expected0 = int(z0.size) * (2 + n_sp)
             if z0.ndim == 1 and z0.size >= 2 and x0.size == expected0:
                 x0_on_prev = interpolate_state(x0, z0, z_prev, n_sp)
-                factor = (float(phi) - phi1) / dphi
+                # The continuation coordinate is lambda=log(phi), rather
+                # than phi itself, so rich and lean changes are symmetric.
+                factor = (lambda_target - lambda1) / dlambda
                 factor *= float(np.clip(predictor_damping, 0.0, 1.0))
                 factor = float(np.clip(factor, -0.5, 1.0))
                 x_seed = x_prev + factor * (x_prev - x0_on_prev)
+                predictor_kind = "secant"
 
     u, T, Y = unpack_state(x_seed, int(z_prev.size), n_sp)
 
@@ -240,7 +256,47 @@ def build_continuation_seed(
         "phi": np.array([float(phi)], dtype=float),
         "z": z_prev.copy(),
         "x": pack_state(u, T, Y),
+        "predictor_kind": predictor_kind,
     }
+
+
+def weighted_prediction_defect(
+    problem: FreeFlameProblem,
+    corrected_x: np.ndarray,
+    prediction: dict[str, np.ndarray] | None,
+) -> float:
+    """Return the weighted state defect after a full nonlinear correction.
+
+    The predictor is resampled on the final adaptive mesh.  Component scales
+    match the solver's weighted-step convention, which avoids letting
+    temperature or trace species dominate purely by their units.
+    """
+    if prediction is None or "x" not in prediction or "z" not in prediction:
+        return float("nan")
+    z_prediction = np.asarray(prediction["z"], dtype=float)
+    x_prediction = np.asarray(prediction["x"], dtype=float)
+    n_sp = int(problem.n_species)
+    n_vars = 2 + n_sp
+    expected = int(z_prediction.size) * n_vars
+    if z_prediction.ndim != 1 or z_prediction.size < 2 or x_prediction.size != expected:
+        return float("nan")
+    try:
+        predicted_on_final = interpolate_state(
+            x_prediction, z_prediction, np.asarray(problem.z, dtype=float), n_sp
+        )
+    except Exception:
+        return float("nan")
+    corrected = np.asarray(corrected_x, dtype=float).reshape(-1, n_vars)
+    predicted = np.asarray(predicted_on_final, dtype=float).reshape(-1, n_vars)
+    if corrected.shape != predicted.shape or not np.all(np.isfinite(predicted)):
+        return float("nan")
+    scales = (
+        float(getattr(problem, "steady_atol", 1.0e-9))
+        + float(getattr(problem, "steady_rtol", 1.0e-4))
+        * np.mean(np.abs(corrected), axis=0)
+    )
+    scales = np.maximum(scales, 1.0e-300)
+    return float(np.sqrt(np.mean(((corrected - predicted) / scales) ** 2)))
 
 
 def seed_cache_directory(args: argparse.Namespace) -> Path:
@@ -343,7 +399,7 @@ def write_cached_seed(
 def make_solve_options(args: argparse.Namespace) -> SolveOptions:
     opts = SolveOptions(
         verbose=(args.loglevel > 0),
-        profile=False,
+        profile=bool(args.profile_solver),
         max_total_time_s=float(args.max_flame_time_s),
     )
     opts.refine_Finf_limit = float(args.max_residual_inf)
@@ -377,7 +433,8 @@ def solve_flame_native(
     progress_weights: dict[str, float],
     prev_solution: dict[str, np.ndarray] | None = None,
     prev_prev_solution: dict[str, np.ndarray] | None = None,
-) -> tuple[FlameRecord, Any]:
+    continuation_trust_ratio: float | None = None,
+) -> tuple[FlameRecord, dict[str, np.ndarray], dict[str, Any]]:
     gas = ct.Solution(args.mech)
     gas.TP = float(args.T_in), float(args.P)
     gas.set_equivalence_ratio(float(phi), args.fuel, args.oxidizer)
@@ -418,7 +475,10 @@ def solve_flame_native(
     if float(args.grid_min) > 0.0:
         opts.refine_grid_min = float(args.grid_min)
 
+    selected_prediction: dict[str, Any] | None = None
+
     def run_once(jacobian_mode: str):
+        nonlocal selected_prediction
         problem = FreeFlameProblem(
             flame_case, n_points=max(2, int(args.initial_grid_points))
         )
@@ -436,8 +496,13 @@ def solve_flame_native(
             prev_prev_solution=prev_prev_solution,
             use_predictor=not bool(args.disable_continuation_predictor),
             predictor_damping=float(args.continuation_predictor_damping),
-            trust_ratio=float(args.continuation_trust_ratio),
+            trust_ratio=(
+                float(args.continuation_trust_ratio)
+                if continuation_trust_ratio is None
+                else float(continuation_trust_ratio)
+            ),
         )
+        selected_prediction = seed_solution
 
         x0 = None
         if seed_solution is not None and "z" in seed_solution and "x" in seed_solution:
@@ -582,6 +647,13 @@ def solve_flame_native(
         )
     omega_c = omega_beta / beta_span
 
+    predictor_kind = (
+        str(selected_prediction.get("predictor_kind", "copy"))
+        if selected_prediction is not None else "cold"
+    )
+    prediction_defect = weighted_prediction_defect(
+        problem, np.asarray(x_sol, dtype=float), selected_prediction
+    )
     rec = FlameRecord(
         phi=float(phi),
         Z=Z,
@@ -597,13 +669,28 @@ def solve_flame_native(
         z=z, u=u, T=T, rho=rho, cp_mass=cp_mass,
         conductivity=conductivity, qdot=qdot, omega_c=omega_c,
         Y=Y, c=c, beta=beta,
+        predictor_kind=predictor_kind,
+        prediction_defect=prediction_defect,
     )
     next_solution = {
         "phi": np.array([float(phi)], dtype=float),
         "z": z.copy(),
         "x": np.asarray(x_sol, dtype=float).copy(),
     }
-    return rec, next_solution
+    continuation_trace = {
+        "predictor_kind": predictor_kind,
+        "seeded": bool(selected_prediction is not None),
+        "prediction_defect": prediction_defect,
+        "n_refine_passes": int(len(report.get("passes", []))),
+        "n_domain_expansions": int(len(report.get("expansion_events", []))),
+        "solve_time_s": float(dt),
+        "final_accepted": bool(final_accepted),
+        "residual_inf": residual_inf,
+        "weighted_step_norm": weighted_step_norm,
+    }
+    if bool(getattr(args, "profile_solver", False)):
+        continuation_trace["solver_profile"] = report.get("profile", {})
+    return rec, next_solution, continuation_trace
 
 
 def solve_flame_from_seed_cache_worker(payload: tuple[int, float, str, argparse.Namespace]):
@@ -619,7 +706,7 @@ def solve_flame_from_seed_cache_worker(payload: tuple[int, float, str, argparse.
     seed_solution = load_seed_profile_npz(
         Path(seed_path_text), n_species=n_species, source="raw"
     )
-    rec, _ = solve_flame_native(
+    rec, _, _ = solve_flame_native(
         phi=float(phi),
         args=args,
         mech_data=mech_data,
@@ -641,13 +728,15 @@ def write_summary_csv(path: Path, records: list[FlameRecord]) -> None:
         wr.writerow([
             "phi", "Z", "solve_ok", "final_accepted", "acceptance_criterion",
             "residual_inf", "weighted_step_norm", "Su_m_per_s",
-            "n_points", "width_m", "solve_time_s",
+            "n_points", "width_m", "solve_time_s", "requested", "bridge",
+            "predictor_kind", "prediction_defect",
         ])
         for rec in records:
             wr.writerow([
                 rec.phi, rec.Z, rec.solve_ok, rec.final_accepted,
                 rec.acceptance_criterion, rec.residual_inf, rec.weighted_step_norm,
                 rec.Su_m_per_s, rec.n_points, rec.width_m, rec.solve_time_s,
+                rec.requested, rec.bridge, rec.predictor_kind, rec.prediction_defect,
             ])
 
 
@@ -665,6 +754,10 @@ def write_raw_profiles(out_dir: Path, records: list[FlameRecord], species_names:
             acceptance_criterion=np.array([rec.acceptance_criterion], dtype=object),
             residual_inf=np.array([rec.residual_inf], dtype=float),
             weighted_step_norm=np.array([rec.weighted_step_norm], dtype=float),
+            requested=np.array([rec.requested], dtype=bool),
+            bridge=np.array([rec.bridge], dtype=bool),
+            predictor_kind=np.array([rec.predictor_kind], dtype=object),
+            prediction_defect=np.array([rec.prediction_defect], dtype=float),
             z=rec.z, u=rec.u, T=rec.T, rho=rec.rho,
             cp_mass=rec.cp_mass, conductivity=rec.conductivity,
             qdot=rec.qdot, omega_c=rec.omega_c,
@@ -696,6 +789,10 @@ def build_tables(
     n_points = np.array([r.n_points   for r in records], dtype=int)
     width    = np.array([r.width_m    for r in records], dtype=float)
     solve_time = np.array([r.solve_time_s for r in records], dtype=float)
+    requested = np.array([r.requested for r in records], dtype=bool)
+    bridge = np.array([r.bridge for r in records], dtype=bool)
+    predictor_kind = np.array([r.predictor_kind for r in records], dtype=object)
+    prediction_defect = np.array([r.prediction_defect for r in records], dtype=float)
 
     T_tab    = np.zeros((n_phi, n_c), dtype=float)
     u_tab    = np.zeros((n_phi, n_c), dtype=float)
@@ -733,6 +830,8 @@ def build_tables(
         "Su": Su, "solve_ok": solve_ok, "final_accepted": final_accepted,
         "residual_inf": residual_inf, "weighted_step_norm": weighted_step_norm,
         "n_points": n_points, "width": width, "solve_time": solve_time,
+        "requested": requested, "bridge": bridge,
+        "predictor_kind": predictor_kind, "prediction_defect": prediction_defect,
         "T": T_tab, "u": u_tab, "rho": rho_tab, "cp_mass": cp_tab,
         "conductivity": conductivity_tab, "qdot": qdot_tab,
         "omega_c": omega_c_tab, "beta": beta_tab, "Y": Y_tab,
@@ -814,6 +913,14 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--tight-curve",       type=float, default=0.08)
     p.add_argument("--tight-prune",       type=float, default=0.003)
     p.add_argument("--loglevel",          type=int,   default=0)
+    p.add_argument(
+        "--profile-solver",
+        action="store_true",
+        help=(
+            "Guarda contadores y tiempos internos por flamelet en la traza. "
+            "Usarlo solo en perfiles, no en la campana temporal principal."
+        ),
+    )
     p.add_argument("--max-residual-inf",  type=float, default=10.0,
                    help="Maximo ||F||inf para criterio residual estricto/diagnostico.")
     p.add_argument("--acceptance-criterion", type=str, default="cantera",
@@ -847,8 +954,18 @@ def build_argparser() -> argparse.ArgumentParser:
     )
     p.add_argument("--allow-failed-flamelets", action="store_true",
                    help="Permite guardar la tabla aunque algun flamelet no converja.")
+    p.add_argument(
+        "--continuation-mode",
+        choices=("cold", "fixed", "fixed-bridges", "adaptive-pc"),
+        default="fixed",
+        help=(
+            "Politica paramétrica: cold no reutiliza perfiles vecinos; fixed "
+            "reproduce la region de confianza actual; fixed-bridges conserva "
+            "un paso fijo con puntos puente; adaptive-pc adapta ese paso en log(phi)."
+        ),
+    )
     p.add_argument("--disable-continuation", action="store_true",
-                   help="Resuelve cada flamelet desde la conjetura inicial base.")
+                   help="Alias heredado de --continuation-mode cold.")
     p.add_argument("--disable-continuation-predictor", action="store_true",
                    help="Desactiva predictor secante entre flamelets.")
     p.add_argument("--continuation-predictor-damping", type=float, default=0.7,
@@ -862,6 +979,14 @@ def build_argparser() -> argparse.ArgumentParser:
             "0 desactiva solo esta cota para la ablacion no acotada."
         ),
     )
+    p.add_argument("--pc-initial-ratio", type=float, default=1.15,
+                   help="Paso inicial del predictor-corrector: exp(Delta log(phi)).")
+    p.add_argument("--pc-min-ratio", type=float, default=1.02,
+                   help="Paso multiplicativo mínimo del predictor-corrector.")
+    p.add_argument("--pc-max-ratio", type=float, default=1.20,
+                   help="Paso multiplicativo máximo del predictor-corrector.")
+    p.add_argument("--pc-max-retries", type=int, default=4,
+                   help="Reintentos con paso reducido antes de un arranque frío registrado.")
     p.add_argument("--restart-insert-anchor", action="store_true",
                    help="Inserta un punto exacto de ancla de T tambien en reinicios.")
     p.add_argument("--auto-bootstrap-grids", action=argparse.BooleanOptionalAction,
@@ -906,8 +1031,23 @@ def build_argparser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = build_argparser().parse_args()
+    if bool(args.disable_continuation):
+        args.continuation_mode = "cold"
     if not 0.0 <= float(args.upwind_factor) <= 1.0:
         raise SystemExit("--upwind-factor debe estar entre 0.0 y 1.0")
+    if args.continuation_mode == "adaptive-pc":
+        if not (
+            1.0 < float(args.pc_min_ratio) <= float(args.pc_initial_ratio)
+            <= float(args.pc_max_ratio)
+        ):
+            raise SystemExit(
+                "adaptive-pc requiere 1 < --pc-min-ratio <= "
+                "--pc-initial-ratio <= --pc-max-ratio"
+            )
+    if args.continuation_mode == "fixed-bridges" and float(args.continuation_trust_ratio) <= 1.0:
+        raise SystemExit(
+            "fixed-bridges requiere --continuation-trust-ratio mayor que uno."
+        )
     t_global0 = time.perf_counter()
     bilger_gas = ct.Solution(args.mech)
 
@@ -932,6 +1072,14 @@ def main() -> None:
         z_targets = np.array(
             [compute_bilger_Z(phi, args, bilger_gas) for phi in phi_vals],
             dtype=float,
+        )
+
+    if args.continuation_mode in ("adaptive-pc", "fixed-bridges") and (
+        np.any(phi_vals <= 0.0) or np.any(np.diff(phi_vals) <= 0.0)
+    ):
+        raise SystemExit(
+            "La continuacion con puentes requiere phi positivos y estrictamente crecientes; "
+            "ordene --phi-values de pobre a rico."
         )
 
     Z_preview = (
@@ -982,6 +1130,7 @@ def main() -> None:
         f"c_fine={args.c_fine}, bias={args.refine_bias:g}"
     )
     print(f"mode            : {'Z-grid' if z_mode else 'phi-grid'}")
+    print(f"continuation    : {args.continuation_mode}")
     print(f"phis            : {phi_vals}")
     if z_mode:
         print(f"Z target        : {[f'{z:.4f}' for z in z_targets]}")
@@ -989,6 +1138,7 @@ def main() -> None:
     print(f"Z_st (phi=1)    : {Z_st:.6f}")
 
     records: list[FlameRecord] = []
+    continuation_trace: list[dict[str, Any]] = []
     species_names: list[str] | None = None
     used_progress_species: list[str] = []
 
@@ -1014,6 +1164,7 @@ def main() -> None:
     if (
         parallel_workers > 1
         and len(phi_vals) > 1
+        and args.continuation_mode in ("cold", "fixed")
         and not bool(args.disable_seed_cache)
         and not args.seed_profile_npz.strip()
     ):
@@ -1104,7 +1255,21 @@ def main() -> None:
                     )
         records = [rec for rec in records_parallel if rec is not None]
         species_names = list(ct.Solution(args.mech).species_names)
-        for rec in records:
+        for index, rec in enumerate(records):
+            continuation_trace.append({
+                "mode": "cached-parallel",
+                "requested_index": int(index),
+                "phi_from": None,
+                "phi_target": float(rec.phi),
+                "phi_trial": float(rec.phi),
+                "requested": True,
+                "bridge": False,
+                "accepted": bool(rec.solve_ok and rec.final_accepted),
+                "predictor_kind": rec.predictor_kind,
+                "prediction_defect": rec.prediction_defect,
+                "solve_time_s": rec.solve_time_s,
+                "final_accepted": rec.final_accepted,
+            })
             c_tmp, _, used = compute_progress_variable(
                 species_names=species_names, Y=rec.Y, T=rec.T,
                 progress_weights=progress_weights,
@@ -1118,6 +1283,156 @@ def main() -> None:
                 )
                 if cached_path is not None:
                     seed_cache_written.append(str(cached_path.resolve()))
+    elif args.continuation_mode in ("adaptive-pc", "fixed-bridges"):
+        # This path is sequential by design. A cache can seed the first
+        # corrected state, but every bridge remains a fully certified solve.
+        initial_seed = prev_solution
+        prev_solution = None
+        prev_prev_solution = None
+        current_phi: float | None = None
+        if args.continuation_mode == "fixed-bridges":
+            fixed_ratio = float(args.continuation_trust_ratio)
+            controller_config = ContinuationConfig(
+                initial_ratio=fixed_ratio,
+                min_ratio=fixed_ratio,
+                max_ratio=fixed_ratio,
+                max_retries=int(args.pc_max_retries),
+            )
+        else:
+            controller_config = ContinuationConfig(
+                initial_ratio=float(args.pc_initial_ratio),
+                min_ratio=float(args.pc_min_ratio),
+                max_ratio=float(args.pc_max_ratio),
+                max_retries=int(args.pc_max_retries),
+            )
+        controller = AdaptiveContinuationController(controller_config)
+
+        def commit_adaptive(rec: FlameRecord, trace: dict[str, Any],
+                            requested: bool, bridge: bool) -> None:
+            nonlocal species_names, used_progress_species
+            rec.requested = bool(requested)
+            rec.bridge = bool(bridge)
+            records.append(rec)
+            continuation_trace.append(trace)
+            if species_names is None:
+                species_names = list(ct.Solution(args.mech).species_names)
+            c_tmp, _, used = compute_progress_variable(
+                species_names=species_names, Y=rec.Y, T=rec.T,
+                progress_weights=progress_weights,
+            )
+            rec.c = c_tmp
+            if used:
+                used_progress_species = used
+            if rec.solve_ok and rec.final_accepted:
+                cached_path = write_cached_seed(
+                    args, resolved_mech=resolved_mech, rec=rec,
+                    species_names=species_names,
+                )
+                if cached_path is not None:
+                    seed_cache_written.append(str(cached_path.resolve()))
+
+        for requested_index, target in enumerate(phi_vals, start=1):
+            target_phi = float(target)
+            while current_phi is None or not np.isclose(
+                np.log(current_phi), np.log(target_phi), rtol=0.0, atol=1.0e-13
+            ):
+                if current_phi is None:
+                    proposal = None
+                    trial_phi = target_phi
+                    seed, seed_previous, bridge = initial_seed, None, False
+                else:
+                    proposal = controller.propose(current_phi, target_phi)
+                    trial_phi = float(proposal.phi_trial)
+                    seed, seed_previous = prev_solution, prev_prev_solution
+                    bridge = bool(proposal.is_bridge)
+
+                before = controller.snapshot()
+                print(
+                    f"\n[{requested_index}/{len(phi_vals)}] {args.continuation_mode} "
+                    f"target={target_phi:.4f}, trial={trial_phi:.4f}"
+                    f"{' [bridge]' if bridge else ''} ..."
+                )
+                rec, corrected, solve_trace = solve_flame_native(
+                    phi=trial_phi, args=args, mech_data=mech_data, opts=opts,
+                    progress_weights=progress_weights, prev_solution=seed,
+                    prev_prev_solution=seed_previous, continuation_trust_ratio=0.0,
+                )
+                accepted = bool(rec.solve_ok and rec.final_accepted)
+                trace: dict[str, Any] = {
+                    "mode": str(args.continuation_mode),
+                    "requested_index": int(requested_index - 1),
+                    "phi_from": None if current_phi is None else float(current_phi),
+                    "phi_target": target_phi,
+                    "phi_trial": trial_phi,
+                    "requested": not bridge,
+                    "bridge": bridge,
+                    "log_step": None if proposal is None else float(proposal.log_step),
+                    "retry": 0 if proposal is None else int(proposal.retry),
+                    "controller_before": before,
+                    **solve_trace,
+                    "accepted": accepted,
+                }
+                if accepted:
+                    trace["next_log_step"] = controller.accept(
+                        rec.prediction_defect, rec.predictor_kind
+                    )
+                    trace["controller_after"] = controller.snapshot()
+                    commit_adaptive(rec, trace, requested=not bridge, bridge=bridge)
+                    print(
+                        f"  OK | predictor={rec.predictor_kind} | "
+                        f"eta_p={rec.prediction_defect:.3e} | "
+                        f"Su={rec.Su_m_per_s:.4f} m/s | n={rec.n_points} | "
+                        f"t={rec.solve_time_s:.2f}s"
+                    )
+                    prev_prev_solution, prev_solution = prev_solution, corrected
+                    current_phi, initial_seed = trial_phi, None
+                    continue
+
+                # No failed correction is inserted into the FGM table or cache.
+                if proposal is not None:
+                    next_step, retry, can_retry = controller.reject()
+                else:
+                    next_step, retry, can_retry = None, 0, False
+                trace.update({
+                    "accepted": False,
+                    "next_log_step": next_step,
+                    "retry_after_reject": retry,
+                    "controller_after_reject": controller.snapshot(),
+                })
+                continuation_trace.append(trace)
+                if can_retry:
+                    print(f"  RETRY | next ratio={np.exp(next_step):.4f} (retry {retry})")
+                    continue
+
+                # Recovery is an explicit cold target solve, not a hidden seed.
+                print("  COLD FALLBACK | continuation budget exhausted")
+                cold_rec, cold_solution, cold_trace = solve_flame_native(
+                    phi=target_phi, args=args, mech_data=mech_data, opts=opts,
+                    progress_weights=progress_weights, prev_solution=None,
+                    prev_prev_solution=None, continuation_trust_ratio=0.0,
+                )
+                cold_accepted = bool(cold_rec.solve_ok and cold_rec.final_accepted)
+                cold_trace_record: dict[str, Any] = {
+                    "mode": str(args.continuation_mode),
+                    "requested_index": int(requested_index - 1),
+                    "phi_from": None if current_phi is None else float(current_phi),
+                    "phi_target": target_phi,
+                    "phi_trial": target_phi,
+                    "requested": True,
+                    "bridge": False,
+                    "cold_fallback": True,
+                    **cold_trace,
+                    "accepted": cold_accepted,
+                    "controller_after": controller.snapshot(),
+                }
+                if not cold_accepted and not bool(args.allow_failed_flamelets):
+                    raise RuntimeError(
+                        f"Flamelet phi={target_phi:.6g} no aceptado tras agotar "
+                        "predictor-corrector y arranque frío."
+                    )
+                commit_adaptive(cold_rec, cold_trace_record, requested=True, bridge=False)
+                prev_prev_solution, prev_solution = prev_solution, cold_solution
+                current_phi, initial_seed = target_phi, None
     else:
         for i, phi in enumerate(phi_vals, start=1):
             z_tag = z_targets[i - 1] if z_mode else Z_preview[i - 1]
@@ -1144,26 +1459,37 @@ def main() -> None:
             )
             if seed_for_phi is not None and seed_path_for_phi is not None:
                 print(f"  seed cache phi : {seed_path_for_phi.resolve()}")
-            rec, next_solution = solve_flame_native(
+            rec, next_solution, solve_trace = solve_flame_native(
                 phi=float(phi), args=args,
                 mech_data=mech_data, opts=opts,
                 progress_weights=progress_weights,
                 prev_solution=(
-                    None if args.disable_continuation
+                    None if args.continuation_mode == "cold"
                     else (seed_for_phi if seed_for_phi is not None else prev_solution)
                 ),
                 prev_prev_solution=(
-                    None if args.disable_continuation or seed_for_phi is not None
+                    None if args.continuation_mode == "cold" or seed_for_phi is not None
                     else prev_prev_solution
                 ),
             )
             records.append(rec)
+            continuation_trace.append({
+                "mode": str(args.continuation_mode),
+                "requested_index": int(i - 1),
+                "phi_from": None if prev_solution is None else float(np.asarray(prev_solution["phi"]).ravel()[0]),
+                "phi_target": float(phi),
+                "phi_trial": float(phi),
+                "requested": True,
+                "bridge": False,
+                "accepted": bool(rec.solve_ok and rec.final_accepted),
+                **solve_trace,
+            })
             status = "OK" if rec.solve_ok else "FAIL"
             print(f"  {status} | Su={rec.Su_m_per_s:.4f} m/s | Z={rec.Z:.4f} | "
                   f"n={rec.n_points} | ||F||inf={rec.residual_inf:.3e} | "
                   f"wstep={rec.weighted_step_norm:.3e} | "
                   f"t={rec.solve_time_s:.2f}s")
-            if rec.solve_ok and rec.final_accepted:
+            if rec.solve_ok and rec.final_accepted and args.continuation_mode == "fixed":
                 prev_prev_solution = prev_solution
                 prev_solution = next_solution
             elif not bool(args.allow_failed_flamelets):
@@ -1218,6 +1544,21 @@ def main() -> None:
         indicator_fine_value=indicator,
         **tables,
     )
+    continuation_schedule = {
+        "coordinate": "log(phi)",
+        "phi_requested": [float(value) for value in phi_vals],
+        "phi_resolved": [float(value) for value in tables["phi_grid"]],
+        "requested": [bool(value) for value in tables["requested"]],
+        "bridge": [bool(value) for value in tables["bridge"]],
+    }
+    (out_dir / "continuation_schedule.json").write_text(
+        json.dumps(continuation_schedule, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    (out_dir / "continuation_trace.json").write_text(
+        json.dumps(continuation_trace, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
     write_summary_csv(out_dir / "summary_phi.csv", records)
     if args.save_raw_profiles:
         write_raw_profiles(out_dir=out_dir, records=records, species_names=species_names)
@@ -1255,7 +1596,9 @@ def main() -> None:
             "sum_k(a_k W_k omega_k_molar)/(beta_b-beta_u), "
             "with the progress weights stored in args.progress_species"
         ),
-        "n_phi": len(phi_vals),
+        "n_phi_requested": len(phi_vals),
+        "n_phi_table": len(records),
+        "n_phi_bridge": int(sum(bool(rec.bridge) for rec in records)),
         "n_c": int(c_grid.size),
         "table_validation": table_validation,
         "all_solve_ok": bool(np.all(tables["solve_ok"])),
@@ -1271,6 +1614,24 @@ def main() -> None:
         "continuation_predictor_enabled": not bool(args.disable_continuation_predictor),
         "continuation_predictor_damping": float(args.continuation_predictor_damping),
         "continuation_trust_ratio": float(args.continuation_trust_ratio),
+        "continuation_mode": str(args.continuation_mode),
+        "profile_solver": bool(args.profile_solver),
+        "continuation_trace": "continuation_trace.json",
+        "continuation_schedule": "continuation_schedule.json",
+        "continuation_trace_attempts": int(len(continuation_trace)),
+        "continuation_trace_rejections": int(
+            sum(not bool(item.get("accepted", False)) for item in continuation_trace)
+        ),
+        "continuation_pc": {
+            "coordinate": "log(phi)",
+            "initial_ratio": float(args.pc_initial_ratio),
+            "min_ratio": float(args.pc_min_ratio),
+            "max_ratio": float(args.pc_max_ratio),
+            "max_retries": int(args.pc_max_retries),
+            "bridge_rows_included": bool(
+                args.continuation_mode in ("fixed-bridges", "adaptive-pc")
+            ),
+        },
         "restart_insert_anchor": bool(args.restart_insert_anchor),
         "seed_cache_dir": str(seed_cache_directory(args).resolve()),
         "seed_cache_used": seed_cache_used,

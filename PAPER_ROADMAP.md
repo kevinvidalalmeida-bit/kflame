@@ -1,5 +1,39 @@
 # Hoja de ruta para artículo y cierre de robustez
 
+## Estado de implementación: predictor--corrector adaptativo
+
+La versión actual incorpora una continuación exterior en
+\(\lambda=\log\phi\), separada del corrector interno Newton--PTC--BE. El
+generador ofrece tres políticas reproducibles:
+
+- `cold`: no reutiliza perfiles vecinos;
+- `fixed`: reproduce la región de confianza multiplicativa histórica;
+- `adaptive-pc`: predictor copia/secante, corrección completa certificada,
+  adaptación de paso, puntos puente, reintentos y recuperación fría explícita.
+
+Cada corrida `adaptive-pc` escribe una tabla con marcas de filas solicitadas y
+puente, además de una traza JSON con el defecto del predictor, decisiones de
+paso, malla, dominio, tiempos y aceptación. Esta implementación es una
+capacidad experimental; no debe presentarse como una mejora medida hasta
+completar la ablación predefinida abajo.
+
+La corrida nativa escribe también continuation_schedule.json. El generador de
+referencia puede recibir este archivo para repetir exactamente la misma secuencia
+final de \(\phi\), incluidos los puentes. El análisis pareado compara únicamente
+las filas solicitadas, por lo que los puentes aumentan la resolución de la tabla
+sin alterar silenciosamente la comparación física solicitada.
+
+### Criterio de promoción a ruta productiva
+
+Comparar, en al menos siete réplicas pareadas, `cold`, `fixed`, puentes de paso
+fijo y `adaptive-pc`. Promover `adaptive-pc` solo si el intervalo pareado de
+coste favorece la reducción, no disminuye la tasa de certificación y, frente al
+baseline V2 en la misma configuración, satisface
+\(\Delta S_u\le0.1\%\), \(E_2(T)\le0.5\%\),
+\(E_2(Y_k)\le2\%\) para especies activas y
+\(E_2(\dot q)\le5\%\). Si falla cualquiera, conservar `fixed` y publicar el
+resultado negativo.
+
 ## Afirmación central defendible
 
 El resultado no es un nuevo Newton, una nueva LU ni un nuevo concepto FGM por
@@ -43,6 +77,10 @@ metadatos y hashes durante la preparación del artículo.
   reconstrucciones de Jacobiano, factorizaciones y lados derechos resueltos.
 - Publicar también fallos, reinicios y dominios expandidos para evitar sesgo de
   supervivencia.
+- Ejecutar las cuatro estrategias sobre cada caso: arranque frío, región fija,
+  puentes de paso fijo y predictor--corrector adaptativo. La instrumentación
+  opcional de perfil registra contadores internos fuera de la medición temporal
+  principal.
 
 ### Prioridad P2: convertir la demostración FGM en tabla validada
 
@@ -52,6 +90,8 @@ metadatos y hashes durante la preparación del artículo.
 - Verificar positividad, suma de masa, conservación elemental y error de los
   términos fuente después de interpolar.
 - Medir por separado generación fría, regeneración cacheada y consulta de tabla.
+- Para toda comparación V2--Cantera, congelar y repetir la misma secuencia final
+  de \(\phi\), incluidas las filas puente.
 - No presentar la tabla de cinco filas como cierre CFD: el error observado de
   liberación de calor muestra que su resolución paramétrica es insuficiente.
 
@@ -59,23 +99,17 @@ metadatos y hashes durante la preparación del artículo.
 
 ### 1. Región de confianza adaptativa basada en defecto predictor--corrector
 
-La cota fija de razón `1.15` está demostrada empíricamente, pero todavía es una
-heurística. Para un predictor secante `x_pred` y la solución corregida `x*`, se
-puede medir
+Esta política ya está implementada y debe evaluarse como hipótesis, no como un
+resultado. Para el predictor secante y la solución corregida, el controlador
+mide un defecto ponderado en la malla final y adapta \(\Delta\log\phi\) con una
+regla limitada, calibrada con la mediana de los tres primeros defectos secantes
+aceptados. Las copias del primer vecino no calibran esa referencia. Un rechazo
+reduce el paso; al agotarse el presupuesto se ejecuta un arranque frío explícito.
 
-```text
-eta_i = ||x* - x_pred||_W / max(|Delta log(phi)|, epsilon).
-```
-
-El radio siguiente puede contraerse o expandirse con una regla limitada,
-
-```text
-r_(i+1) = clip(r_i * (eta_target / eta_i)^alpha, r_min, r_max).
-```
-
-Debe aceptarse solo si reduce el trabajo total hasta una llama certificada. La
-novedad potencial sería su integración con malla adaptativa y certificación FGM,
-no el concepto general de predictor--corrector.
+La política se mantiene solo si reduce el trabajo hasta una llama certificada
+con los criterios de promoción declarados arriba. La posible novedad publicable
+es su integración trazable con malla adaptativa y certificación FGM, no el
+concepto general de predictor--corrector.
 
 ### 2. Continuación como grafo de coste
 
@@ -114,18 +148,20 @@ fuera de la campaña usada para ajustar los coeficientes.
 
 ## Estructura sugerida del artículo
 
-1. Problema de llama libre y criterio de certificación.
-2. Solver estructurado y sustitución por bloques fusionada.
-3. Continuación protegida para familias de flamelets.
-4. Protocolo pareado y estudios de ablación.
-5. Fidelidad frente a Cantera, escalabilidad y mapa de fallos.
-6. Demostración FGM con validación fuera de muestra.
+1. Problema físico, alcance y certificado de aceptación.
+2. Solver estructurado y estrategia PTC--SER/BE.
+3. Predictor--corrector adaptativo en \(\log\phi\).
+4. Diseño experimental justo y reproducible.
+5. Verificación numérica y robustez.
+6. Ablación causal: bloque LU, PTC--SER, predictor y control adaptativo.
+7. Aplicación FGM: coste, error y densidad paramétrica.
+8. Limitaciones del método y del dominio de validación.
 
 Título de trabajo:
 
 > Certification-aware continuation and hybrid block solves for accelerated
 > premixed-flame manifold generation
 
-La afirmación debe limitarse al dominio ensayado hasta completar P0 y P1. No se
-debe presentar ninguna de las extensiones de esta hoja como implementada o
-descubierta antes de medirla.
+La afirmación debe limitarse al dominio ensayado hasta completar P0 y P1. Las
+extensiones distintas del predictor--corrector ya implementado no deben
+presentarse como implementadas o descubiertas antes de medirlas.

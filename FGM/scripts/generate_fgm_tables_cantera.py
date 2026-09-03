@@ -70,6 +70,8 @@ class FlameRecord:
     Y: np.ndarray
     c: np.ndarray
     beta: np.ndarray
+    requested: bool = True
+    bridge: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -180,10 +182,13 @@ def solve_flame_cantera(
 def write_summary_csv(path: Path, records: list[FlameRecord]) -> None:
     with path.open("w", newline="", encoding="utf-8") as f:
         wr = csv.writer(f)
-        wr.writerow(["phi", "Z", "Su_m_per_s", "n_points", "width_m", "solve_time_s"])
+        wr.writerow([
+            "phi", "Z", "Su_m_per_s", "n_points", "width_m", "solve_time_s",
+            "requested", "bridge",
+        ])
         for rec in records:
             wr.writerow([rec.phi, rec.Z, rec.Su_m_per_s, rec.n_points,
-                         rec.width_m, rec.solve_time_s])
+                         rec.width_m, rec.solve_time_s, rec.requested, rec.bridge])
 
 
 def write_raw_profiles(out_dir: Path, records: list[FlameRecord], species_names: list[str]) -> None:
@@ -222,6 +227,8 @@ def build_tables(
     n_points = np.array([r.n_points   for r in records], dtype=int)
     width    = np.array([r.width_m    for r in records], dtype=float)
     solve_time = np.array([r.solve_time_s for r in records], dtype=float)
+    requested = np.array([r.requested for r in records], dtype=bool)
+    bridge = np.array([r.bridge for r in records], dtype=bool)
 
     T_tab    = np.zeros((n_phi, n_c), dtype=float)
     u_tab    = np.zeros((n_phi, n_c), dtype=float)
@@ -257,6 +264,7 @@ def build_tables(
         "Z_grid": Z_grid,
         "c_grid":   c_grid,
         "Su": Su, "n_points": n_points, "width": width, "solve_time": solve_time,
+        "requested": requested, "bridge": bridge,
         "T": T_tab, "u": u_tab, "rho": rho_tab, "cp_mass": cp_tab,
         "conductivity": conductivity_tab, "qdot": qdot_tab,
         "omega_c": omega_c_tab, "beta": beta_tab, "Y": Y_tab,
@@ -286,6 +294,13 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--n-phi",      type=int,   default=13)
     p.add_argument("--phi-values", type=str,   default="",
                    help="Lista manual separada por comas. Ignora phi-min/max/n-phi.")
+    p.add_argument(
+        "--phi-schedule-json", type=str, default="",
+        help=(
+            "Ruta a continuation_schedule.json producido por V2. Reproduce "
+            "exactamente sus phi solicitados y puentes para una comparación justa."
+        ),
+    )
     p.add_argument("--use-z-grid", action="store_true",
                    help="Barrer por Z objetivo en lugar de phi.")
     p.add_argument("--z-min",      type=float, default=0.03)
@@ -340,8 +355,36 @@ def main() -> None:
     t_global0 = time.perf_counter()
     bilger_gas = ct.Solution(args.mech)
 
+    schedule_path = str(args.phi_schedule_json).strip()
     z_mode = bool(args.use_z_grid or args.z_values.strip())
-    if z_mode:
+    requested_flags: np.ndarray | None = None
+    bridge_flags: np.ndarray | None = None
+    if schedule_path:
+        if z_mode:
+            raise SystemExit("--phi-schedule-json no se combina con una malla Z.")
+        payload = json.loads(Path(schedule_path).expanduser().read_text(encoding="utf-8"))
+        phi_vals = np.asarray(payload.get("phi_resolved", []), dtype=float)
+        if phi_vals.size < 2 or np.any(phi_vals <= 0.0) or np.any(np.diff(phi_vals) <= 0.0):
+            raise SystemExit("El schedule debe contener phi_resolved positivos y crecientes.")
+        requested_flags = np.asarray(
+            payload.get("requested", np.ones(phi_vals.size, dtype=bool)), dtype=bool
+        )
+        bridge_flags = np.asarray(
+            payload.get("bridge", np.zeros(phi_vals.size, dtype=bool)), dtype=bool
+        )
+        if requested_flags.shape != phi_vals.shape or bridge_flags.shape != phi_vals.shape:
+            raise SystemExit(
+                "Las marcas requested/bridge del schedule deben coincidir con phi_resolved."
+            )
+        if np.any(requested_flags == bridge_flags):
+            raise SystemExit(
+                "Cada fila del schedule debe ser solicitada o puente, pero no ambas."
+            )
+        z_targets = np.array(
+            [compute_bilger_Z(phi, args, bilger_gas) for phi in phi_vals],
+            dtype=float,
+        )
+    elif z_mode:
         z_targets = parse_z_values(args)
         phi_vals = np.array(
             [
@@ -362,6 +405,11 @@ def main() -> None:
             [compute_bilger_Z(phi, args, bilger_gas) for phi in phi_vals],
             dtype=float,
         )
+
+    if requested_flags is None:
+        requested_flags = np.ones(phi_vals.size, dtype=bool)
+    if bridge_flags is None:
+        bridge_flags = np.zeros(phi_vals.size, dtype=bool)
 
     Z_preview = (
         np.array(
@@ -390,6 +438,8 @@ def main() -> None:
     print("External tool   : none (Streamline Flamelet Table Tool not invoked)")
     print(f"Output          : {out_dir.resolve()}")
     print(f"mode            : {'Z-grid' if z_mode else 'phi-grid'}")
+    if schedule_path:
+        print(f"phi schedule    : {Path(schedule_path).expanduser().resolve()}")
     print(f"phis            : {phi_vals}")
     if z_mode:
         print(f"Z target        : {[f'{z:.4f}' for z in z_targets]}")
@@ -412,6 +462,8 @@ def main() -> None:
             prev_solution=prev_solution,
             progress_weights=progress_weights,
         )
+        rec.requested = bool(requested_flags[i - 1])
+        rec.bridge = bool(bridge_flags[i - 1])
         records.append(rec)
         print(f"  Su={rec.Su_m_per_s:.4f} m/s | Z={rec.Z:.4f} | "
               f"n={rec.n_points} | t={rec.solve_time_s:.2f}s")
@@ -478,6 +530,9 @@ def main() -> None:
         ),
         "cantera_version": ct.__version__,
         "args": vars(args),
+        "phi_schedule_json": (
+            str(Path(schedule_path).expanduser().resolve()) if schedule_path else None
+        ),
         "mode": "Z-grid" if z_mode else "phi-grid",
         "z_targets": [float(z) for z in z_targets],
         "n_species": len(species_names),
@@ -498,6 +553,8 @@ def main() -> None:
             "with the progress weights stored in args.progress_species"
         ),
         "n_phi": len(phi_vals),
+        "n_phi_requested": int(np.sum(tables["requested"])),
+        "n_phi_bridge": int(np.sum(tables["bridge"])),
         "n_c": int(c_grid.size),
         "table_validation": table_validation,
         "Z_range": [float(tables["Z_grid"].min()), float(tables["Z_grid"].max())],

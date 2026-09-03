@@ -21,6 +21,7 @@ from fgm_common import (
     validate_fgm_table,
 )
 from generate_fgm_tables_native import _is_local_phi_step
+from fgm_continuation import AdaptiveContinuationController, ContinuationConfig
 
 
 class ContinuationTrustRegionTests(unittest.TestCase):
@@ -35,6 +36,57 @@ class ContinuationTrustRegionTests(unittest.TestCase):
     def test_nonpositive_ratio_is_explicit_unbounded_ablation(self) -> None:
         self.assertTrue(_is_local_phi_step(0.7, 1.4, 0.0))
         self.assertFalse(_is_local_phi_step(0.0, 1.0, 0.0))
+
+
+class AdaptivePredictorCorrectorTests(unittest.TestCase):
+    def test_uses_log_phi_and_inserts_a_bridge(self) -> None:
+        controller = AdaptiveContinuationController(
+            ContinuationConfig(initial_ratio=1.15, min_ratio=1.02, max_ratio=1.20)
+        )
+        proposal = controller.propose(0.7, 0.9)
+        self.assertTrue(proposal.is_bridge)
+        self.assertAlmostEqual(proposal.phi_trial / 0.7, 1.15, places=12)
+        self.assertAlmostEqual(proposal.log_step, np.log(1.15), places=12)
+
+    def test_endpoint_is_preserved_when_inside_step(self) -> None:
+        controller = AdaptiveContinuationController()
+        proposal = controller.propose(0.9, 1.0)
+        self.assertFalse(proposal.is_bridge)
+        self.assertEqual(proposal.phi_trial, 1.0)
+
+    def test_secant_defects_calibrate_and_change_next_step(self) -> None:
+        controller = AdaptiveContinuationController()
+        for defect in (10.0, 12.0, 14.0):
+            controller.accept(defect, "secant")
+        self.assertEqual(controller.defect_reference, 12.0)
+        before = float(controller.log_step)
+        after = controller.accept(48.0, "secant")
+        self.assertLess(after, before)
+        self.assertGreaterEqual(after, controller.config.min_log_step)
+
+    def test_rejection_shrinks_and_exhausts_at_minimum_step(self) -> None:
+        controller = AdaptiveContinuationController(
+            ContinuationConfig(initial_ratio=1.04, min_ratio=1.02, max_ratio=1.20,
+                               max_retries=4)
+        )
+        step, retry, can_retry = controller.reject()
+        self.assertEqual(retry, 1)
+        self.assertFalse(can_retry)
+        self.assertEqual(step, controller.config.min_log_step)
+
+    def test_four_rejections_trigger_cold_fallback_budget(self) -> None:
+        controller = AdaptiveContinuationController(
+            ContinuationConfig(
+                initial_ratio=1.20,
+                min_ratio=1.0001,
+                max_ratio=1.20,
+                max_retries=4,
+            )
+        )
+        for expected_retry in range(1, 5):
+            _, retry, can_retry = controller.reject()
+            self.assertEqual(retry, expected_retry)
+            self.assertEqual(can_retry, expected_retry < 4)
 
 
 class ProgressGridTests(unittest.TestCase):
