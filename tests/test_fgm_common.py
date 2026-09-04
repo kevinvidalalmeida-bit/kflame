@@ -22,6 +22,7 @@ from fgm_common import (
 )
 from generate_fgm_tables_native import _is_local_phi_step
 from fgm_continuation import AdaptiveContinuationController, ContinuationConfig
+from run_paper_campaign import _pressure_prediction_defect, _pressure_secant_seed
 
 
 class ContinuationTrustRegionTests(unittest.TestCase):
@@ -87,6 +88,56 @@ class AdaptivePredictorCorrectorTests(unittest.TestCase):
             _, retry, can_retry = controller.reject()
             self.assertEqual(retry, expected_retry)
             self.assertEqual(can_retry, expected_retry < 4)
+
+
+class PressurePredictorTests(unittest.TestCase):
+    @staticmethod
+    def _state(offset: float) -> dict[str, np.ndarray]:
+        z = np.array([0.0, 0.4, 1.0])
+        u = np.array([0.3, 0.4, 0.5]) + offset
+        temperature = np.array([300.0, 1100.0, 1800.0]) + 100.0 * offset
+        species = np.array([
+            [0.8, 0.4, 0.1],
+            [0.2, 0.6, 0.9],
+        ])
+        return {"z": z, "u": u, "T": temperature, "Y": species}
+
+    def test_secant_uses_log_pressure_and_keeps_mass_closure(self) -> None:
+        first = self._state(0.0)
+        second = self._state(0.1)
+        predicted, kind = _pressure_secant_seed(
+            previous=second,
+            previous_pressure=2.0,
+            previous_previous=first,
+            previous_previous_pressure=1.0,
+            target_pressure=4.0,
+        )
+        # With a log-pressure ratio of two and damping 0.7, the state moves
+        # 70% of the latest secant increment.
+        np.testing.assert_allclose(predicted["u"], second["u"] + 0.7 * (second["u"] - first["u"]))
+        np.testing.assert_allclose(np.sum(predicted["Y"], axis=0), 1.0)
+        self.assertEqual(kind, "secant_log_pressure")
+
+    def test_first_pressure_transition_is_a_copy_and_defect_is_mesh_invariant(self) -> None:
+        state = self._state(0.1)
+        predicted, kind = _pressure_secant_seed(
+            previous=state,
+            previous_pressure=1.0,
+            previous_previous=None,
+            previous_previous_pressure=None,
+            target_pressure=1.5,
+        )
+        corrected = {
+            "z": np.linspace(0.0, 1.0, 9),
+            "u": np.interp(np.linspace(0.0, 1.0, 9), state["z"], state["u"]),
+            "T": np.interp(np.linspace(0.0, 1.0, 9), state["z"], state["T"]),
+            "Y": np.vstack([
+                np.interp(np.linspace(0.0, 1.0, 9), state["z"], state["Y"][k])
+                for k in range(state["Y"].shape[0])
+            ]),
+        }
+        self.assertEqual(kind, "copy")
+        self.assertLess(_pressure_prediction_defect(corrected, predicted), 1.0e-10)
 
 
 class ProgressGridTests(unittest.TestCase):

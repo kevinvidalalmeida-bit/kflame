@@ -986,6 +986,11 @@ class SolveOptions:
     domain_expand_factor: float = 2.0
     domain_edge_slope_tol: float = 0.02
     domain_edge_strict_mode: bool = True
+    # The cold physical ramp can have non-asymptotic edge gradients even when
+    # the converged refined flame fits the requested domain.  This optional
+    # policy postpones the width decision until the refinement stage; it is
+    # off by default to preserve the reference auto-domain trajectory.
+    domain_check_after_refine_only: bool = False
 
     # Optional coarse bootstrap on fixed grids. For the production flamelet
     # path, adaptive refinement directly from the initial grid is faster and
@@ -2139,13 +2144,19 @@ def solve_free_flame(
                     if narrow:
                         raise DomainTooNarrowError(x_state, m)
 
+                fixed_width_callback = (
+                    None
+                    if bool(getattr(opts, "domain_check_after_refine_only", False))
+                    and bool(opts.refine_grid)
+                    else lambda x_state: width_check(x_state, "fixed_auto")
+                )
                 x_work, solved_fixed, step_report = _solve_auto_stages(
                     problem,
                     x_work,
                     opts,
                     deadline,
                     refine_grid=False,
-                    width_check=lambda x_state: width_check(x_state, "fixed_auto"),
+                    width_check=fixed_width_callback,
                 )
                 step_report["expand_pass"] = int(expand_pass)
                 step_report["grid_pass"] = int(grid_pass)

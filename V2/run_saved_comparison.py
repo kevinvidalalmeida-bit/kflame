@@ -8,6 +8,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 # Must be set before NumPy/SciPy are imported. The V2 block solver uses many
 # small dense factorizations, where OpenBLAS thread management is overhead.
@@ -117,6 +118,11 @@ def _v2_solve(
     verbose: bool = False,
     prev_v2_data: dict | None = None,
     compiled_block_substitution: bool = True,
+    acceptance_criterion: str = "cantera",
+    residual_guard_inf: float = 1.0e4,
+    final_residual_inf: float | None = None,
+    seed_mesh_points: int | None = None,
+    solve_option_overrides: dict[str, Any] | None = None,
 ) -> dict:
     materials_dir = Path(__file__).resolve().parent / "materiales"
     mat_path = str(materials_dir)
@@ -142,15 +148,28 @@ def _v2_solve(
         refine_max_points=1600,
         max_refine_passes=6,
         require_grid_convergence=True,
-        acceptance_criterion="cantera",
+        acceptance_criterion=str(acceptance_criterion),
         weighted_step_norm_limit=1.0,
-        residual_guard_inf=1.0e4,
+        residual_guard_inf=float(residual_guard_inf),
         max_total_time_s=300.0,
     )
+    if final_residual_inf is not None:
+        opts.refine_Finf_limit = float(final_residual_inf)
+        opts.final_Finf_limit = float(final_residual_inf)
+    if solve_option_overrides:
+        for name, value in solve_option_overrides.items():
+            if not hasattr(opts, name):
+                raise ValueError(f"Unknown SolveOptions field: {name}")
+            setattr(opts, name, value)
 
     if prev_v2_data is not None:
-        x0 = prev_v2_data["x"]
-        z0 = prev_v2_data["z"]
+        transferred_seed = (
+            _resample_v2_seed(prev_v2_data, seed_mesh_points)
+            if seed_mesh_points is not None
+            else prev_v2_data
+        )
+        x0 = transferred_seed["x"]
+        z0 = transferred_seed["z"]
         problem.z = z0.copy()
         problem.n_points = len(z0)
         problem.width = float(z0[-1] - z0[0])
@@ -183,6 +202,44 @@ def _interp_species(z_src: np.ndarray, Y_src: np.ndarray, z_dst: np.ndarray) -> 
     for k in range(Y_src.shape[0]):
         out[k] = np.interp(z_dst, z_src, Y_src[k])
     return out
+
+
+def _resample_v2_seed(seed: dict, n_points: int) -> dict:
+    """Transfer a certified profile without inheriting its adaptive mesh.
+
+    Continuation needs the thermochemical state, not necessarily the mesh that
+    happened to be optimal at the source parameter.  In particular, copying a
+    pressure-neighbour mesh can force a thin target flame to start from an
+    oversized discretization.  The target solver still performs and certifies
+    its own adaptive refinement after this bounded transfer.
+    """
+    z_old = np.asarray(seed["z"], dtype=float)
+    u_old = np.asarray(seed["u"], dtype=float)
+    T_old = np.asarray(seed["T"], dtype=float)
+    Y_old = np.asarray(seed["Y"], dtype=float)
+    n_target = max(2, min(int(n_points), int(z_old.size)))
+    # Decimate in node index rather than imposing a uniform grid.  The source
+    # adaptive mesh already locates the thin reaction zone; retaining that
+    # geometry avoids erasing the very feature that makes a continuation seed
+    # useful, while still bounding its size.
+    selected = np.rint(np.linspace(0, z_old.size - 1, n_target)).astype(int)
+    selected[0], selected[-1] = 0, z_old.size - 1
+    z_new = z_old[selected]
+    u_new = np.interp(z_new, z_old, u_old)
+    T_new = np.interp(z_new, z_old, T_old)
+    Y_new = _interp_species(z_old, Y_old, z_new)
+    Y_new /= np.maximum(np.sum(Y_new, axis=0, keepdims=True), 1.0e-300)
+    return {
+        **seed,
+        "z": z_new,
+        "u": u_new,
+        "T": T_new,
+        "Y": Y_new,
+        "x": np.column_stack((u_new, T_new, Y_new.T)).ravel(),
+        "n_points": int(n_target),
+        "width": float(z_new[-1] - z_new[0]),
+        "seed_mesh_transfer": "bounded_adaptive_subsampling",
+    }
 
 
 def _write_profiles(path: Path, z: np.ndarray, u: np.ndarray, T: np.ndarray) -> None:
