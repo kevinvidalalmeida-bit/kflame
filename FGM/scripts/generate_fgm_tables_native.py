@@ -583,7 +583,13 @@ def bound_continuation_seed_mesh(
     z_old = np.asarray(seed.get("z"), dtype=float)
     x_old = np.asarray(seed.get("x"), dtype=float)
     expected = int(z_old.size) * (2 + int(n_species))
-    if z_old.ndim != 1 or z_old.size < 2 or x_old.size != expected:
+    if (
+        z_old.ndim != 1
+        or z_old.size < 2
+        or x_old.size != expected
+        or not np.all(np.isfinite(z_old))
+        or np.any(np.diff(z_old) <= 0.0)
+    ):
         return seed
     n_target = max(2, min(int(max_points), int(z_old.size)))
     if n_target == z_old.size:
