@@ -293,9 +293,15 @@ def _jacobian_tangent_state(
     At an accepted state :math:`x_i` and ``lambda = log(phi)``, the discrete
     tangent satisfies ``J_i dx/dlambda = -dF/dlambda``.  Rather than forming a
     second finite-difference Jacobian, the residual of the *target physical
-    problem* at ``x_i`` provides the local chord:
+    problem* at ``x_i`` and the retained source residual provide the local
+    parameter chord:
 
-    ``dx ~= -J_i^{-1} F(x_i, lambda_target)``.
+    ``dx ~= -J_i^{-1} [F(x_i, lambda_target) - F(x_i, lambda_source)]``.
+
+    The subtraction is required whenever the source flame is accepted by the
+    operational ``weighted step + residual guard`` certificate instead of an
+    exact zero residual.  Using the target residual alone would incorrectly
+    interpret the remaining source solve error as a change in ``phi``.
 
     The LU is the exact stationary factorization retained in memory from the
     preceding certified flame.  This function therefore performs one RHS and
@@ -312,6 +318,7 @@ def _jacobian_tangent_state(
         lu = linearization["lu"]
         anchor_index = int(linearization["anchor_index"])
         linearization_state = np.asarray(linearization["state"], dtype=float)
+        source_residual = np.asarray(linearization["residual"], dtype=float)
     except (KeyError, TypeError, ValueError, IndexError):
         return None
 
@@ -335,12 +342,14 @@ def _jacobian_tangent_state(
     # not silently apply a stale hand-off after any external seed mutation.
     if (
         linearization_state.shape != x_previous.shape
+        or source_residual.shape != x_previous.shape
         or not np.allclose(
             linearization_state,
             x_previous,
             rtol=1.0e-11,
             atol=1.0e-13,
         )
+        or not np.all(np.isfinite(source_residual))
     ):
         return None
 
@@ -370,9 +379,12 @@ def _jacobian_tangent_state(
         if target_residual.shape != x_previous.shape or not np.all(np.isfinite(target_residual)):
             return None
         # Written in sensitivity form to retain a measurable dF/dlambda. The
+        # source subtraction preserves the distinction between a parameter
+        # chord and any residual left by the accepted source corrector. The
         # multiplication by delta_lambda recovers the chord correction and
         # avoids a second target-Jacobian assembly.
-        dF_dlambda = target_residual / delta_lambda
+        parameter_chord = target_residual - source_residual
+        dF_dlambda = parameter_chord / delta_lambda
         sensitivity = np.asarray(solve_linear(lu, -dF_dlambda), dtype=float)
         correction = float(np.clip(damping, 0.0, 1.0)) * delta_lambda * sensitivity
     except Exception:
@@ -381,7 +393,7 @@ def _jacobian_tangent_state(
     x_prediction = x_previous + correction
     if x_prediction.shape != x_previous.shape or not np.all(np.isfinite(x_prediction)):
         return None
-    return x_prediction, {
+    metadata: dict[str, float] = {
         "lambda_source": lambda_source,
         "lambda_target": lambda_target,
         "delta_lambda": float(delta_lambda),
@@ -390,13 +402,16 @@ def _jacobian_tangent_state(
             linearization.get("jacobian_evaluations", np.nan)
         ),
         "source_anchor_index": float(anchor_index),
+        "source_residual_inf": float(np.linalg.norm(source_residual, ord=np.inf)),
         "target_residual_inf_before_tangent": float(
             np.linalg.norm(target_residual, ord=np.inf)
         ),
+        "parameter_chord_inf": float(np.linalg.norm(parameter_chord, ord=np.inf)),
         "tangent_sensitivity_weighted_norm": float(
             np.linalg.norm(sensitivity) / max(np.sqrt(sensitivity.size), 1.0)
         ),
     }
+    return x_prediction, metadata
 
 
 def build_continuation_seed(

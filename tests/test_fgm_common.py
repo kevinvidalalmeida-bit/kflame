@@ -4,6 +4,7 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
 
@@ -24,6 +25,7 @@ from generate_fgm_tables_native import (
     bound_continuation_seed_mesh,
     _front_aligned_secant_state,
     _is_local_phi_step,
+    _jacobian_tangent_state,
     build_continuation_seed,
 )
 from state import pack_state, unpack_state
@@ -224,6 +226,100 @@ class ThermalFramePredictorTests(unittest.TestCase):
         self.assertEqual(float(transferred["z"][-1]), float(z[-1]))
         _u, _T, species = unpack_state(transferred["x"], 61, 2)
         np.testing.assert_allclose(np.sum(species, axis=0), 1.0, rtol=0.0, atol=1.0e-14)
+
+
+class JacobianTangentChordTests(unittest.TestCase):
+    def test_tangent_uses_the_parameter_chord_not_the_target_residual(self) -> None:
+        """A nonzero accepted source residual must cancel from dF/dlambda."""
+        source_state = np.array([0.30, 300.0, 0.35, 900.0, 0.40, 1800.0])
+        source_residual = np.array([9.0, -4.0, 2.0, 7.0, -3.0, 5.0])
+        target_residual = source_residual + np.array([0.5, -0.7, 0.1, 0.4, 0.2, -0.3])
+        delta_lambda = 0.1
+        problem = SimpleNamespace(
+            n_species=0,
+            z=np.array([0.0, 0.5, 1.0]),
+            n_points=3,
+            width=1.0,
+            solve_energy=True,
+            anchor_T=1000.0,
+            backend_factory=lambda _problem: object(),
+        )
+        previous = {
+            "phi": np.array([1.0]),
+            "z": problem.z.copy(),
+            "x": source_state.copy(),
+            "continuation_linearization": {
+                "lu": {"method": "block_tridiag"},
+                "n_points": 3,
+                "n_species": 0,
+                "anchor_index": 1,
+                "state": source_state.copy(),
+                "residual": source_residual.copy(),
+            },
+        }
+        observed: dict[str, np.ndarray] = {}
+
+        def fake_solve(_lu, rhs):
+            observed["rhs"] = np.asarray(rhs, dtype=float).copy()
+            return np.zeros_like(rhs, dtype=float)
+
+        with patch(
+            "generate_fgm_tables_native.residual",
+            return_value=target_residual,
+        ), patch(
+            "generate_fgm_tables_native.solve_linear",
+            side_effect=fake_solve,
+        ):
+            result = _jacobian_tangent_state(
+                problem=problem,
+                target_phi=float(np.exp(delta_lambda)),
+                previous=previous,
+                damping=1.0,
+            )
+
+        self.assertIsNotNone(result)
+        predicted, metadata = result
+        np.testing.assert_allclose(predicted, source_state)
+        np.testing.assert_allclose(
+            observed["rhs"],
+            -(target_residual - source_residual) / delta_lambda,
+        )
+        self.assertAlmostEqual(metadata["source_residual_inf"], 9.0)
+        self.assertAlmostEqual(
+            metadata["parameter_chord_inf"], 0.7,
+        )
+
+    def test_tangent_refuses_an_unpaired_source_residual(self) -> None:
+        source_state = np.array([0.30, 300.0, 0.35, 900.0, 0.40, 1800.0])
+        problem = SimpleNamespace(
+            n_species=0,
+            z=np.array([0.0, 0.5, 1.0]),
+            n_points=3,
+            width=1.0,
+            solve_energy=True,
+            anchor_T=1000.0,
+            backend_factory=lambda _problem: object(),
+        )
+        previous = {
+            "phi": np.array([1.0]),
+            "z": problem.z.copy(),
+            "x": source_state.copy(),
+            "continuation_linearization": {
+                "lu": {"method": "block_tridiag"},
+                "n_points": 3,
+                "n_species": 0,
+                "anchor_index": 1,
+                "state": source_state.copy(),
+            },
+        }
+        self.assertIsNone(
+            _jacobian_tangent_state(
+                problem=problem,
+                target_phi=1.02,
+                previous=previous,
+                damping=1.0,
+            )
+        )
 
 class ProgressGridTests(unittest.TestCase):
     def test_indicator_uses_envelope_across_flamelets(self) -> None:

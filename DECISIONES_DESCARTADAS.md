@@ -17,6 +17,7 @@ CH4/aire, 300 K, 1 atm y transporte mixture-averaged.
 | GPU/CuPy | Las transferencias CPU-GPU superaron el ahorro: Jacobiano CPU 0.153 s frente a GPU 0.219 s. | Eliminado; la ruta de produccion es solo CPU. |
 | Reaplicar isoterma persistente de anclaje | El anclaje actual ya conserva T=781.381 K. Forzarlo de nuevo dio la misma malla, 136 pasos y el mismo residual, con 37.18 s frente a 36.43 s. | Sin cambio; no acelera. |
 | Detector por residual precondicionado GMRES | Tras cuatro iteraciones, el residual precondicionado era bajo incluso en llamadas que fallaban la convergencia real; no activo ningun corte util. | Eliminado; usar una sonda fija de 4 iteraciones. |
+| Tangente con geometria termica secante | En pasos de 2 % en \(\log\phi\), la segunda transicion empeoro de 0.94 s a 1.18 s a 1 atm. A 10 atm bajo de 2.65 s a 2.57 s en una sola corrida, pero termino con \(\|F\|_\infty=9.00\times10^3\), frente a \(1.38\times10^3\) para el tangente crudo. No hay mejora general ni margen suficiente frente a la guarda de \(10^4\). | Retirado; conservar el tangente crudo y registrar el resultado negativo. |
 
 ## Ruta de producción retenida
 

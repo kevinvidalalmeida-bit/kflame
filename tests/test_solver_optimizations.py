@@ -118,13 +118,20 @@ class ContinuationLinearizationTests(unittest.TestCase):
         )
         problem = SimpleNamespace(n_points=n_blocks, n_species=0)
         source_state = np.linspace(0.0, 1.0, n_blocks * block_size)
+        source_residual = np.linspace(-2.0, 3.0, n_blocks * block_size)
 
-        _remember_continuation_linearization(problem, source_state, state)
+        _remember_continuation_linearization(
+            problem,
+            source_state,
+            state,
+            source_residual=source_residual,
+        )
 
         handoff = problem._continuation_linearization
         self.assertEqual(handoff["n_points"], n_blocks)
         self.assertEqual(handoff["n_species"], 0)
         self.assertNotIn("profile_problem", handoff["lu"])
+        np.testing.assert_allclose(handoff["residual"], source_residual)
         np.testing.assert_allclose(
             solve_linear(handoff["lu"], source_state), source_state
         )

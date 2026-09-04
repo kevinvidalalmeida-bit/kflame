@@ -693,13 +693,19 @@ def _remember_continuation_linearization(
     problem,
     x: np.ndarray,
     jac: JacobianState | None,
+    source_residual: np.ndarray | None = None,
 ) -> None:
     """Keep a valid stationary LU for one neighbouring continuation step.
 
     This is deliberately an in-memory hand-off, never a cache entry.  A
     parameter predictor may use it to form a first-order sensitivity on the
     *next* target, but the target still goes through the complete nonlinear
-    solve and certificate.  Only an exact stationary factorization is kept:
+    solve and certificate.  ``source_residual`` is stored together with the
+    factorization when available.  This matters because a Cantera-style
+    operational certificate can accept a small-but-nonzero stationary
+    residual: a parameter derivative must use
+    ``F(x, lambda_target) - F(x, lambda_source)``, not the target residual
+    alone.  Only an exact stationary factorization is kept:
     a PTC factorization carries an artificial mass shift and must not be used
     as the derivative of the stationary flame family.
     """
@@ -719,7 +725,7 @@ def _remember_continuation_linearization(
     # for the whole FGM sweep.
     lu = dict(jac.lu)
     lu.pop("profile_problem", None)
-    problem._continuation_linearization = {
+    handoff = {
         "lu": lu,
         "n_points": int(problem.n_points),
         "n_species": int(problem.n_species),
@@ -730,6 +736,11 @@ def _remember_continuation_linearization(
         "jacobian_evaluations": int(jac.n_evals),
         "state": np.asarray(x, dtype=float).copy(),
     }
+    if source_residual is not None:
+        source_residual = np.asarray(source_residual, dtype=float)
+        if source_residual.shape == np.asarray(x).shape and np.all(np.isfinite(source_residual)):
+            handoff["residual"] = source_residual.copy()
+    problem._continuation_linearization = handoff
 
 
 def _build_linear_model(steady_fun, x: np.ndarray, problem,
@@ -1342,7 +1353,12 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
         )
 
         if ok_ss:
-            _remember_continuation_linearization(problem, x_ss, jac)
+            _remember_continuation_linearization(
+                problem,
+                x_ss,
+                jac,
+                source_residual=steady_fun(x_ss, problem),
+            )
             if steady_callback is not None:
                 steady_callback(x_ss)
             if opts.verbose:
@@ -1355,7 +1371,12 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
             Finf_limit = _final_residual_limit(opts)
             residual_ok = (not np.isfinite(Finf_limit)) or Finf <= Finf_limit
             if residual_ok:
-                _remember_continuation_linearization(problem, x_ss, jac)
+                _remember_continuation_linearization(
+                    problem,
+                    x_ss,
+                    jac,
+                    source_residual=steady_fun(x_ss, problem),
+                )
                 if steady_callback is not None:
                     steady_callback(x_ss)
                 history.append(
