@@ -767,6 +767,316 @@ def run_p1_domain_policy_ablation(root: Path, repetitions: int, pressures: tuple
     _write_csv(output / "domain_policy_ablation.csv", rows)
 
 
+def _load_fgm_table(path: Path) -> tuple[dict[str, np.ndarray], dict[str, Any], list[dict[str, Any]]]:
+    """Read one FGM run together with the trace needed for an ablation."""
+    with np.load(path / "fgm_table.npz", allow_pickle=True) as raw:
+        table = {key: np.asarray(raw[key]) for key in raw.files}
+    metadata = json.loads((path / "metadata.json").read_text(encoding="utf-8"))
+    trace = json.loads((path / "continuation_trace.json").read_text(encoding="utf-8"))
+    return table, metadata, trace
+
+
+def _fgm_table_pair_metrics(
+    baseline_path: Path,
+    candidate_path: Path,
+) -> dict[str, Any]:
+    """Compare two V2 FGM runs with an identical requested phi schedule.
+
+    The candidate is allowed to follow a different nonlinear route, but it
+    must produce the same table axes.  This is deliberately a V2--V2 test:
+    it isolates the local Jacobian rescue before a later frozen-schedule
+    V2--Cantera comparison.
+    """
+    baseline, baseline_meta, baseline_trace = _load_fgm_table(baseline_path)
+    candidate, candidate_meta, candidate_trace = _load_fgm_table(candidate_path)
+    for key in ("phi_grid", "Z_grid"):
+        if key not in baseline or key not in candidate or not np.array_equal(
+            baseline[key], candidate[key]
+        ):
+            raise ValueError(f"The paired FGM axes differ at '{key}'.")
+    if baseline["Y"].shape != candidate["Y"].shape:
+        raise ValueError("The paired FGM species layouts differ.")
+    c_baseline = np.asarray(baseline["c_grid"], dtype=float)
+    c_candidate = np.asarray(candidate["c_grid"], dtype=float)
+    if (
+        c_baseline.ndim != 1
+        or c_candidate.ndim != 1
+        or c_baseline.shape != c_candidate.shape
+        or np.any(np.diff(c_baseline) <= 0.0)
+        or np.any(np.diff(c_candidate) <= 0.0)
+        or not np.isclose(c_baseline[0], c_candidate[0])
+        or not np.isclose(c_baseline[-1], c_candidate[-1])
+    ):
+        raise ValueError("Paired FGM progress axes are incompatible.")
+
+    tiny = np.finfo(float).tiny
+
+    def candidate_on_baseline_c(field: str) -> np.ndarray:
+        values = np.asarray(candidate[field], dtype=float)
+        if np.array_equal(c_baseline, c_candidate):
+            return values
+        # A nonlinear route can give a slightly different *adaptive* common
+        # c-grid even when the requested phi schedule is identical. Compare
+        # fields after interpolation, rather than mistaking that harmless
+        # abscissa shift for a thermochemical difference.
+        flattened = values.reshape(-1, values.shape[-1])
+        return np.vstack(
+            [np.interp(c_baseline, c_candidate, row) for row in flattened]
+        ).reshape(values.shape)
+
+    def relative_l2(field: str) -> float:
+        reference = np.asarray(baseline[field], dtype=float)
+        trial = candidate_on_baseline_c(field)
+        return float(np.linalg.norm(trial - reference) / max(np.linalg.norm(reference), tiny))
+
+    names = [str(value) for value in np.asarray(baseline["species_names"], dtype=object)]
+    active = [names.index(name) for name in ACTIVE_SPECIES if name in names]
+    if not active:
+        raise ValueError("No active species found in paired FGM table.")
+    y_errors = [
+        float(
+            np.linalg.norm(
+                candidate_on_baseline_c("Y")[:, species, :]
+                - baseline["Y"][:, species, :]
+            )
+            / max(np.linalg.norm(baseline["Y"][:, species, :]), tiny)
+        )
+        for species in active
+    ]
+    baseline_time = np.asarray(baseline["solve_time"], dtype=float)
+    candidate_time = np.asarray(candidate["solve_time"], dtype=float)
+    transition_slice = slice(1, None)
+
+    def trace_count(trace: list[dict[str, Any]], key: str) -> int:
+        total = 0
+        for item in trace:
+            profile = item.get("solver_profile", {})
+            entry = profile.get(key, {}) if isinstance(profile, dict) else {}
+            total += int(entry.get("count", 0)) if isinstance(entry, dict) else 0
+        return total
+
+    return {
+        "baseline_all_accepted": bool(np.all(baseline["final_accepted"])),
+        "candidate_all_accepted": bool(np.all(candidate["final_accepted"])),
+        "baseline_total_time_s": float(np.sum(baseline_time)),
+        "candidate_total_time_s": float(np.sum(candidate_time)),
+        "baseline_transition_time_s": float(np.sum(baseline_time[transition_slice])),
+        "candidate_transition_time_s": float(np.sum(candidate_time[transition_slice])),
+        "transition_speedup_baseline_over_candidate": float(
+            np.sum(baseline_time[transition_slice])
+            / max(float(np.sum(candidate_time[transition_slice])), tiny)
+        ),
+        "total_speedup_baseline_over_candidate": float(
+            np.sum(baseline_time) / max(float(np.sum(candidate_time)), tiny)
+        ),
+        "Su_relative_error_max": float(
+            np.max(
+                np.abs(candidate["Su"] - baseline["Su"])
+                / np.maximum(np.abs(baseline["Su"]), tiny)
+            )
+        ),
+        "T_l2_relative": relative_l2("T"),
+        "qdot_l2_relative": relative_l2("qdot"),
+        "Y_l2_relative_max_active": max(y_errors),
+        "candidate_local_refresh_events": trace_count(
+            candidate_trace, "jacobian_local_refresh"
+        ),
+        "candidate_local_refresh_blocks": trace_count(
+            candidate_trace, "jacobian_local_refresh_blocks"
+        ),
+        "baseline_local_refresh_events": trace_count(
+            baseline_trace, "jacobian_local_refresh"
+        ),
+        "baseline_local_refresh_blocks": trace_count(
+            baseline_trace, "jacobian_local_refresh_blocks"
+        ),
+        "baseline_predictor_model": baseline_meta.get(
+            "continuation_predictor_model"
+        ),
+        "candidate_predictor_model": candidate_meta.get(
+            "continuation_predictor_model"
+        ),
+    }
+
+
+def run_p1_local_jacobian_refresh_ablation(
+    root: Path,
+    repetitions: int,
+    pressures: tuple[float, ...],
+    phi_values: str,
+) -> None:
+    """Measure the local-Jacobian rescue as paired continuation experiments.
+
+    Both routes receive the same cold flamelet and the same Jacobian-tangent
+    continuation in ``log(phi)``.  Only a non-contractive damping trial can
+    activate the candidate's spatially local refresh.  The table axis and the
+    full acceptance predicate therefore remain fixed, while alternating order
+    removes a systematic warm-machine advantage.
+    """
+    output = root / "P1_local_jacobian_refresh"
+    output.mkdir(parents=True, exist_ok=True)
+    generator = REPOSITORY / "FGM" / "scripts" / "generate_fgm_tables_native.py"
+    rows: list[dict[str, Any]] = []
+
+    def command_for(
+        *,
+        pressure: float,
+        name: str,
+        local_refresh: bool,
+    ) -> list[str]:
+        command = [
+            sys.executable, str(generator),
+            "--output-root", str(output), "--run-name", name,
+            "--phi-values", str(phi_values), "--P", str(float(pressure) * ATM),
+            "--continuation-mode", "adaptive-pc",
+            "--pc-initial-ratio", "1.02", "--pc-min-ratio", "1.02",
+            "--pc-max-ratio", "1.02", "--continuation-predictor-model", "tangent",
+            "--continuation-tangent-damping", "0.3",
+            "--continuation-predictor-frame", "thermal",
+            "--continuation-seed-mesh-points", "64",
+            "--disable-seed-cache", "--profile-solver", "--loglevel", "0",
+            "--max-flame-time-s", "300",
+        ]
+        if local_refresh:
+            command.append("--local-jacobian-refresh")
+        return command
+
+    for pressure in pressures:
+        if pressure <= 0.0:
+            raise ValueError("Local-refresh ablation requires positive pressure.")
+        for repetition in range(1, repetitions + 1):
+            order = ["baseline", "local"]
+            if repetition % 2 == 0:
+                order.reverse()
+            run_dirs: dict[str, Path] = {}
+            for variant in order:
+                name = f"P{pressure:g}_atm_{variant}_rep{repetition:02d}"
+                run_dir = output / name
+                run_dirs[variant] = run_dir
+                if not (run_dir / "fgm_table.npz").exists():
+                    completed = subprocess.run(
+                        command_for(
+                            pressure=pressure,
+                            name=name,
+                            local_refresh=(variant == "local"),
+                        ),
+                        cwd=REPOSITORY,
+                        text=True,
+                        check=False,
+                    )
+                    if completed.returncode:
+                        raise RuntimeError(
+                            f"Local refresh {name} failed with exit code "
+                            f"{completed.returncode}."
+                        )
+            row = {
+                "pressure_atm": float(pressure),
+                "replicate": int(repetition),
+                "order": ">".join(order),
+                "baseline_path": str(run_dirs["baseline"]),
+                "candidate_path": str(run_dirs["local"]),
+                **_fgm_table_pair_metrics(
+                    run_dirs["baseline"], run_dirs["local"]
+                ),
+            }
+            rows.append(row)
+            _write_json(output / "local_jacobian_refresh_partial.json", rows)
+            print(
+                f"P1 local refresh {pressure:g} atm rep {repetition}: "
+                f"transition speedup="
+                f"{row['transition_speedup_baseline_over_candidate']:.3f}"
+            )
+
+    def promotion_for(selected: list[dict[str, Any]]) -> dict[str, Any]:
+        speedups = np.asarray(
+            [row["transition_speedup_baseline_over_candidate"] for row in selected],
+            dtype=float,
+        )
+        return {
+            "n_pairs": int(speedups.size),
+            "transition_speedup": _summary(speedups.tolist()),
+            "all_baseline_certified": bool(
+                all(row["baseline_all_accepted"] for row in selected)
+            ),
+            "all_candidate_certified": bool(
+                all(row["candidate_all_accepted"] for row in selected)
+            ),
+            "time_ci_favors_candidate": bool(
+                _bootstrap_median_ci(speedups)[0] > 1.0
+            ),
+            "max_Su_relative_error": max(
+                row["Su_relative_error_max"] for row in selected
+            ),
+            "max_T_l2_relative": max(row["T_l2_relative"] for row in selected),
+            "max_qdot_l2_relative": max(
+                row["qdot_l2_relative"] for row in selected
+            ),
+            "max_Y_l2_relative_active": max(
+                row["Y_l2_relative_max_active"] for row in selected
+            ),
+            "total_local_refresh_events": int(
+                sum(row["candidate_local_refresh_events"] for row in selected)
+            ),
+            "total_local_refresh_blocks": int(
+                sum(row["candidate_local_refresh_blocks"] for row in selected)
+            ),
+        }
+
+    by_pressure = {
+        f"{pressure:g}_atm": promotion_for(
+            [row for row in rows if np.isclose(row["pressure_atm"], pressure)]
+        )
+        for pressure in pressures
+    }
+    overall = promotion_for(rows)
+    activated_rows = [
+        row for row in rows if int(row["candidate_local_refresh_events"]) > 0
+    ]
+    activated_speedups = np.asarray(
+        [row["transition_speedup_baseline_over_candidate"] for row in activated_rows],
+        dtype=float,
+    )
+    # At conditions where no local defect is found the candidate executes the
+    # exact baseline route.  Such no-op pairs must demonstrate physical
+    # equivalence, but they should not dilute a speed test of an optimisation
+    # that did not run.  This distinction is essential for a general policy:
+    # it is driven by the nonlinear defect, not by pressure.
+    overall["n_activated_pairs"] = int(activated_speedups.size)
+    overall["activated_transition_speedup"] = (
+        _summary(activated_speedups.tolist()) if activated_speedups.size else None
+    )
+    overall["time_ci_favors_candidate_when_activated"] = bool(
+        activated_speedups.size > 0
+        and _bootstrap_median_ci(activated_speedups)[0] > 1.0
+    )
+    overall["promote_local_jacobian_refresh"] = bool(
+        overall["all_baseline_certified"]
+        and overall["all_candidate_certified"]
+        and overall["time_ci_favors_candidate_when_activated"]
+        and overall["max_Su_relative_error"] <= 1.0e-3
+        and overall["max_T_l2_relative"] <= 5.0e-3
+        and overall["max_qdot_l2_relative"] <= 5.0e-2
+        and overall["max_Y_l2_relative_active"] <= 2.0e-2
+    )
+    _write_json(
+        output / "local_jacobian_refresh_ablation.json",
+        {
+            "environment": environment_metadata(),
+            "phi_values": str(phi_values),
+            "pressures_atm": list(pressures),
+            "repetitions": int(repetitions),
+            "policy": (
+                "Only the continuation corrector may use the local refresh; "
+                "cold and tight-refinement stages remain identical."
+            ),
+            "rows": rows,
+            "promotion": overall,
+            "promotion_by_pressure": by_pressure,
+        },
+    )
+    _write_csv(output / "local_jacobian_refresh_ablation.csv", rows)
+
+
 def _strategy_summary(path: Path) -> dict[str, Any]:
     with np.load(path / "fgm_table.npz", allow_pickle=True) as raw:
         table = {key: np.asarray(raw[key]) for key in raw.files}
@@ -828,16 +1138,19 @@ def main() -> None:
     parser.add_argument("--p1-matrix", action="store_true", help="Execute the P1 CH4 T/p and H2 mixture-averaged robustness screen.")
     parser.add_argument("--p1-pressure-continuation", action="store_true", help="Test mesh-aware bridge continuation in log(p) for 1, 5, and 10 atm.")
     parser.add_argument("--p1-domain-policy-ablation", action="store_true", help="Pair default/deferred domain checks at 5 and 10 atm.")
+    parser.add_argument("--p1-local-jacobian-refresh", action="store_true", help="Pair the certified local-Jacobian refresh against the identical tangent-continuation baseline.")
     parser.add_argument("--p1-strategies", action="store_true", help="Execute cache-free cold/fixed/fixed-bridge/adaptive-PC sweeps.")
     parser.add_argument("--p0-repetitions", type=int, default=7)
     parser.add_argument("--p1-repetitions", type=int, default=7)
     parser.add_argument("--pressure-bridge-ratio", type=float, default=1.5)
     parser.add_argument("--pressure-seed-mesh-points", type=int, default=48)
     parser.add_argument("--domain-policy-pressures", type=str, default="5,10", help="Comma-separated pressure values [atm] for the deferred-domain ablation.")
+    parser.add_argument("--local-refresh-pressures", type=str, default="1,10", help="Comma-separated pressure values [atm] for the local-Jacobian paired ablation.")
+    parser.add_argument("--local-refresh-phi-values", type=str, default="1,1.02,1.04", help="Strictly increasing phi schedule for the local-Jacobian paired ablation.")
     parser.add_argument("--phi-values", type=str, default="0.6,0.65,0.7,0.75,0.8,0.85,0.9,0.95,1.0,1.05,1.1,1.15,1.2,1.25,1.3,1.35,1.4,1.45,1.5")
     parser.add_argument("--skip-spatial", action="store_true", help="Skip P0 mesh/domain checks (only for a diagnostic dry run).")
     args = parser.parse_args()
-    if not any((args.p0, args.p1_matrix, args.p1_pressure_continuation, args.p1_domain_policy_ablation, args.p1_strategies)):
+    if not any((args.p0, args.p1_matrix, args.p1_pressure_continuation, args.p1_domain_policy_ablation, args.p1_local_jacobian_refresh, args.p1_strategies)):
         parser.error("Select at least one campaign task.")
     if args.p0_repetitions < 1 or args.p1_repetitions < 1:
         parser.error("Repetition counts must be positive.")
@@ -856,6 +1169,34 @@ def main() -> None:
         if not pressures or any(value <= 0.0 for value in pressures):
             parser.error("--domain-policy-pressures must contain positive values.")
         run_p1_domain_policy_ablation(args.output_root, repetitions=args.p1_repetitions, pressures=pressures)
+    if args.p1_local_jacobian_refresh:
+        pressures = tuple(
+            float(value.strip())
+            for value in args.local_refresh_pressures.split(",")
+            if value.strip()
+        )
+        if not pressures or any(value <= 0.0 for value in pressures):
+            parser.error("--local-refresh-pressures must contain positive values.")
+        raw_phi = [
+            float(value.strip())
+            for value in args.local_refresh_phi_values.split(",")
+            if value.strip()
+        ]
+        if (
+            len(raw_phi) < 2
+            or any(value <= 0.0 for value in raw_phi)
+            or any(right <= left for left, right in zip(raw_phi, raw_phi[1:]))
+        ):
+            parser.error(
+                "--local-refresh-phi-values must contain at least two strictly "
+                "increasing positive values."
+            )
+        run_p1_local_jacobian_refresh_ablation(
+            args.output_root,
+            repetitions=int(args.p1_repetitions),
+            pressures=pressures,
+            phi_values=args.local_refresh_phi_values,
+        )
     if args.p1_strategies:
         run_p1_strategies(args.output_root, repetitions=args.p1_repetitions, phi_values=args.phi_values)
 

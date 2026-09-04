@@ -23,6 +23,7 @@ from fgm_common import (
 )
 from generate_fgm_tables_native import (
     bound_continuation_seed_mesh,
+    build_argparser,
     _front_aligned_secant_state,
     _is_local_phi_step,
     _jacobian_tangent_state,
@@ -193,6 +194,15 @@ class BorderedPseudoArcLengthTests(unittest.TestCase):
                 tangent_parameter=1.0,
                 weights=np.ones(1),
             )
+
+
+class LocalJacobianRefreshPolicyTests(unittest.TestCase):
+    def test_fgm_continuation_enables_the_certified_rescue_by_default(self) -> None:
+        parser = build_argparser()
+        self.assertTrue(parser.parse_args([]).local_jacobian_refresh)
+        self.assertFalse(
+            parser.parse_args(["--no-local-jacobian-refresh"]).local_jacobian_refresh
+        )
 
 
 class PressurePredictorTests(unittest.TestCase):

@@ -1407,11 +1407,12 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument(
         "--local-jacobian-refresh",
         action=argparse.BooleanOptionalAction,
-        default=False,
+        default=True,
         help=(
-            "Experimental: ante un damping no contractivo, actualiza solo los "
-            "bloques espaciales indicados por el defecto no lineal y exige el "
-            "mismo criterio de aceptacion. Desactivado por defecto."
+            "Ante un damping no contractivo, actualiza solo los bloques "
+            "espaciales indicados por el defecto no lineal y exige el mismo "
+            "criterio de aceptacion. Solo actua en el corrector de continuacion; "
+            "--no-local-jacobian-refresh reproduce el baseline de ablacion."
         ),
     )
     p.add_argument(

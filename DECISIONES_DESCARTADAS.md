@@ -33,6 +33,10 @@ CH4/aire, 300 K, 1 atm y transporte mixture-averaged.
   una corrección PTC es rechazada.
 - Continuación por perfiles y predictor secante; `max_jac_age=20` para FGM
   frío y 40 solo en la ruta histórica de semillas convergidas.
+- Refresco local del Jacobiano en el corrector FGM: solo después de que el
+  damping normal no contraiga, con selección por defecto de linealización,
+  vecinos espaciales, nueva LU exacta y el certificado sin relajar. La ruta
+  fría y la etapa de malla estricta permanecen sin este rescate.
 - `OPENBLAS_NUM_THREADS=1` para los bloques densos pequeños.
 - Arranque de 12 nodos como opción validada para la FGM fría; conservar 8
   cuando se requiera reproducibilidad histórica.
@@ -40,11 +44,11 @@ CH4/aire, 300 K, 1 atm y transporte mixture-averaged.
 Una nueva variante solo debe añadirse de nuevo con una comparación end-to-end
 en un barrido FGM, misma malla/criterio de aceptación y mejora reproducible.
 
-## Candidata experimental en validación
+## Ablación certificada y promovida
 
 | Variante | Evidencia inicial | Estado y siguiente prueba |
 | --- | --- | --- |
-| Refresco local certificado por defecto de linealización | Ante una prueba de damping no contractiva, mide \(F(x+\alpha s)-F(x)-\alpha Js\), actualiza solo los bloques y vecinos cuyo defecto relativo es alto, refactoriza la LU exacta y exige el mismo test de contracción. En CH4/aire, \(\phi=[1,1.02,1.04]\), 10 atm, la repetición alternada redujo las dos transiciones de 4.12 s a 2.10 s; la corrida protegida posterior dio 2.21 s. Se actualizaron 36 y 43 bloques, frente a reconstruir matrices de 269 y 265 nodos. Los perfiles sobre la misma tabla difirieron del baseline en \(E_2(T)=1.79\times10^{-8}\), \(E_2(Y)=5.02\times10^{-9}\) y \(E_2(\dot q)=6.33\times10^{-8}\). A 1 atm no se activó, y la solución fue idéntica. | Mantener solo bajo `--local-jacobian-refresh`, restringido al corrector de continuación y sin exportar su LU quasi-Newton como tangente exacta. Requiere siete repeticiones alternadas, barrido amplio y comparación de perfiles antes de promoverla. |
+| Refresco local certificado por defecto de linealización | Ante una prueba de damping no contractiva, mide \(F(x+\alpha s)-F(x)-\alpha Js\), actualiza solo los bloques y vecinos cuyo defecto relativo es alto, refactoriza una LU exacta y exige el mismo test de contracción. En CH4/aire, \(\phi=[1,1.02,1.04]\), 10 atm, siete pares alternados dieron una mediana de \(2.023\times\) en las transiciones, con IC bootstrap pareado 95\,\% \([1.943,2.056]\). Cada pareja conservó certificación; se actualizaron 79 bloques en dos eventos por barrido. Los errores máximos frente al baseline fueron \(\Delta \Su=1.36\times10^{-8}\), \(E_2(T)=2.10\times10^{-9}\), \(E_2(Y)=3.94\times10^{-8}\) y \(E_2(\dot q)=6.23\times10^{-8}\). A 1 atm no hubo activación y los perfiles fueron idénticos. | Promovido como opción por defecto del generador FGM, limitada al corrector de continuación y sin exportar una LU quasi-Newton como tangente exacta. `--no-local-jacobian-refresh` conserva el baseline para futuras ablaciones. |
 
 ## Seleccion vigente para FGM
 
