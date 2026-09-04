@@ -2053,6 +2053,128 @@ def _precompute_block_tridiag_center_thermo(
     return rho_b, cp_b, omega_b, hk_b
 
 
+def refresh_block_tridiag_jacobian_columns(
+    fun,
+    x: np.ndarray,
+    problem,
+    reference: BlockTridiagJacobian,
+    block_indices: np.ndarray | list[int],
+    eps: float = 1e-5,
+) -> BlockTridiagJacobian:
+    """Refresh selected *column blocks* of a local block-tridiagonal Jacobian.
+
+    This is a deliberately narrow quasi-Newton operation.  A one-dimensional
+    residual column associated with node ``j`` can only write rows
+    ``j-1, j, j+1``.  Re-evaluating that column block therefore updates at most
+    the three corresponding block entries while retaining the tridiagonal
+    structure exactly.  The caller chooses the nodes from an a-posteriori
+    linearisation defect and remains responsible for refactorising the result.
+
+    Unlike a full Jacobian build, the optional batched thermochemistry
+    precomputation is intentionally not used here: evaluating it for all
+    nodes would remove the benefit of a localized refresh.  The operation is
+    only useful when a small subset is requested; callers should fall back to
+    a complete rebuild when most blocks are active.
+    """
+    if not isinstance(reference, BlockTridiagJacobian):
+        raise TypeError("Local refresh requires a BlockTridiagJacobian.")
+
+    t_profile = _profile_start(problem)
+    x = np.asarray(x, dtype=float)
+    n_pts = int(problem.n_points)
+    n_sp = int(problem.n_species)
+    nv = 2 + n_sp
+    expected = n_pts * nv
+    if x.size != expected:
+        raise ValueError("State size does not match the local Jacobian grid.")
+    if reference.n_blocks != n_pts or reference.block_size != nv:
+        raise ValueError("Reference Jacobian does not match the current grid.")
+
+    requested = np.asarray(block_indices, dtype=int).ravel()
+    requested = requested[(requested >= 0) & (requested < n_pts)]
+    requested = np.unique(requested)
+    if requested.size == 0:
+        return reference.copy()
+
+    refreshed = reference.copy()
+    cache = build_local_jacobian_cache(x, problem)
+    f0 = np.asarray(fun(x, problem), dtype=float)
+    if f0.shape != x.shape or not np.all(np.isfinite(f0)):
+        raise RuntimeError("Non-finite steady residual during local Jacobian refresh.")
+
+    rel_perturb = float(getattr(problem, "jacobian_rel_perturb", eps))
+    abs_perturb = float(getattr(problem, "jacobian_abs_perturb", 1e-10))
+    threshold = float(getattr(problem, "jacobian_threshold", 0.0))
+
+    for j in requested:
+        # A column block j occupies the diagonal block j and the two adjacent
+        # off-diagonal blocks.  Clear it before rewriting so thresholding does
+        # not retain entries from an earlier linearisation point.
+        refreshed.diag[j, :, :] = 0.0
+        if j < n_pts - 1:
+            refreshed.lower[j, :, :] = 0.0
+        if j > 0:
+            refreshed.upper[j - 1, :, :] = 0.0
+
+        base = int(j) * nv
+        cols = np.arange(base, base + nv, dtype=np.int32)
+        xsave = x[cols]
+        dx = np.abs(xsave) * rel_perturb + abs_perturb
+        dx[dx <= 0.0] = max(abs(rel_perturb), abs(eps), 1e-10)
+        dx = np.where(xsave < 0.0, -dx, dx)
+
+        rows, f_batch = residual_local_rows_batch_perturbed(
+            x, problem, int(j), cols, xsave + dx, cache=cache,
+        )
+        vals = (f_batch - f0[rows][None, :]) / dx[:, None]
+
+        if _fill_block_tridiag_jacobian_block_numba is not None:
+            _fill_block_tridiag_jacobian_block_numba(
+                refreshed.lower,
+                refreshed.diag,
+                refreshed.upper,
+                int(nv),
+                rows,
+                cols,
+                np.ascontiguousarray(vals),
+                float(threshold),
+            )
+            continue
+
+        for i, col in enumerate(cols):
+            cb = int(col) // nv
+            cv = int(col) - cb * nv
+            col_rows = rows
+            col_vals = vals[i]
+            if threshold > 0.0:
+                keep = np.abs(col_vals) > threshold
+                kdiag = np.where(col_rows == int(col))[0]
+                if kdiag.size > 0:
+                    keep[int(kdiag[0])] = True
+                col_rows = col_rows[keep]
+                col_vals = col_vals[keep]
+            for row, value in zip(col_rows, col_vals):
+                rb = int(row) // nv
+                rv = int(row) - rb * nv
+                if rb == cb:
+                    refreshed.diag[rb, rv, cv] = value
+                elif rb == cb + 1:
+                    refreshed.lower[cb, rv, cv] = value
+                elif rb + 1 == cb:
+                    refreshed.upper[rb, rv, cv] = value
+
+    refreshed.use_compiled_substitution = bool(
+        getattr(reference, "use_compiled_substitution", True)
+    )
+    _profile_record(problem, "jacobian_local_refresh", t_profile)
+    if getattr(problem, "_profile", None) is not None:
+        entry = problem._profile.setdefault(
+            "jacobian_local_refresh_blocks", {"time_s": 0.0, "count": 0}
+        )
+        entry["count"] += int(requested.size)
+    return refreshed
+
+
 def _block_tridiag_jacobian_local(fun, x: np.ndarray, problem, eps: float = 1e-5) -> BlockTridiagJacobian:
     """Build the local finite-difference Jacobian as dense block tridiagonal."""
     t_profile = _profile_start(problem)

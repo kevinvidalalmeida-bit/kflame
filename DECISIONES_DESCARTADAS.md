@@ -39,6 +39,12 @@ CH4/aire, 300 K, 1 atm y transporte mixture-averaged.
 Una nueva variante solo debe añadirse de nuevo con una comparación end-to-end
 en un barrido FGM, misma malla/criterio de aceptación y mejora reproducible.
 
+## Candidata experimental en validación
+
+| Variante | Evidencia inicial | Estado y siguiente prueba |
+| --- | --- | --- |
+| Refresco local certificado por defecto de linealización | Ante una prueba de damping no contractiva, mide \(F(x+\alpha s)-F(x)-\alpha Js\), actualiza solo los bloques y vecinos cuyo defecto relativo es alto, refactoriza la LU exacta y exige el mismo test de contracción. En CH4/aire, \(\phi=[1,1.02,1.04]\), 10 atm, la repetición alternada redujo las dos transiciones de 4.12 s a 2.10 s; la corrida protegida posterior dio 2.21 s. Se actualizaron 36 y 43 bloques, frente a reconstruir matrices de 269 y 265 nodos. Los perfiles sobre la misma tabla difirieron del baseline en \(E_2(T)=1.79\times10^{-8}\), \(E_2(Y)=5.02\times10^{-9}\) y \(E_2(\dot q)=6.33\times10^{-8}\). A 1 atm no se activó, y la solución fue idéntica. | Mantener solo bajo `--local-jacobian-refresh`, restringido al corrector de continuación y sin exportar su LU quasi-Newton como tangente exacta. Requiere siete repeticiones alternadas, barrido amplio y comparación de perfiles antes de promoverla. |
+
 ## Seleccion vigente para FGM
 
 Barrido con GRI-Mech 3.0, CH4/aire, 300 K, 1 atm, phi = 0.9, 1.0 y 1.1;

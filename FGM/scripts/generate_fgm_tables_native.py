@@ -767,6 +767,16 @@ def make_solve_options(args: argparse.Namespace) -> SolveOptions:
     opts.ptc_shift_lu_reuse_linear_tolerance = float(
         args.ptc_shift_lu_reuse_linear_tolerance
     )
+    opts.local_jacobian_refresh = bool(args.local_jacobian_refresh)
+    opts.local_jacobian_refresh_defect_threshold = float(
+        args.local_jacobian_refresh_defect_threshold
+    )
+    opts.local_jacobian_refresh_max_fraction = float(
+        args.local_jacobian_refresh_max_fraction
+    )
+    opts.local_jacobian_refresh_min_blocks = int(
+        args.local_jacobian_refresh_min_blocks
+    )
     opts.max_refine_passes = int(args.max_refine_passes)
     opts.require_grid_convergence = bool(args.require_grid_convergence)
     opts.auto_bootstrap_grids = bool(args.auto_bootstrap_grids)
@@ -889,6 +899,15 @@ def solve_flame_native(
             if continuation_jac_age > 0:
                 run_opts.max_jac_age = continuation_jac_age
 
+        # The local-defect rescue is a continuation-corrector experiment, not
+        # an alternative cold-start globalization strategy.  Restricting it
+        # to a physically neighbouring certified seed preserves the audited
+        # cold baseline while keeping the method general for any continuation
+        # coordinate (phi, pressure, inlet temperature, or enthalpy).
+        run_opts.local_jacobian_refresh = bool(
+            run_opts.local_jacobian_refresh and x0 is not None
+        )
+
         problem.backend = problem.backend_factory(problem)
         run_opts.jacobian_mode = str(jacobian_mode)
         t0 = time.perf_counter()
@@ -916,6 +935,10 @@ def solve_flame_native(
             tight_opts.require_grid_convergence = bool(
                 args.require_grid_convergence
             )
+            # The tight stage checks spatial convergence, not a parameter
+            # continuation transition. Keep its route equal to the audited
+            # refinement baseline.
+            tight_opts.local_jacobian_refresh = False
             x_sol, solve_ok, tight_report = solve_free_flame(
                 problem, options=tight_opts, x0=x_sol
             )
@@ -935,6 +958,9 @@ def solve_flame_native(
         dt = float(time.perf_counter() - t0)
         report["jacobian_mode"] = str(jacobian_mode)
         report["predictor_build_time_s"] = predictor_build_time_s
+        report["local_jacobian_refresh_scope"] = (
+            "continuation_corrector" if bool(run_opts.local_jacobian_refresh) else "off"
+        )
         return problem, x_sol, bool(solve_ok), report, dt
 
     requested_mode = str(args.jacobian_mode).strip().lower()
@@ -1082,6 +1108,9 @@ def solve_flame_native(
         "seeded": bool(selected_prediction is not None),
         "prediction_defect": prediction_defect,
         "predictor_build_time_s": float(report.get("predictor_build_time_s", 0.0)),
+        "local_jacobian_refresh_scope": str(
+            report.get("local_jacobian_refresh_scope", "off")
+        ),
         "n_refine_passes": int(len(report.get("passes", []))),
         "n_domain_expansions": int(len(report.get("expansion_events", []))),
         "solve_time_s": float(dt),
@@ -1375,6 +1404,37 @@ def build_argparser() -> argparse.ArgumentParser:
         default=1.0e-3,
         help="Residual relativo maximo para aceptar la correccion LU reutilizada.",
     )
+    p.add_argument(
+        "--local-jacobian-refresh",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Experimental: ante un damping no contractivo, actualiza solo los "
+            "bloques espaciales indicados por el defecto no lineal y exige el "
+            "mismo criterio de aceptacion. Desactivado por defecto."
+        ),
+    )
+    p.add_argument(
+        "--local-jacobian-refresh-defect-threshold",
+        type=float,
+        default=0.20,
+        help="Defecto relativo por bloque que activa el refresco local experimental.",
+    )
+    p.add_argument(
+        "--local-jacobian-refresh-max-fraction",
+        type=float,
+        default=0.35,
+        help=(
+            "Fraccion maxima de bloques que puede refrescarse localmente; por "
+            "encima se conserva la reconstruccion global normal."
+        ),
+    )
+    p.add_argument(
+        "--local-jacobian-refresh-min-blocks",
+        type=int,
+        default=1,
+        help="Numero minimo de bloques para intentar el refresco local experimental.",
+    )
     p.add_argument("--allow-failed-flamelets", action="store_true",
                    help="Permite guardar la tabla aunque algun flamelet no converja.")
     p.add_argument(
@@ -1497,6 +1557,14 @@ def main() -> None:
         raise SystemExit("--upwind-factor debe estar entre 0.0 y 1.0")
     if int(args.continuation_seed_mesh_points) < 0:
         raise SystemExit("--continuation-seed-mesh-points debe ser mayor o igual a cero")
+    if float(args.local_jacobian_refresh_defect_threshold) < 0.0:
+        raise SystemExit("--local-jacobian-refresh-defect-threshold debe ser no negativo")
+    if not 0.0 <= float(args.local_jacobian_refresh_max_fraction) <= 1.0:
+        raise SystemExit(
+            "--local-jacobian-refresh-max-fraction debe estar entre 0 y 1"
+        )
+    if int(args.local_jacobian_refresh_min_blocks) < 1:
+        raise SystemExit("--local-jacobian-refresh-min-blocks debe ser al menos 1")
     if args.continuation_mode == "adaptive-pc":
         if not (
             1.0 < float(args.pc_min_ratio) <= float(args.pc_initial_ratio)
@@ -2072,6 +2140,17 @@ def main() -> None:
         "upwind_factor": float(args.upwind_factor),
         "precompute_jacobian_thermo": bool(args.precompute_jacobian_thermo),
         "compiled_block_substitution": bool(args.compiled_block_substitution),
+        "local_jacobian_refresh": {
+            "enabled": bool(args.local_jacobian_refresh),
+            "scope": "continuation_corrector_only",
+            "defect_threshold": float(args.local_jacobian_refresh_defect_threshold),
+            "max_fraction": float(args.local_jacobian_refresh_max_fraction),
+            "min_blocks": int(args.local_jacobian_refresh_min_blocks),
+            "policy": (
+                "local_blocks_only_after_failed_standard_contraction; "
+                "exact_LU_and_standard_certificate_required"
+            ),
+        },
         "openblas_num_threads": os.environ.get("OPENBLAS_NUM_THREADS", "auto"),
         "continuation_predictor_enabled": not bool(args.disable_continuation_predictor),
         "continuation_predictor_model": str(args.continuation_predictor_model),

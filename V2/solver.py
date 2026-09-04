@@ -24,6 +24,7 @@ from equations import (
     BlockTridiagJacobian,
     build_jacobian_steady,
     factorize,
+    refresh_block_tridiag_jacobian_columns,
     residual,
     solve_linear,
     update_transient,
@@ -682,6 +683,11 @@ class JacobianState:
     ss_diag: np.ndarray = field(default_factory=lambda: np.empty(0))
     age: int = 10000
     n_evals: int = 0
+    n_local_refreshes: int = 0
+    # True only after a complete stationary finite-difference assembly.  A
+    # local refresh is a valid quasi-Newton corrector matrix but must never be
+    # exported as the exact tangent linearization of a neighbouring flamelet.
+    exact_steady: bool = False
     last_rdt: float | None = None
 
     def is_stale(self, max_age: int) -> bool:
@@ -715,6 +721,7 @@ def _remember_continuation_linearization(
         or not isinstance(jac.J, BlockTridiagJacobian)
         or not isinstance(jac.lu, dict)
         or jac.lu.get("method") != "block_tridiag"
+        or not bool(jac.exact_steady)
         or jac.last_rdt is None
         or not np.isclose(float(jac.last_rdt), 0.0, rtol=0.0, atol=0.0)
     ):
@@ -830,6 +837,169 @@ def _update_linear_model_transient(jac_state: JacobianState, mask: np.ndarray,
     _profile_record(problem, "linear_model_transient_update", t_profile)
 
 
+def _local_linearisation_defect_blocks(
+    f0: np.ndarray,
+    f_trial: np.ndarray,
+    jmat: BlockTridiagJacobian,
+    step: np.ndarray,
+    alpha: float,
+    defect_threshold: float,
+    max_fraction: float,
+) -> tuple[np.ndarray, dict[str, float]]:
+    """Select spatial blocks with an a-posteriori Newton model defect.
+
+    For a trial ``x + alpha s``, the normalized quantity
+
+    ``F(x + alpha s) - F(x) - alpha J s``
+
+    measures where the linear model stopped representing the nonlinear
+    residual.  It is dimensionless block-by-block: each numerator is compared
+    with the local residual or predicted change, with a global round-off
+    floor.  The resulting selection is independent of the continuation
+    parameter, pressure, or fuel.  Neighbouring column blocks are included
+    because each 1-D residual stencil spans one node either side.
+    """
+    if not isinstance(jmat, BlockTridiagJacobian):
+        return np.empty(0, dtype=int), {}
+    f0 = np.asarray(f0, dtype=float)
+    f_trial = np.asarray(f_trial, dtype=float)
+    step = np.asarray(step, dtype=float)
+    if (
+        f0.shape != f_trial.shape
+        or f0.shape != step.shape
+        or not np.all(np.isfinite(f0))
+        or not np.all(np.isfinite(f_trial))
+        or not np.all(np.isfinite(step))
+    ):
+        return np.empty(0, dtype=int), {}
+
+    predicted_change = float(alpha) * jmat.matvec(step)
+    defect = f_trial - f0 - predicted_change
+    n_blocks = int(jmat.n_blocks)
+    nv = int(jmat.block_size)
+    f_block = np.max(np.abs(f0.reshape(n_blocks, nv)), axis=1)
+    p_block = np.max(np.abs(predicted_change.reshape(n_blocks, nv)), axis=1)
+    d_block = np.max(np.abs(defect.reshape(n_blocks, nv)), axis=1)
+    scale_floor = max(1.0e-300, 1.0e-12 * max(float(np.max(f_block)), float(np.max(p_block)), 1.0))
+    relative = d_block / np.maximum(np.maximum(f_block, p_block), scale_floor)
+    raw = np.flatnonzero(relative >= max(float(defect_threshold), 0.0))
+    if raw.size == 0:
+        return raw.astype(int), {
+            "defect_max": float(np.max(relative)) if relative.size else 0.0,
+            "defect_selected_blocks": 0.0,
+            "defect_selected_fraction": 0.0,
+        }
+
+    selected = np.unique(
+        np.concatenate((raw - 1, raw, raw + 1))
+    )
+    selected = selected[(selected >= 0) & (selected < n_blocks)]
+    fraction = float(selected.size) / max(float(n_blocks), 1.0)
+    if fraction > max(float(max_fraction), 0.0):
+        return np.empty(0, dtype=int), {
+            "defect_max": float(np.max(relative)),
+            "defect_selected_blocks": float(selected.size),
+            "defect_selected_fraction": fraction,
+            "defect_rejected_global": 1.0,
+        }
+    return selected.astype(int), {
+        "defect_max": float(np.max(relative)),
+        "defect_selected_blocks": float(selected.size),
+        "defect_selected_fraction": fraction,
+        "defect_rejected_global": 0.0,
+    }
+
+
+def _local_refresh_trial_linearization(
+    steady_fun,
+    x_trial: np.ndarray,
+    f0: np.ndarray,
+    f_trial: np.ndarray,
+    step: np.ndarray,
+    alpha: float,
+    problem,
+    jac_state: JacobianState,
+    mask: np.ndarray,
+    rdt_curr: float,
+    jac_eps: float,
+) -> tuple[dict[str, object] | None, dict[str, float]]:
+    """Try a localized Jacobian refresh at an otherwise rejected trial.
+
+    The current matrix is first unshifted to its stationary form, selected
+    column blocks are reevaluated at the trial state, and the resulting
+    pseudo-transient diagonal is applied again.  The system is always
+    factorized exactly.  Returning ``None`` leaves the caller on its original
+    full-Jacobian/damping route; no approximate factorization can escape this
+    function.
+    """
+    if (
+        not bool(getattr(problem, "local_jacobian_refresh", False))
+        or not isinstance(jac_state.J, BlockTridiagJacobian)
+        or jac_state.ss_diag.size != np.asarray(x_trial).size
+        or jac_state.last_rdt is None
+    ):
+        return None, {}
+
+    selected, diagnostics = _local_linearisation_defect_blocks(
+        f0=f0,
+        f_trial=f_trial,
+        jmat=jac_state.J,
+        step=step,
+        alpha=alpha,
+        defect_threshold=float(
+            getattr(problem, "local_jacobian_refresh_defect_threshold", 0.20)
+        ),
+        max_fraction=float(
+            getattr(problem, "local_jacobian_refresh_max_fraction", 0.35)
+        ),
+    )
+    min_blocks = max(1, int(getattr(problem, "local_jacobian_refresh_min_blocks", 1)))
+    if selected.size < min_blocks:
+        return None, diagnostics
+
+    try:
+        # ``jac_state.J`` may contain the current PTC diagonal.  Restore the
+        # stationary diagonal before reevaluating selected finite-difference
+        # columns at x_trial, then apply the same shift to the new matrix.
+        steady_matrix = jac_state.J.copy()
+        steady_matrix.setdiag(jac_state.ss_diag)
+        refreshed_steady = refresh_block_tridiag_jacobian_columns(
+            steady_fun,
+            x_trial,
+            problem,
+            steady_matrix,
+            selected,
+            eps=jac_eps,
+        )
+        refreshed_ss_diag = refreshed_steady.diagonal().copy()
+        refreshed_matrix = update_transient(
+            refreshed_steady,
+            mask,
+            float(rdt_curr),
+            inplace=True,
+        )
+        if getattr(problem, "_profile", None) is not None:
+            setattr(refreshed_matrix, "_profile_problem", problem)
+        refreshed_lu = _factorize_current_linear_system(
+            refreshed_matrix,
+            np.asarray(x_trial, dtype=float),
+            problem,
+            float(rdt_curr),
+        )
+        if isinstance(refreshed_lu, dict):
+            refreshed_lu["profile_problem"] = problem
+    except Exception:
+        diagnostics["local_refresh_error"] = 1.0
+        return None, diagnostics
+
+    diagnostics["local_refresh_used"] = 1.0
+    return {
+        "J": refreshed_matrix,
+        "lu": refreshed_lu,
+        "ss_diag": refreshed_ss_diag,
+    }, diagnostics
+
+
 # ---------------------------------------------------------------------------
 #  Main Newton solver
 # ---------------------------------------------------------------------------
@@ -902,6 +1072,7 @@ def newton_solve(
                 jac_state.ss_diag = ss_diag
                 jac_state.age = 0
                 jac_state.n_evals += 1
+                jac_state.exact_steady = True
                 jac_state.last_rdt = rdt_curr
                 force_new_jac = False
             except Exception as exc:
@@ -980,6 +1151,7 @@ def newton_solve(
         damp_ok = False
         x1 = x.copy()
         s1 = float("inf")
+        local_refresh_info: dict[str, Any] = {}
 
         t_damp = _profile_start(problem)
         for _ in range(max_damp_iter):
@@ -1039,6 +1211,51 @@ def newton_solve(
                 s1 = s1_try
                 break
 
+            # The ordinary contraction check just found a state at which the
+            # old linear model is unreliable.  A local refresh is allowed to
+            # rescue that *same* trial only when its a-posteriori defect is
+            # confined to a small part of the 1-D domain.  It must still pass
+            # exactly the same contraction test; otherwise the existing
+            # backtracking/full-Jacobian behaviour is untouched.
+            refresh_state, refresh_info = _local_refresh_trial_linearization(
+                steady_fun=steady_fun,
+                x_trial=x_try,
+                f0=f,
+                f_trial=f_try,
+                step=step0,
+                alpha=alpha,
+                problem=problem,
+                jac_state=jac_state,
+                mask=mask,
+                rdt_curr=rdt_curr,
+                jac_eps=jac_eps,
+            )
+            if refresh_state is not None:
+                try:
+                    step1_local = solve_linear(refresh_state["lu"], -f_try)
+                    s1_local = weighted_norm(step1_local, x_try, problem, rdt=rdt)
+                except Exception:
+                    step1_local = np.empty(0, dtype=float)
+                    s1_local = float("inf")
+                if np.all(np.isfinite(step1_local)) and (
+                    s1_local < 1.0 or s1_local < s0
+                ):
+                    jac_state.J = refresh_state["J"]
+                    jac_state.lu = refresh_state["lu"]
+                    jac_state.ss_diag = np.asarray(
+                        refresh_state["ss_diag"], dtype=float
+                    )
+                    jac_state.age = 0
+                    jac_state.n_evals += 1
+                    jac_state.n_local_refreshes += 1
+                    jac_state.exact_steady = False
+                    jac_state.last_rdt = rdt_curr
+                    local_refresh_info = dict(refresh_info)
+                    damp_ok = True
+                    x1 = x_try
+                    s1 = s1_local
+                    break
+
             alpha /= damp_factor
         _profile_record(problem, "newton_damping", t_damp)
 
@@ -1048,7 +1265,7 @@ def newton_solve(
                 converged = bool(alpha >= 1.0 - 1.0e-14 and s1 < tol)
             else:
                 converged = bool(s1 < tol)
-            history.append({
+            record: dict[str, Any] = {
                 "iter": it,
                 "status": "ok" if converged else "step",
                 "normF": normf,
@@ -1056,7 +1273,10 @@ def newton_solve(
                 "s1": s1,
                 "alpha": alpha,
                 "jac_age": jac_state.age,
-            })
+            }
+            if local_refresh_info:
+                record.update(local_refresh_info)
+            history.append(record)
 
             if verbose:
                 print(
@@ -1135,6 +1355,14 @@ class SolveOptions:
     ptc_shift_lu_reuse: bool = False
     ptc_shift_lu_reuse_max_corrections: int = 2
     ptc_shift_lu_reuse_linear_tolerance: float = 1.0e-3
+    # Experimental localized quasi-Newton rescue.  A failed damping trial can
+    # refresh only the blocks whose nonlinear linearisation defect is large,
+    # then undergo the same contraction test and final certificate.  It is
+    # off until paired timing/physical validation promotes it.
+    local_jacobian_refresh: bool = False
+    local_jacobian_refresh_defect_threshold: float = 0.20
+    local_jacobian_refresh_max_fraction: float = 0.35
+    local_jacobian_refresh_min_blocks: int = 1
     alpha_min: float = 1e-10
 
     # Time-stepping (híbrido)
@@ -1249,6 +1477,22 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
     )
     problem.ptc_shift_lu_reuse_linear_tolerance = float(
         max(0.0, getattr(opts, "ptc_shift_lu_reuse_linear_tolerance", 1.0e-3))
+    )
+    problem.local_jacobian_refresh = bool(
+        getattr(opts, "local_jacobian_refresh", False)
+    )
+    problem.local_jacobian_refresh_defect_threshold = float(
+        max(0.0, getattr(opts, "local_jacobian_refresh_defect_threshold", 0.20))
+    )
+    problem.local_jacobian_refresh_max_fraction = float(
+        np.clip(
+            getattr(opts, "local_jacobian_refresh_max_fraction", 0.35),
+            0.0,
+            1.0,
+        )
+    )
+    problem.local_jacobian_refresh_min_blocks = int(
+        max(1, getattr(opts, "local_jacobian_refresh_min_blocks", 1))
     )
     steady_fun = _make_steady_fun(problem)
     jac: JacobianState | None = None

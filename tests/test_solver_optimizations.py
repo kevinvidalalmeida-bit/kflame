@@ -4,6 +4,7 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
 
@@ -13,8 +14,14 @@ V2 = ROOT / "V2"
 if str(V2) not in sys.path:
     sys.path.insert(0, str(V2))
 
-from equations import BlockTridiagJacobian, factorize, solve_linear
-from solver import JacobianState, _equilibrate_block_tridiag, _remember_continuation_linearization
+import equations
+from equations import BlockTridiagJacobian, factorize, refresh_block_tridiag_jacobian_columns, solve_linear
+from solver import (
+    JacobianState,
+    _equilibrate_block_tridiag,
+    _local_linearisation_defect_blocks,
+    _remember_continuation_linearization,
+)
 
 
 class BlockDiagonalUpdateTests(unittest.TestCase):
@@ -37,6 +44,90 @@ class BlockDiagonalUpdateTests(unittest.TestCase):
         for j in range(4):
             np.fill_diagonal(off_diagonal_after[j], 0.0)
         np.testing.assert_allclose(off_diagonal_after, off_diagonal_before)
+
+
+class LocalJacobianRefreshTests(unittest.TestCase):
+    def test_defect_selects_local_stencil_and_rejects_global_selection(self) -> None:
+        matrix = BlockTridiagJacobian(
+            np.zeros((4, 2, 2)),
+            np.tile(np.eye(2)[None, :, :], (5, 1, 1)),
+            np.zeros((4, 2, 2)),
+        )
+        f0 = np.ones(10)
+        step = np.zeros(10)
+        f_trial = f0.copy()
+        # The nonlinear defect is localized at node 2, so columns 1--3 must
+        # be refreshed to cover the tridiagonal residual stencil.
+        f_trial[4] += 1.0
+        selected, info = _local_linearisation_defect_blocks(
+            f0, f_trial, matrix, step, 1.0,
+            defect_threshold=0.5, max_fraction=0.8,
+        )
+        np.testing.assert_array_equal(selected, np.array([1, 2, 3]))
+        self.assertEqual(info["defect_selected_blocks"], 3.0)
+
+        rejected, rejected_info = _local_linearisation_defect_blocks(
+            f0, f_trial, matrix, step, 1.0,
+            defect_threshold=0.5, max_fraction=0.4,
+        )
+        self.assertEqual(rejected.size, 0)
+        self.assertEqual(rejected_info["defect_rejected_global"], 1.0)
+
+    def test_refresh_replaces_only_requested_column_block(self) -> None:
+        n_blocks, block_size = 3, 2
+        reference = BlockTridiagJacobian(
+            np.full((2, 2, 2), -3.0),
+            np.full((3, 2, 2), -2.0),
+            np.full((2, 2, 2), -1.0),
+        )
+        before = reference.copy()
+        problem = SimpleNamespace(
+            n_points=n_blocks,
+            n_species=0,
+            jacobian_rel_perturb=1.0e-5,
+            jacobian_abs_perturb=1.0e-10,
+            jacobian_threshold=0.0,
+            _profile=None,
+        )
+        target_values = np.array(
+            [[10.0, 11.0, 12.0, 13.0, 14.0, 15.0],
+             [20.0, 21.0, 22.0, 23.0, 24.0, 25.0]]
+        )
+
+        def fake_rows(_x, _problem, _j, _cols, xpert, **_kwargs):
+            # x is zero, so xpert contains the finite-difference increments.
+            batch = np.vstack((
+                target_values[0] * xpert[0],
+                target_values[1] * xpert[1],
+            ))
+            return np.arange(6, dtype=np.int32), batch
+
+        with patch.object(equations, "build_local_jacobian_cache", return_value={}), patch.object(
+            equations, "residual_local_rows_batch_perturbed", side_effect=fake_rows
+        ), patch.object(equations, "_fill_block_tridiag_jacobian_block_numba", None):
+            refreshed = refresh_block_tridiag_jacobian_columns(
+                lambda x, _problem: np.zeros_like(x),
+                np.zeros(6),
+                problem,
+                reference,
+                [1],
+            )
+
+        # Non-adjacent column blocks are untouched.
+        np.testing.assert_allclose(refreshed.diag[0], before.diag[0])
+        np.testing.assert_allclose(refreshed.diag[2], before.diag[2])
+        np.testing.assert_allclose(refreshed.lower[0], before.lower[0])
+        np.testing.assert_allclose(refreshed.upper[1], before.upper[1])
+        # Column block 1 owns diag[1], upper[0], and lower[1].
+        np.testing.assert_allclose(
+            refreshed.upper[0], np.array([[10.0, 20.0], [11.0, 21.0]])
+        )
+        np.testing.assert_allclose(
+            refreshed.diag[1], np.array([[12.0, 22.0], [13.0, 23.0]])
+        )
+        np.testing.assert_allclose(
+            refreshed.lower[1], np.array([[14.0, 24.0], [15.0, 25.0]])
+        )
 
 
 class CompiledBlockSubstitutionTests(unittest.TestCase):
@@ -114,6 +205,7 @@ class ContinuationLinearizationTests(unittest.TestCase):
             lu=lu,
             age=2,
             n_evals=5,
+            exact_steady=True,
             last_rdt=0.0,
         )
         problem = SimpleNamespace(n_points=n_blocks, n_species=0)
@@ -144,6 +236,24 @@ class ContinuationLinearizationTests(unittest.TestCase):
         )
         problem = SimpleNamespace(n_points=2, n_species=0)
         state = JacobianState(J=matrix, lu=factorize(matrix), last_rdt=10.0)
+
+        _remember_continuation_linearization(problem, np.zeros(4), state)
+
+        self.assertFalse(hasattr(problem, "_continuation_linearization"))
+
+    def test_rejects_a_local_quasi_newton_factorization(self) -> None:
+        matrix = BlockTridiagJacobian(
+            np.zeros((1, 2, 2)),
+            np.tile(np.eye(2)[None, :, :], (2, 1, 1)),
+            np.zeros((1, 2, 2)),
+        )
+        problem = SimpleNamespace(n_points=2, n_species=0)
+        state = JacobianState(
+            J=matrix,
+            lu=factorize(matrix),
+            exact_steady=False,
+            last_rdt=0.0,
+        )
 
         _remember_continuation_linearization(problem, np.zeros(4), state)
 
