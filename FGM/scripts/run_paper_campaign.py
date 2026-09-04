@@ -932,7 +932,6 @@ def run_p1_local_jacobian_refresh_ablation(
             "--pc-initial-ratio", "1.02", "--pc-min-ratio", "1.02",
             "--pc-max-ratio", "1.02", "--continuation-predictor-model", "tangent",
             "--continuation-tangent-damping", "0.3",
-            "--continuation-predictor-frame", "thermal",
             "--continuation-seed-mesh-points", "64",
             "--disable-seed-cache", "--profile-solver", "--loglevel", "0",
             "--max-flame-time-s", "300",

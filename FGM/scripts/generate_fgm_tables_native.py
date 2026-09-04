@@ -76,110 +76,6 @@ def _is_local_phi_step(
     return (1.0 / max_ratio) <= ratio <= max_ratio
 
 
-def _thermal_frame(z: np.ndarray, temperature: np.ndarray) -> tuple[float, float] | None:
-    """Return thermal-front position and thickness for continuation geometry.
-
-    The definition uses the midpoint temperature and the inverse maximum
-    gradient. It is a coordinate map for a predictor only; the corrected
-    flame still determines the physical mesh, domain, and certificate.
-    """
-    z = np.asarray(z, dtype=float)
-    temperature = np.asarray(temperature, dtype=float)
-    if z.ndim != 1 or temperature.shape != z.shape or z.size < 3:
-        return None
-    span = float(temperature[-1] - temperature[0])
-    if not np.isfinite(span) or abs(span) <= 1.0e-12:
-        return None
-    gradient = np.gradient(temperature, z)
-    maximum = float(np.max(np.abs(gradient)))
-    if not np.isfinite(maximum) or maximum <= np.finfo(float).tiny:
-        return None
-    target = float(temperature[0] + 0.5 * span)
-    crossings = np.flatnonzero(
-        (temperature[:-1] - target) * (temperature[1:] - target) <= 0.0
-    )
-    if crossings.size == 0:
-        return None
-    # A detailed flame can contain weak non-monotone tails. The relevant
-    # crossing is the one in the strongest thermal-gradient interval.
-    local = np.abs(gradient[crossings]) + np.abs(gradient[crossings + 1])
-    index = int(crossings[int(np.argmax(local))])
-    t0, t1 = float(temperature[index]), float(temperature[index + 1])
-    z0, z1 = float(z[index]), float(z[index + 1])
-    if abs(t1 - t0) <= np.finfo(float).tiny:
-        front = 0.5 * (z0 + z1)
-    else:
-        front = z0 + (target - t0) * (z1 - z0) / (t1 - t0)
-    thickness = abs(span) / maximum
-    min_spacing = float(np.min(np.diff(z)))
-    if not np.isfinite(front) or not np.isfinite(thickness) or thickness <= 0.0:
-        return None
-    return float(front), max(float(thickness), min_spacing)
-
-
-def _front_aligned_secant_state(
-    x_old: np.ndarray,
-    z_old: np.ndarray,
-    x_latest: np.ndarray,
-    z_latest: np.ndarray,
-    n_species: int,
-    factor: float,
-) -> tuple[np.ndarray, dict[str, float]] | None:
-    """Apply a secant predictor in a thermal-front coordinate.
-
-    Profiles are first compared at equal
-    ``xi = (z - z_front) / delta_T``. The secant then predicts both the state
-    in that coordinate and the position/thickness of the front. The result is
-    sampled back on the latest accepted mesh, retaining valid domain endpoints
-    while avoiding a raw-``z`` comparison of flames with different thickness.
-    """
-    z_old = np.asarray(z_old, dtype=float)
-    z_latest = np.asarray(z_latest, dtype=float)
-    try:
-        _u_old, T_old, _Y_old = unpack_state(x_old, z_old.size, n_species)
-        _u_latest, T_latest, _Y_latest = unpack_state(
-            x_latest, z_latest.size, n_species
-        )
-    except ValueError:
-        return None
-    frame_old = _thermal_frame(z_old, T_old)
-    frame_latest = _thermal_frame(z_latest, T_latest)
-    if frame_old is None or frame_latest is None:
-        return None
-    front_old, thickness_old = frame_old
-    front_latest, thickness_latest = frame_latest
-    xi_latest = (z_latest - front_latest) / thickness_latest
-    z_old_on_latest_xi = front_old + thickness_old * xi_latest
-    old_on_latest_xi = interpolate_state(x_old, z_old, z_old_on_latest_xi, n_species)
-
-    # ``factor`` already contains the standard damping and secant bounds.
-    # Do not introduce a parameter-specific switch here.
-    curve_prediction = np.asarray(x_latest, dtype=float) + float(factor) * (
-        np.asarray(x_latest, dtype=float) - old_on_latest_xi
-    )
-    front_prediction = front_latest + float(factor) * (front_latest - front_old)
-    thickness_prediction = thickness_latest + float(factor) * (
-        thickness_latest - thickness_old
-    )
-    thickness_prediction = max(
-        float(thickness_prediction),
-        0.25 * min(thickness_old, thickness_latest),
-        float(np.min(np.diff(z_latest))),
-    )
-    xi_target = (z_latest - front_prediction) / thickness_prediction
-    x_prediction = interpolate_state(
-        curve_prediction, xi_latest, xi_target, n_species
-    )
-    return x_prediction, {
-        "front_old_m": float(front_old),
-        "front_latest_m": float(front_latest),
-        "front_prediction_m": float(front_prediction),
-        "thickness_old_m": float(thickness_old),
-        "thickness_latest_m": float(thickness_latest),
-        "thickness_prediction_m": float(thickness_prediction),
-    }
-
-
 v2_path = Path(__file__).resolve().parent.parent.parent / "V2"
 v2_dir = str(v2_path)
 if v2_dir not in sys.path:
@@ -421,7 +317,6 @@ def build_continuation_seed(
     prev_prev_solution: dict[str, np.ndarray] | None,
     use_predictor: bool,
     predictor_damping: float,
-    predictor_frame: str = "z",
     trust_ratio: float = _CONTINUATION_MAX_PHI_RATIO,
     predictor_model: str = "secant",
 ) -> dict[str, Any] | None:
@@ -444,9 +339,6 @@ def build_continuation_seed(
     if z_prev.ndim != 1 or z_prev.size < 2 or x_prev.size != expected:
         return None
 
-    predictor_frame = str(predictor_frame).strip().lower()
-    if predictor_frame not in ("z", "thermal"):
-        raise ValueError("predictor_frame must be 'z' or 'thermal'")
     predictor_model = str(predictor_model).strip().lower()
     if predictor_model not in ("secant", "tangent"):
         raise ValueError("predictor_model must be 'secant' or 'tangent'")
@@ -499,24 +391,8 @@ def build_continuation_seed(
                 factor = (lambda_target - lambda1) / dlambda
                 factor *= float(np.clip(predictor_damping, 0.0, 1.0))
                 factor = float(np.clip(factor, -0.5, 1.0))
-                if predictor_frame == "thermal":
-                    thermal_prediction = _front_aligned_secant_state(
-                        x_old=x0,
-                        z_old=z0,
-                        x_latest=x_prev,
-                        z_latest=z_prev,
-                        n_species=n_sp,
-                        factor=factor,
-                    )
-                    if thermal_prediction is not None:
-                        x_seed, predictor_metadata = thermal_prediction
-                        predictor_kind = "secant_thermal"
-                    else:
-                        x_seed = x_prev + factor * (x_prev - x0_on_prev)
-                        predictor_kind = "secant_z_fallback"
-                else:
-                    x_seed = x_prev + factor * (x_prev - x0_on_prev)
-                    predictor_kind = "secant"
+                x_seed = x_prev + factor * (x_prev - x0_on_prev)
+                predictor_kind = "secant"
 
     u, T, Y = unpack_state(x_seed, int(z_prev.size), n_sp)
 
@@ -555,11 +431,11 @@ def build_continuation_seed(
         "z": z_prev.copy(),
         "x": pack_state(u, T, Y),
         "predictor_kind": predictor_kind,
-        "predictor_frame": predictor_frame,
+        "predictor_frame": "z",
         "predictor_model": predictor_model,
     }
     if predictor_metadata:
-        result["predictor_frame_metadata"] = predictor_metadata
+        result["predictor_metadata"] = predictor_metadata
     return result
 
 
@@ -762,11 +638,6 @@ def make_solve_options(args: argparse.Namespace) -> SolveOptions:
     opts.jacobian_mode = str(args.jacobian_mode)
     opts.precompute_jacobian_thermo = bool(args.precompute_jacobian_thermo)
     opts.compiled_block_substitution = bool(args.compiled_block_substitution)
-    opts.ptc_shift_lu_reuse = bool(args.ptc_shift_lu_reuse)
-    opts.ptc_shift_lu_reuse_max_corrections = int(args.ptc_shift_lu_reuse_corrections)
-    opts.ptc_shift_lu_reuse_linear_tolerance = float(
-        args.ptc_shift_lu_reuse_linear_tolerance
-    )
     opts.local_jacobian_refresh = bool(args.local_jacobian_refresh)
     opts.local_jacobian_refresh_defect_threshold = float(
         args.local_jacobian_refresh_defect_threshold
@@ -865,7 +736,6 @@ def solve_flame_native(
             prev_prev_solution=prev_prev_solution,
             use_predictor=not bool(args.disable_continuation_predictor),
             predictor_damping=predictor_damping,
-            predictor_frame=str(args.continuation_predictor_frame),
             trust_ratio=(
                 float(args.continuation_trust_ratio)
                 if continuation_trust_ratio is None
@@ -899,8 +769,8 @@ def solve_flame_native(
             if continuation_jac_age > 0:
                 run_opts.max_jac_age = continuation_jac_age
 
-        # The local-defect rescue is a continuation-corrector experiment, not
-        # an alternative cold-start globalization strategy.  Restricting it
+        # The local-defect rescue is a certified continuation corrector, not
+        # an alternative cold-start globalization strategy. Restricting it
         # to a physically neighbouring certified seed preserves the audited
         # cold baseline while keeping the method general for any continuation
         # coordinate (phi, pressure, inlet temperature, or enthalpy).
@@ -1090,7 +960,7 @@ def solve_flame_native(
             if selected_prediction is not None else "none"
         ),
         "predictor_metadata": (
-            selected_prediction.get("predictor_frame_metadata", {})
+            selected_prediction.get("predictor_metadata", {})
             if selected_prediction is not None else {}
         ),
         "seed_mesh_transfer": (
@@ -1383,28 +1253,6 @@ def build_argparser() -> argparse.ArgumentParser:
         help="Fusiona en Numba las sustituciones de la LU block-tridiagonal.",
     )
     p.add_argument(
-        "--ptc-shift-lu-reuse",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help=(
-            "Experimental: ante un cambio de pseudo-tiempo, prueba la LU PTC "
-            "exacta anterior como precondicionador y vuelve a LU exacta si el "
-            "residual lineal no alcanza la tolerancia. Desactivado por defecto."
-        ),
-    )
-    p.add_argument(
-        "--ptc-shift-lu-reuse-corrections",
-        type=int,
-        default=2,
-        help="Numero maximo de correcciones con la LU PTC previa (experimental).",
-    )
-    p.add_argument(
-        "--ptc-shift-lu-reuse-linear-tolerance",
-        type=float,
-        default=1.0e-3,
-        help="Residual relativo maximo para aceptar la correccion LU reutilizada.",
-    )
-    p.add_argument(
         "--local-jacobian-refresh",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -1419,7 +1267,7 @@ def build_argparser() -> argparse.ArgumentParser:
         "--local-jacobian-refresh-defect-threshold",
         type=float,
         default=0.20,
-        help="Defecto relativo por bloque que activa el refresco local experimental.",
+        help="Defecto relativo por bloque que activa el refresco local certificado.",
     )
     p.add_argument(
         "--local-jacobian-refresh-max-fraction",
@@ -1434,7 +1282,7 @@ def build_argparser() -> argparse.ArgumentParser:
         "--local-jacobian-refresh-min-blocks",
         type=int,
         default=1,
-        help="Numero minimo de bloques para intentar el refresco local experimental.",
+        help="Numero minimo de bloques para intentar el refresco local certificado.",
     )
     p.add_argument("--allow-failed-flamelets", action="store_true",
                    help="Permite guardar la tabla aunque algun flamelet no converja.")
@@ -1470,15 +1318,6 @@ def build_argparser() -> argparse.ArgumentParser:
         help=(
             "Amortiguamiento global del predictor tangente con Jacobiano. "
             "No modifica el baseline secante."
-        ),
-    )
-    p.add_argument(
-        "--continuation-predictor-frame",
-        choices=("z", "thermal"),
-        default="z",
-        help=(
-            "Coordenada del predictor secante: z conserva el baseline; thermal "
-            "alinea frente y espesor termico antes de corregir."
         ),
     )
     p.add_argument(
@@ -2157,7 +1996,6 @@ def main() -> None:
         "continuation_predictor_model": str(args.continuation_predictor_model),
         "continuation_predictor_damping": float(args.continuation_predictor_damping),
         "continuation_tangent_damping": float(args.continuation_tangent_damping),
-        "continuation_predictor_frame": str(args.continuation_predictor_frame),
         "continuation_tangent": {
             "coordinate": "log(phi)",
             "linearization": "previous_certified_stationary_block_LU",

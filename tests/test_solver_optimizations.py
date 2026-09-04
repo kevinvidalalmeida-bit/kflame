@@ -260,55 +260,5 @@ class ContinuationLinearizationTests(unittest.TestCase):
         self.assertFalse(hasattr(problem, "_continuation_linearization"))
 
 
-class ShiftedLUReuseTests(unittest.TestCase):
-    def _matrix(self, diagonal_shift: float = 0.0) -> BlockTridiagJacobian:
-        rng = np.random.default_rng(303)
-        n_blocks, block_size = 5, 3
-        lower = rng.normal(scale=0.02, size=(n_blocks - 1, block_size, block_size))
-        upper = rng.normal(scale=0.02, size=(n_blocks - 1, block_size, block_size))
-        diag = rng.normal(scale=0.05, size=(n_blocks, block_size, block_size))
-        diag += 2.0 * np.eye(block_size)[None, :, :]
-        diag[:, np.arange(block_size), np.arange(block_size)] += diagonal_shift
-        return BlockTridiagJacobian(lower, diag, upper)
-
-    def test_shifted_lu_corrections_match_exact_block_solution(self) -> None:
-        previous = self._matrix(0.0)
-        current = self._matrix(-0.025)
-        rng = np.random.default_rng(304)
-        rhs = rng.normal(size=current.shape[0])
-        state = {
-            "method": "shift_reuse_block",
-            "matrix": current,
-            "reference_lu": factorize(previous),
-            "max_corrections": 6,
-            "linear_tolerance": 1.0e-11,
-        }
-
-        actual = solve_linear(state, rhs)
-        expected = solve_linear(factorize(current), rhs)
-
-        self.assertEqual(state["method"], "shift_reuse_block")
-        np.testing.assert_allclose(actual, expected, rtol=2.0e-11, atol=2.0e-11)
-
-    def test_shifted_lu_falls_back_to_exact_factorization(self) -> None:
-        previous = self._matrix(0.0)
-        current = self._matrix(-1.2)
-        rng = np.random.default_rng(305)
-        rhs = rng.normal(size=current.shape[0])
-        state = {
-            "method": "shift_reuse_block",
-            "matrix": current,
-            "reference_lu": factorize(previous),
-            "max_corrections": 0,
-            "linear_tolerance": 1.0e-14,
-        }
-
-        actual = solve_linear(state, rhs)
-        expected = solve_linear(factorize(current), rhs)
-
-        self.assertEqual(state["method"], "block_tridiag")
-        np.testing.assert_allclose(actual, expected, rtol=2.0e-12, atol=2.0e-12)
-
-
 if __name__ == "__main__":
     unittest.main()

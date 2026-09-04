@@ -780,18 +780,13 @@ def _update_linear_model_transient(jac_state: JacobianState, mask: np.ndarray,
     Cantera MultiJac::updateTransient equivalent.
 
     Keep the steady finite-difference Jacobian and refresh its transient
-    diagonal when the timestep changes.  The default exactly mirrors the
-    Cantera 3.2 behaviour: factorize the current system after that update.
-    An explicitly opt-in experiment can instead try a few corrections with
-    the preceding exact PTC LU; it falls back to this exact factorization as
-    soon as the linear residual is not sufficiently small.
+    diagonal when the timestep changes. This mirrors Cantera 3.2 behaviour:
+    factorize the current system after every transient update.
     """
     if jac_state.J is None or jac_state.ss_diag.size == 0:
         raise RuntimeError("No steady Jacobian available for transient update.")
 
     t_profile = _profile_start(problem)
-    previous_lu = jac_state.lu
-    previous_rdt = jac_state.last_rdt
     j_t = jac_state.J
     diag = np.asarray(jac_state.ss_diag, dtype=float).copy()
     if rdt_curr > 0.0:
@@ -800,36 +795,7 @@ def _update_linear_model_transient(jac_state: JacobianState, mask: np.ndarray,
     if getattr(problem, "_profile", None) is not None:
         setattr(j_t, "_profile_problem", problem)
     jac_state.J = j_t
-    can_reuse_shifted_lu = bool(
-        getattr(problem, "ptc_shift_lu_reuse", False)
-        and not bool(getattr(problem, "linear_physical_scaling", False))
-        and isinstance(j_t, BlockTridiagJacobian)
-        and isinstance(previous_lu, dict)
-        and previous_lu.get("method") == "block_tridiag"
-        and previous_rdt is not None
-        and float(previous_rdt) > 0.0
-        and float(rdt_curr) > 0.0
-    )
-    if can_reuse_shifted_lu:
-        # The reference factorization is deliberately restricted to an exact
-        # block LU.  Chaining approximate shifted states would obscure the
-        # preconditioner and makes the linear certificate less meaningful.
-        lu = {
-            "method": "shift_reuse_block",
-            "matrix": j_t,
-            "reference_lu": previous_lu,
-            "max_corrections": int(
-                max(0, getattr(problem, "ptc_shift_lu_reuse_max_corrections", 2))
-            ),
-            "linear_tolerance": float(
-                max(0.0, getattr(problem, "ptc_shift_lu_reuse_linear_tolerance", 1.0e-3))
-            ),
-            "profile_problem": problem,
-            "reference_rdt": float(previous_rdt),
-            "target_rdt": float(rdt_curr),
-        }
-    else:
-        lu = _factorize_current_linear_system(j_t, x, problem, rdt_curr)
+    lu = _factorize_current_linear_system(j_t, x, problem, rdt_curr)
     if isinstance(lu, dict):
         lu["profile_problem"] = problem
     jac_state.lu = lu
@@ -1349,16 +1315,10 @@ class SolveOptions:
     # It remains off until paired physical and timing validation promotes it.
     linear_physical_scaling: bool = False
     linear_scaling_floor: float = 1.0e-300
-    # Experimental PTC linear solve: use the previous *exact* PTC LU as a
-    # preconditioner after a diagonal shift, then factorize exactly on failure.
-    # Disabled by default; Cantera 3.2 factorizes after every transient update.
-    ptc_shift_lu_reuse: bool = False
-    ptc_shift_lu_reuse_max_corrections: int = 2
-    ptc_shift_lu_reuse_linear_tolerance: float = 1.0e-3
-    # Experimental localized quasi-Newton rescue.  A failed damping trial can
+    # Certified localized quasi-Newton rescue. A failed damping trial can
     # refresh only the blocks whose nonlinear linearisation defect is large,
-    # then undergo the same contraction test and final certificate.  It is
-    # off until paired timing/physical validation promotes it.
+    # then undergo the same contraction test and final certificate. It stays
+    # off in the bare solver; FGM enables it only for continuation correctors.
     local_jacobian_refresh: bool = False
     local_jacobian_refresh_defect_threshold: float = 0.20
     local_jacobian_refresh_max_fraction: float = 0.35
@@ -1470,13 +1430,6 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
     )
     problem.linear_scaling_floor = float(
         getattr(opts, "linear_scaling_floor", 1.0e-300)
-    )
-    problem.ptc_shift_lu_reuse = bool(getattr(opts, "ptc_shift_lu_reuse", False))
-    problem.ptc_shift_lu_reuse_max_corrections = int(
-        max(0, getattr(opts, "ptc_shift_lu_reuse_max_corrections", 2))
-    )
-    problem.ptc_shift_lu_reuse_linear_tolerance = float(
-        max(0.0, getattr(opts, "ptc_shift_lu_reuse_linear_tolerance", 1.0e-3))
     )
     problem.local_jacobian_refresh = bool(
         getattr(opts, "local_jacobian_refresh", False)
