@@ -2254,11 +2254,28 @@ def factorize(jmat) -> dict:
 def solve_linear(linear_state, rhs: np.ndarray) -> np.ndarray:
     problem = linear_state.get("profile_problem") if isinstance(linear_state, dict) else None
     t_profile = _profile_start(problem) if problem is not None else 0.0
+    rhs_array = np.asarray(rhs, dtype=float)
+    rhs_multiplier = (
+        linear_state.get("rhs_multiplier")
+        if isinstance(linear_state, dict) else None
+    )
+    if rhs_multiplier is not None:
+        rhs_array = rhs_array * np.asarray(rhs_multiplier, dtype=float)
+
+    def physical_solution(value: np.ndarray) -> np.ndarray:
+        solution_multiplier = (
+            linear_state.get("solution_multiplier")
+            if isinstance(linear_state, dict) else None
+        )
+        if solution_multiplier is not None:
+            return np.asarray(value, dtype=float) * np.asarray(solution_multiplier, dtype=float)
+        return np.asarray(value, dtype=float)
+
     if hasattr(linear_state, "solve") and not isinstance(linear_state, dict):
-        return linear_state.solve(rhs)
+        return linear_state.solve(rhs_array)
     if isinstance(linear_state, dict) and linear_state.get("method") == "banded_lapack":
         gbtrs = get_lapack_funcs("gbtrs", dtype=np.float64)
-        b = np.asarray(rhs, dtype=float).reshape(-1, 1)
+        b = rhs_array.reshape(-1, 1)
         x, info = gbtrs(
             linear_state["lu"],
             int(linear_state["lower"]),
@@ -2269,14 +2286,14 @@ def solve_linear(linear_state, rhs: np.ndarray) -> np.ndarray:
         )
         if int(info) != 0:
             raise RuntimeError(f"LAPACK dgbtrs failed with info={int(info)}")
-        out = np.asarray(x[:, 0], dtype=float)
+        out = physical_solution(x[:, 0])
         if problem is not None:
             _profile_record(problem, "linear_solve", t_profile)
         return out
     if isinstance(linear_state, dict) and linear_state.get("method") == "block_tridiag":
         n = int(linear_state["n_blocks"])
         nv = int(linear_state["block_size"])
-        rhs_array = np.ascontiguousarray(rhs, dtype=np.float64)
+        rhs_array = np.ascontiguousarray(rhs_array, dtype=np.float64)
         if (
             _solve_block_tridiag_lu_numba is not None
             and rhs_array.ndim == 1
@@ -2289,6 +2306,7 @@ def solve_linear(linear_state, rhs: np.ndarray) -> np.ndarray:
                 linear_state["cprime"],
                 rhs_array,
             )
+            out = physical_solution(out)
             if problem is not None:
                 _profile_record(problem, "linear_solve", t_profile)
             return out
@@ -2310,11 +2328,11 @@ def solve_linear(linear_state, rhs: np.ndarray) -> np.ndarray:
         x_b[-1] = y[-1]
         for i in range(n - 2, -1, -1):
             x_b[i] = y[i] - cprime[i] @ x_b[i + 1]
-        out = x_b.ravel()
+        out = physical_solution(x_b.ravel())
         if problem is not None:
             _profile_record(problem, "linear_solve", t_profile)
         return out
-    out = linear_state["solver"].solve(rhs)
+    out = physical_solution(linear_state["solver"].solve(rhs_array))
     if problem is not None:
         _profile_record(problem, "linear_solve", t_profile)
     return out

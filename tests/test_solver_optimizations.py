@@ -13,6 +13,7 @@ if str(V2) not in sys.path:
     sys.path.insert(0, str(V2))
 
 from equations import BlockTridiagJacobian, factorize, solve_linear
+from solver import _equilibrate_block_tridiag
 
 
 class BlockDiagonalUpdateTests(unittest.TestCase):
@@ -71,6 +72,30 @@ class CompiledBlockSubstitutionTests(unittest.TestCase):
 
         np.testing.assert_allclose(actual, expected, rtol=2.0e-12, atol=2.0e-12)
         np.testing.assert_allclose(actual, fallback, rtol=2.0e-12, atol=2.0e-12)
+
+
+class PhysicalLinearScalingTests(unittest.TestCase):
+    def test_scaled_block_system_recovers_the_unscaled_newton_correction(self) -> None:
+        rng = np.random.default_rng(83)
+        n_blocks, block_size = 5, 4
+        lower = rng.normal(scale=0.03, size=(n_blocks - 1, block_size, block_size))
+        upper = rng.normal(scale=0.03, size=(n_blocks - 1, block_size, block_size))
+        diag = rng.normal(scale=0.15, size=(n_blocks, block_size, block_size))
+        diag += 2.5 * np.eye(block_size)[None, :, :]
+        raw = BlockTridiagJacobian(lower, diag, upper)
+        rhs = rng.normal(size=n_blocks * block_size)
+        column_scale = np.tile(
+            np.array([1.0e-3, 1.0e-1, 1.0e-6, 1.0e-4]), n_blocks
+        )
+
+        scaled, row_inverse = _equilibrate_block_tridiag(raw, column_scale)
+        state = factorize(scaled)
+        state["rhs_multiplier"] = row_inverse
+        state["solution_multiplier"] = column_scale
+
+        actual = solve_linear(state, rhs)
+        expected = solve_linear(factorize(raw), rhs)
+        np.testing.assert_allclose(actual, expected, rtol=2.0e-11, atol=2.0e-11)
 
 
 if __name__ == "__main__":

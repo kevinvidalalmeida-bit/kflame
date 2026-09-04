@@ -20,7 +20,13 @@ from fgm_common import (
     build_global_indicator,
     validate_fgm_table,
 )
-from generate_fgm_tables_native import _is_local_phi_step
+from generate_fgm_tables_native import (
+    bound_continuation_seed_mesh,
+    _front_aligned_secant_state,
+    _is_local_phi_step,
+    build_continuation_seed,
+)
+from state import pack_state, unpack_state
 from fgm_continuation import AdaptiveContinuationController, ContinuationConfig
 from run_paper_campaign import _pressure_prediction_defect, _pressure_secant_seed
 
@@ -138,6 +144,86 @@ class PressurePredictorTests(unittest.TestCase):
         }
         self.assertEqual(kind, "copy")
         self.assertLess(_pressure_prediction_defect(corrected, predicted), 1.0e-10)
+
+
+class ThermalFramePredictorTests(unittest.TestCase):
+    @staticmethod
+    def _profile(front: float, thickness: float) -> tuple[np.ndarray, np.ndarray]:
+        z = np.linspace(0.0, 0.03, 1201)
+        xi = (z - front) / thickness
+        progress = 1.0 / (1.0 + np.exp(-xi))
+        u = 0.25 + 0.30 * progress
+        temperature = 300.0 + 1500.0 * progress
+        species = np.vstack((0.80 - 0.70 * progress, 0.20 + 0.70 * progress))
+        return z, pack_state(u, temperature, species)
+
+    def test_front_aligned_secant_predicts_front_translation_and_thickness(self) -> None:
+        z_old, x_old = self._profile(0.011, 0.0020)
+        z_latest, x_latest = self._profile(0.013, 0.0018)
+        _z_target, x_target = self._profile(0.015, 0.0016)
+
+        result = _front_aligned_secant_state(
+            x_old=x_old,
+            z_old=z_old,
+            x_latest=x_latest,
+            z_latest=z_latest,
+            n_species=2,
+            factor=1.0,
+        )
+        self.assertIsNotNone(result)
+        x_predicted, metadata = result
+        _u_pred, T_pred, Y_pred = unpack_state(x_predicted, z_latest.size, 2)
+        _u_target, T_target, _Y_target = unpack_state(x_target, z_latest.size, 2)
+
+        self.assertGreater(metadata["front_prediction_m"], metadata["front_latest_m"])
+        self.assertLess(metadata["thickness_prediction_m"], metadata["thickness_latest_m"])
+        # The inlet boundary is overwritten by the physical fresh mixture in
+        # the production seed. Check the transported thermal layer itself,
+        # rather than flat extrapolation outside the source-frame overlap.
+        active_layer = (T_target > 310.0) & (T_target < 1790.0)
+        self.assertLess(float(np.max(np.abs(T_pred[active_layer] - T_target[active_layer]))), 1.0)
+        np.testing.assert_allclose(np.sum(Y_pred, axis=0), 1.0, rtol=0.0, atol=1.0e-14)
+
+    def test_inlet_projection_updates_the_unburned_mixture_not_only_one_node(self) -> None:
+        z, x = self._profile(0.013, 0.0018)
+        problem = SimpleNamespace(
+            n_species=2,
+            T_lower_bound=200.0,
+            T_upper_bound=6000.0,
+            T_in=300.0,
+            Y_in=np.array([0.70, 0.30]),
+        )
+        seed = build_continuation_seed(
+            problem=problem,
+            phi=1.02,
+            prev_solution={"phi": np.array([1.0]), "z": z, "x": x},
+            prev_prev_solution=None,
+            use_predictor=False,
+            predictor_damping=0.7,
+            predictor_frame="z",
+            trust_ratio=1.15,
+        )
+        self.assertIsNotNone(seed)
+        _u, temperature, species = unpack_state(seed["x"], z.size, 2)
+        self.assertEqual(seed["predictor_kind"], "copy_fresh_projected")
+        np.testing.assert_allclose(species[:, 0], problem.Y_in, rtol=0.0, atol=1.0e-14)
+        # The next fresh/preheat point receives the same physical mixture
+        # projection, instead of retaining the previous phi composition.
+        self.assertLess(float(temperature[1]), 302.0)
+        np.testing.assert_allclose(species[:, 1], problem.Y_in, rtol=0.0, atol=2.0e-3)
+
+    def test_bounded_seed_mesh_preserves_endpoints_and_mass_closure(self) -> None:
+        z, x = self._profile(0.013, 0.0018)
+        transferred = bound_continuation_seed_mesh(
+            {"z": z, "x": x, "predictor_kind": "copy"},
+            n_species=2,
+            max_points=61,
+        )
+        self.assertEqual(transferred["z"].size, 61)
+        self.assertEqual(float(transferred["z"][0]), float(z[0]))
+        self.assertEqual(float(transferred["z"][-1]), float(z[-1]))
+        _u, _T, species = unpack_state(transferred["x"], 61, 2)
+        np.testing.assert_allclose(np.sum(species, axis=0), 1.0, rtol=0.0, atol=1.0e-14)
 
 
 class ProgressGridTests(unittest.TestCase):

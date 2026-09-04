@@ -76,6 +76,110 @@ def _is_local_phi_step(
     return (1.0 / max_ratio) <= ratio <= max_ratio
 
 
+def _thermal_frame(z: np.ndarray, temperature: np.ndarray) -> tuple[float, float] | None:
+    """Return thermal-front position and thickness for continuation geometry.
+
+    The definition uses the midpoint temperature and the inverse maximum
+    gradient. It is a coordinate map for a predictor only; the corrected
+    flame still determines the physical mesh, domain, and certificate.
+    """
+    z = np.asarray(z, dtype=float)
+    temperature = np.asarray(temperature, dtype=float)
+    if z.ndim != 1 or temperature.shape != z.shape or z.size < 3:
+        return None
+    span = float(temperature[-1] - temperature[0])
+    if not np.isfinite(span) or abs(span) <= 1.0e-12:
+        return None
+    gradient = np.gradient(temperature, z)
+    maximum = float(np.max(np.abs(gradient)))
+    if not np.isfinite(maximum) or maximum <= np.finfo(float).tiny:
+        return None
+    target = float(temperature[0] + 0.5 * span)
+    crossings = np.flatnonzero(
+        (temperature[:-1] - target) * (temperature[1:] - target) <= 0.0
+    )
+    if crossings.size == 0:
+        return None
+    # A detailed flame can contain weak non-monotone tails. The relevant
+    # crossing is the one in the strongest thermal-gradient interval.
+    local = np.abs(gradient[crossings]) + np.abs(gradient[crossings + 1])
+    index = int(crossings[int(np.argmax(local))])
+    t0, t1 = float(temperature[index]), float(temperature[index + 1])
+    z0, z1 = float(z[index]), float(z[index + 1])
+    if abs(t1 - t0) <= np.finfo(float).tiny:
+        front = 0.5 * (z0 + z1)
+    else:
+        front = z0 + (target - t0) * (z1 - z0) / (t1 - t0)
+    thickness = abs(span) / maximum
+    min_spacing = float(np.min(np.diff(z)))
+    if not np.isfinite(front) or not np.isfinite(thickness) or thickness <= 0.0:
+        return None
+    return float(front), max(float(thickness), min_spacing)
+
+
+def _front_aligned_secant_state(
+    x_old: np.ndarray,
+    z_old: np.ndarray,
+    x_latest: np.ndarray,
+    z_latest: np.ndarray,
+    n_species: int,
+    factor: float,
+) -> tuple[np.ndarray, dict[str, float]] | None:
+    """Apply a secant predictor in a thermal-front coordinate.
+
+    Profiles are first compared at equal
+    ``xi = (z - z_front) / delta_T``. The secant then predicts both the state
+    in that coordinate and the position/thickness of the front. The result is
+    sampled back on the latest accepted mesh, retaining valid domain endpoints
+    while avoiding a raw-``z`` comparison of flames with different thickness.
+    """
+    z_old = np.asarray(z_old, dtype=float)
+    z_latest = np.asarray(z_latest, dtype=float)
+    try:
+        _u_old, T_old, _Y_old = unpack_state(x_old, z_old.size, n_species)
+        _u_latest, T_latest, _Y_latest = unpack_state(
+            x_latest, z_latest.size, n_species
+        )
+    except ValueError:
+        return None
+    frame_old = _thermal_frame(z_old, T_old)
+    frame_latest = _thermal_frame(z_latest, T_latest)
+    if frame_old is None or frame_latest is None:
+        return None
+    front_old, thickness_old = frame_old
+    front_latest, thickness_latest = frame_latest
+    xi_latest = (z_latest - front_latest) / thickness_latest
+    z_old_on_latest_xi = front_old + thickness_old * xi_latest
+    old_on_latest_xi = interpolate_state(x_old, z_old, z_old_on_latest_xi, n_species)
+
+    # ``factor`` already contains the standard damping and secant bounds.
+    # Do not introduce a parameter-specific switch here.
+    curve_prediction = np.asarray(x_latest, dtype=float) + float(factor) * (
+        np.asarray(x_latest, dtype=float) - old_on_latest_xi
+    )
+    front_prediction = front_latest + float(factor) * (front_latest - front_old)
+    thickness_prediction = thickness_latest + float(factor) * (
+        thickness_latest - thickness_old
+    )
+    thickness_prediction = max(
+        float(thickness_prediction),
+        0.25 * min(thickness_old, thickness_latest),
+        float(np.min(np.diff(z_latest))),
+    )
+    xi_target = (z_latest - front_prediction) / thickness_prediction
+    x_prediction = interpolate_state(
+        curve_prediction, xi_latest, xi_target, n_species
+    )
+    return x_prediction, {
+        "front_old_m": float(front_old),
+        "front_latest_m": float(front_latest),
+        "front_prediction_m": float(front_prediction),
+        "thickness_old_m": float(thickness_old),
+        "thickness_latest_m": float(thickness_latest),
+        "thickness_prediction_m": float(thickness_prediction),
+    }
+
+
 v2_path = Path(__file__).resolve().parent.parent.parent / "V2"
 v2_dir = str(v2_path)
 if v2_dir not in sys.path:
@@ -184,6 +288,7 @@ def build_continuation_seed(
     prev_prev_solution: dict[str, np.ndarray] | None,
     use_predictor: bool,
     predictor_damping: float,
+    predictor_frame: str = "z",
     trust_ratio: float = _CONTINUATION_MAX_PHI_RATIO,
 ) -> dict[str, Any] | None:
     if prev_solution is None or "z" not in prev_solution or "x" not in prev_solution:
@@ -205,8 +310,13 @@ def build_continuation_seed(
     if z_prev.ndim != 1 or z_prev.size < 2 or x_prev.size != expected:
         return None
 
+    predictor_frame = str(predictor_frame).strip().lower()
+    if predictor_frame not in ("z", "thermal"):
+        raise ValueError("predictor_frame must be 'z' or 'thermal'")
+
     x_seed = x_prev.copy()
     predictor_kind = "copy"
+    predictor_metadata: dict[str, float] = {}
     if (
         use_predictor
         and prev_prev_solution is not None
@@ -236,8 +346,24 @@ def build_continuation_seed(
                 factor = (lambda_target - lambda1) / dlambda
                 factor *= float(np.clip(predictor_damping, 0.0, 1.0))
                 factor = float(np.clip(factor, -0.5, 1.0))
-                x_seed = x_prev + factor * (x_prev - x0_on_prev)
-                predictor_kind = "secant"
+                if predictor_frame == "thermal":
+                    thermal_prediction = _front_aligned_secant_state(
+                        x_old=x0,
+                        z_old=z0,
+                        x_latest=x_prev,
+                        z_latest=z_prev,
+                        n_species=n_sp,
+                        factor=factor,
+                    )
+                    if thermal_prediction is not None:
+                        x_seed, predictor_metadata = thermal_prediction
+                        predictor_kind = "secant_thermal"
+                    else:
+                        x_seed = x_prev + factor * (x_prev - x0_on_prev)
+                        predictor_kind = "secant_z_fallback"
+                else:
+                    x_seed = x_prev + factor * (x_prev - x0_on_prev)
+                    predictor_kind = "secant"
 
     u, T, Y = unpack_state(x_seed, int(z_prev.size), n_sp)
 
@@ -247,17 +373,78 @@ def build_continuation_seed(
     sums = np.where(sums > 0.0, sums, 1.0)
     Y = Y / sums
 
+    # A phi change alters the whole unburned mixture, not only its boundary
+    # node. Project the target inlet composition through the preheat region
+    # with a thermal progress weight. This keeps the cold side physically
+    # coherent while retaining the predicted burned-state structure for the
+    # nonlinear corrector. It is parameter-independent and applies equally to
+    # copy, raw-z secant, and thermal-frame secant predictors.
+    source_inlet = Y[:, 0].copy()
+    target_inlet = np.asarray(problem.Y_in, dtype=float)
+    thermal_span = max(abs(float(T[-1] - float(problem.T_in))), 1.0e-12)
+    thermal_progress = np.clip((T - float(problem.T_in)) / thermal_span, 0.0, 1.0)
+    fresh_weight = 1.0 - thermal_progress
+    inlet_delta = target_inlet - source_inlet
+    if np.max(np.abs(inlet_delta)) > 1.0e-14:
+        Y += fresh_weight[None, :] * inlet_delta[:, None]
+        Y = np.clip(Y, 0.0, None)
+        Y /= np.maximum(Y.sum(axis=0, keepdims=True), 1.0e-300)
+        predictor_kind += "_fresh_projected"
+
     # Current inlet composition is a hard boundary condition.
     u[0] = max(float(u[0]), 1.0e-8)
     T[0] = float(problem.T_in)
-    Y[:, 0] = np.asarray(problem.Y_in, dtype=float)
+    Y[:, 0] = target_inlet
 
-    return {
+    result = {
         "phi": np.array([float(phi)], dtype=float),
         "z": z_prev.copy(),
         "x": pack_state(u, T, Y),
         "predictor_kind": predictor_kind,
+        "predictor_frame": predictor_frame,
     }
+    if predictor_metadata:
+        result["predictor_frame_metadata"] = predictor_metadata
+    return result
+
+
+def bound_continuation_seed_mesh(
+    seed: dict[str, Any],
+    n_species: int,
+    max_points: int,
+) -> dict[str, Any]:
+    """Transfer a predicted state without inheriting every source mesh node.
+
+    A continuation profile and the mesh on which it was certified are distinct
+    objects. Retaining an excessively dense source mesh can force a nearby
+    flame through an unnecessarily difficult nonlinear trajectory. This
+    bounded transfer preserves both physical endpoints and samples the source
+    adaptive geometry by node index; the target still refines and certifies its
+    own mesh from scratch. ``max_points <= 0`` is an explicit no-transfer
+    baseline.
+    """
+    if max_points <= 0:
+        return seed
+    z_old = np.asarray(seed.get("z"), dtype=float)
+    x_old = np.asarray(seed.get("x"), dtype=float)
+    expected = int(z_old.size) * (2 + int(n_species))
+    if z_old.ndim != 1 or z_old.size < 2 or x_old.size != expected:
+        return seed
+    n_target = max(2, min(int(max_points), int(z_old.size)))
+    if n_target == z_old.size:
+        return seed
+    selected = np.rint(np.linspace(0, z_old.size - 1, n_target)).astype(int)
+    selected[0], selected[-1] = 0, z_old.size - 1
+    selected = np.unique(selected)
+    z_new = z_old[selected]
+    x_new = interpolate_state(x_old, z_old, z_new, int(n_species))
+    result = dict(seed)
+    result["z"] = z_new
+    result["x"] = x_new
+    result["seed_mesh_transfer"] = "bounded_adaptive_subsampling"
+    result["seed_mesh_source_points"] = int(z_old.size)
+    result["seed_mesh_target_points"] = int(z_new.size)
+    return result
 
 
 def weighted_prediction_defect(
@@ -496,12 +683,19 @@ def solve_flame_native(
             prev_prev_solution=prev_prev_solution,
             use_predictor=not bool(args.disable_continuation_predictor),
             predictor_damping=float(args.continuation_predictor_damping),
+            predictor_frame=str(args.continuation_predictor_frame),
             trust_ratio=(
                 float(args.continuation_trust_ratio)
                 if continuation_trust_ratio is None
                 else float(continuation_trust_ratio)
             ),
         )
+        if seed_solution is not None:
+            seed_solution = bound_continuation_seed_mesh(
+                seed_solution,
+                n_species=int(problem.n_species),
+                max_points=int(args.continuation_seed_mesh_points),
+            )
         selected_prediction = seed_solution
 
         x0 = None
@@ -679,6 +873,22 @@ def solve_flame_native(
     }
     continuation_trace = {
         "predictor_kind": predictor_kind,
+        "predictor_frame": (
+            str(selected_prediction.get("predictor_frame", "z"))
+            if selected_prediction is not None else "none"
+        ),
+        "seed_mesh_transfer": (
+            str(selected_prediction.get("seed_mesh_transfer", "none"))
+            if selected_prediction is not None else "none"
+        ),
+        "seed_mesh_source_points": (
+            int(selected_prediction.get("seed_mesh_source_points", 0))
+            if selected_prediction is not None else 0
+        ),
+        "seed_mesh_target_points": (
+            int(selected_prediction.get("seed_mesh_target_points", 0))
+            if selected_prediction is not None else 0
+        ),
         "seeded": bool(selected_prediction is not None),
         "prediction_defect": prediction_defect,
         "n_refine_passes": int(len(report.get("passes", []))),
@@ -971,6 +1181,25 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--continuation-predictor-damping", type=float, default=0.7,
                    help="Amortiguamiento del predictor secante en phi.")
     p.add_argument(
+        "--continuation-predictor-frame",
+        choices=("z", "thermal"),
+        default="z",
+        help=(
+            "Coordenada del predictor secante: z conserva el baseline; thermal "
+            "alinea frente y espesor termico antes de corregir."
+        ),
+    )
+    p.add_argument(
+        "--continuation-seed-mesh-points",
+        type=int,
+        default=0,
+        help=(
+            "Maximo de nodos heredados por una semilla de continuacion; 0 "
+            "conserva la malla fuente como baseline. El corrector siempre "
+            "vuelve a refinar y certificar su propia malla."
+        ),
+    )
+    p.add_argument(
         "--continuation-trust-ratio",
         type=float,
         default=_CONTINUATION_MAX_PHI_RATIO,
@@ -1035,6 +1264,8 @@ def main() -> None:
         args.continuation_mode = "cold"
     if not 0.0 <= float(args.upwind_factor) <= 1.0:
         raise SystemExit("--upwind-factor debe estar entre 0.0 y 1.0")
+    if int(args.continuation_seed_mesh_points) < 0:
+        raise SystemExit("--continuation-seed-mesh-points debe ser mayor o igual a cero")
     if args.continuation_mode == "adaptive-pc":
         if not (
             1.0 < float(args.pc_min_ratio) <= float(args.pc_initial_ratio)
@@ -1613,6 +1844,8 @@ def main() -> None:
         "openblas_num_threads": os.environ.get("OPENBLAS_NUM_THREADS", "auto"),
         "continuation_predictor_enabled": not bool(args.disable_continuation_predictor),
         "continuation_predictor_damping": float(args.continuation_predictor_damping),
+        "continuation_predictor_frame": str(args.continuation_predictor_frame),
+        "continuation_seed_mesh_points": int(args.continuation_seed_mesh_points),
         "continuation_trust_ratio": float(args.continuation_trust_ratio),
         "continuation_mode": str(args.continuation_mode),
         "profile_solver": bool(args.profile_solver),

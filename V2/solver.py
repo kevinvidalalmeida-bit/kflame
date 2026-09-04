@@ -21,6 +21,7 @@ from typing import Any
 import numpy as np
 
 from equations import (
+    BlockTridiagJacobian,
     build_jacobian_steady,
     factorize,
     residual,
@@ -513,6 +514,95 @@ def weighted_norm(step: np.ndarray, x: np.ndarray, problem, rdt: float = 0.0) ->
 
 
 # ---------------------------------------------------------------------------
+#  Physical linear-system scaling
+# ---------------------------------------------------------------------------
+def _state_step_scales(x: np.ndarray, problem, rdt: float) -> np.ndarray:
+    """Return the physical component scales used by the weighted norm.
+
+    The nonlinear stopping test already defines a physically meaningful scale
+    for each component (velocity, temperature, and each mass fraction). When
+    enabled, the linear solve uses the same right scaling, so that its unknown
+    represents a correction in weighted physical units rather than raw mixed
+    SI units. This does not alter the state, residual, or acceptance predicate.
+    """
+    n_pts = int(problem.n_points)
+    nv = int(problem.n_species) + 2
+    x_r = np.asarray(x, dtype=float).reshape(n_pts, nv)
+    if rdt > 0.0:
+        rtol = float(getattr(problem, "transient_rtol", 1.0e-4))
+        atol = float(getattr(problem, "transient_atol", 1.0e-11))
+    else:
+        rtol = float(getattr(problem, "steady_rtol", 1.0e-4))
+        atol = float(getattr(problem, "steady_atol", 1.0e-9))
+    floor = float(getattr(problem, "linear_scaling_floor", 1.0e-300))
+    component = np.maximum(rtol * np.mean(np.abs(x_r), axis=0) + atol, floor)
+    return np.broadcast_to(component, (n_pts, nv)).ravel().copy()
+
+
+def _equilibrate_block_tridiag(
+    jmat: BlockTridiagJacobian,
+    column_scale: np.ndarray,
+) -> tuple[BlockTridiagJacobian, np.ndarray]:
+    """Build ``R J D_x`` using infinity-row equilibration.
+
+    The caller solves ``R J D_x s_hat = -R F`` and recovers the physical
+    correction ``s = D_x s_hat``. It is an exact diagonal rescaling of the
+    Newton equation, apart from floating-point round-off, and preserves the
+    block-tridiagonal sparsity.
+    """
+    n_blocks = int(jmat.n_blocks)
+    nv = int(jmat.block_size)
+    col = np.asarray(column_scale, dtype=float).reshape(n_blocks, nv)
+    scaled = jmat.copy()
+
+    scaled.diag *= col[:, None, :]
+    if n_blocks > 1:
+        scaled.lower *= col[:-1, None, :]
+        scaled.upper *= col[1:, None, :]
+
+    row_norm = np.sum(np.abs(scaled.diag), axis=2)
+    if n_blocks > 1:
+        row_norm[:-1] += np.sum(np.abs(scaled.upper), axis=2)
+        row_norm[1:] += np.sum(np.abs(scaled.lower), axis=2)
+    row_inverse = 1.0 / np.maximum(row_norm, 1.0e-300)
+
+    scaled.diag *= row_inverse[:, :, None]
+    if n_blocks > 1:
+        scaled.lower *= row_inverse[1:, :, None]
+        scaled.upper *= row_inverse[:-1, :, None]
+    return scaled, row_inverse.ravel()
+
+
+def _factorize_current_linear_system(
+    jmat,
+    x: np.ndarray,
+    problem,
+    rdt_curr: float,
+):
+    """Factorize raw ``J`` or an algebraically equivalent scaled system."""
+    if not bool(getattr(problem, "linear_physical_scaling", False)):
+        return factorize(jmat)
+    if not isinstance(jmat, BlockTridiagJacobian):
+        raise TypeError("linear_physical_scaling requires block_tridiag Jacobian mode")
+
+    t_scale = _profile_start(problem)
+    column_scale = _state_step_scales(x, problem, rdt_curr)
+    scaled, row_inverse = _equilibrate_block_tridiag(jmat, column_scale)
+    if getattr(problem, "_profile", None) is not None:
+        setattr(scaled, "_profile_problem", problem)
+    lu = factorize(scaled)
+    if isinstance(lu, dict):
+        # Keep the raw Jacobian in JacobianState. A PTC update then changes
+        # only its original diagonal before the next re-equilibration.
+        lu["rhs_multiplier"] = np.asarray(row_inverse, dtype=float)
+        lu["solution_multiplier"] = np.asarray(column_scale, dtype=float)
+        lu["linear_physical_scaling"] = True
+        lu["profile_problem"] = problem
+    _profile_record(problem, "linear_scaling", t_scale)
+    return lu
+
+
+# ---------------------------------------------------------------------------
 #  Bound step factor (MultiNewton::boundStep analogue)
 # ---------------------------------------------------------------------------
 
@@ -616,7 +706,7 @@ def _build_linear_model(steady_fun, x: np.ndarray, problem,
         j_t = j_ss
     if getattr(problem, "_profile", None) is not None:
         setattr(j_t, "_profile_problem", problem)
-    lu = factorize(j_t)
+    lu = _factorize_current_linear_system(j_t, x, problem, rdt_curr)
     if isinstance(lu, dict):
         lu["profile_problem"] = problem
     _profile_record(problem, "linear_model", t_profile)
@@ -624,7 +714,7 @@ def _build_linear_model(steady_fun, x: np.ndarray, problem,
 
 
 def _update_linear_model_transient(jac_state: JacobianState, mask: np.ndarray,
-                                   rdt_curr: float, problem) -> None:
+                                   rdt_curr: float, x: np.ndarray, problem) -> None:
     """
     Cantera MultiJac::updateTransient equivalent.
 
@@ -643,7 +733,7 @@ def _update_linear_model_transient(jac_state: JacobianState, mask: np.ndarray,
     if getattr(problem, "_profile", None) is not None:
         setattr(j_t, "_profile_problem", problem)
     jac_state.J = j_t
-    lu = factorize(j_t)
+    lu = _factorize_current_linear_system(j_t, x, problem, rdt_curr)
     if isinstance(lu, dict):
         lu["profile_problem"] = problem
     jac_state.lu = lu
@@ -732,7 +822,7 @@ def newton_solve(
             rdt_changed = False
         elif rdt_changed:
             try:
-                _update_linear_model_transient(jac_state, mask, rdt_curr, problem)
+                _update_linear_model_transient(jac_state, mask, rdt_curr, x, problem)
             except Exception as exc:
                 history.append({
                     "iter": it,
@@ -946,6 +1036,10 @@ class SolveOptions:
     jacobian_mode: str = "numba_local"
     precompute_jacobian_thermo: bool = True
     compiled_block_substitution: bool = True
+    # Experimental diagonal equilibration of the block Newton/PTC system.
+    # It remains off until paired physical and timing validation promotes it.
+    linear_physical_scaling: bool = False
+    linear_scaling_floor: float = 1.0e-300
     alpha_min: float = 1e-10
 
     # Time-stepping (híbrido)
@@ -1047,6 +1141,12 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
     problem.precompute_jacobian_thermo = bool(getattr(opts, "precompute_jacobian_thermo", False))
     problem.use_compiled_block_substitution = bool(
         getattr(opts, "compiled_block_substitution", True)
+    )
+    problem.linear_physical_scaling = bool(
+        getattr(opts, "linear_physical_scaling", False)
+    )
+    problem.linear_scaling_floor = float(
+        getattr(opts, "linear_scaling_floor", 1.0e-300)
     )
     steady_fun = _make_steady_fun(problem)
     jac: JacobianState | None = None
