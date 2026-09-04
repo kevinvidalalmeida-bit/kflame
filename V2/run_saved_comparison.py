@@ -183,6 +183,7 @@ def _v2_solve(
 
     return {
         "ok": bool(ok),
+        "phi": np.array([float(case.phi)], dtype=float),
         "time_s": float(elapsed),
         "report": report,
         "species_names": list(problem.species_names),
@@ -194,6 +195,13 @@ def _v2_solve(
         "n_points": int(problem.n_points),
         "width": float(problem.width),
         "x": x_sol,
+        # This in-memory hand-off is valid only for the immediate neighbour
+        # in a continuation experiment. It is deliberately not serialized as
+        # a seed cache: the target still undergoes a complete V2 correction
+        # and certificate.
+        "continuation_linearization": getattr(
+            problem, "_continuation_linearization", None
+        ),
     }
 
 

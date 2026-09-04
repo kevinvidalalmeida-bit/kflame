@@ -34,8 +34,10 @@ from state import pack_state, unpack_state
 from fgm_continuation import (
     AdaptiveContinuationController,
     ContinuationConfig,
+    bordered_pseudo_arclength_direct_update,
     bordered_pseudo_arclength_update,
     normalise_arc_tangent,
+    pseudo_arclength_corrector,
 )
 from run_paper_campaign import _pressure_prediction_defect, _pressure_secant_seed
 
@@ -106,6 +108,52 @@ class AdaptivePredictorCorrectorTests(unittest.TestCase):
 
 
 class BorderedPseudoArcLengthTests(unittest.TestCase):
+    def test_direct_bordered_solve_remains_defined_when_stationary_jacobian_is_singular(self) -> None:
+        # At the simple fold F(x, lambda)=lambda, J=0 is singular, while the
+        # augmented system [0 1; 1 0] is nonsingular. This is precisely the
+        # regime where a Schur complement based on J^-1 is inapplicable.
+        update = bordered_pseudo_arclength_direct_update(
+            stationary_jacobian=np.array([[0.0]]),
+            residual=np.array([0.30]),
+            parameter_residual_derivative=np.array([1.0]),
+            state=np.array([0.0]),
+            parameter=0.30,
+            predicted_state=np.array([0.0]),
+            predicted_parameter=0.0,
+            tangent_state=np.array([1.0]),
+            tangent_parameter=0.0,
+            weights=np.ones(1),
+        )
+        self.assertAlmostEqual(update.parameter_step, -0.30, places=14)
+        self.assertAlmostEqual(update.state_step[0], 0.0, places=14)
+        self.assertTrue(np.isnan(update.schur_denominator))
+
+    def test_damped_corrector_converges_without_forming_a_bordered_matrix(self) -> None:
+        # The generic corrector receives only residual/Jacobian callbacks.  It
+        # therefore exercises the same two-RHS Schur construction that a
+        # flame adapter uses, without embedding a dense augmented matrix.
+        tangent_x, tangent_lambda, _ = normalise_arc_tangent(
+            np.array([2.0]), 1.0, np.ones(1)
+        )
+        result = pseudo_arclength_corrector(
+            predicted_state=np.array([0.80]),
+            predicted_parameter=0.35,
+            tangent_state=tangent_x,
+            tangent_parameter=tangent_lambda,
+            weights=np.ones(1),
+            residual_at=lambda state, parameter: state - 2.0 * parameter,
+            linear_solve_at=lambda _state, _parameter: (
+                lambda rhs: np.asarray(rhs, dtype=float)
+            ),
+            residual_tolerance=1.0e-12,
+            constraint_tolerance=1.0e-12,
+        )
+        self.assertTrue(result.converged)
+        self.assertEqual(result.iterations, 1)
+        self.assertAlmostEqual(result.state[0] - 2.0 * result.parameter, 0.0, places=13)
+        self.assertAlmostEqual(result.constraint, 0.0, places=13)
+        self.assertEqual(len(result.trace), 1)
+
     def test_schur_update_satisfies_linear_manifold_and_arc_constraint(self) -> None:
         # F(x, lambda) = x - 2 lambda. The exact stationary Jacobian is one,
         # so this also checks the signs in the Schur complement independently
