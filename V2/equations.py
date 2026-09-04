@@ -1625,6 +1625,20 @@ class BlockTridiagJacobian:
         idx = np.arange(self.block_size)
         self.diag[:, idx, idx] = d
 
+    def matvec(self, vector: np.ndarray) -> np.ndarray:
+        """Return the block-tridiagonal product ``J @ vector``.
+
+        This deliberately stays in block form: the experimental shifted-LU
+        correction in :func:`solve_linear` must evaluate the residual of the
+        *new* pseudo-transient matrix without materialising a dense matrix.
+        """
+        x = np.asarray(vector, dtype=float).reshape(self.n_blocks, self.block_size)
+        out = np.einsum("nij,nj->ni", self.diag, x, optimize=True)
+        if self.n_blocks > 1:
+            out[1:] += np.einsum("nij,nj->ni", self.lower, x[:-1], optimize=True)
+            out[:-1] += np.einsum("nij,nj->ni", self.upper, x[1:], optimize=True)
+        return out.ravel()
+
 
 if _NUMBA_AVAILABLE:
     @njit(cache=True)
@@ -2273,6 +2287,65 @@ def solve_linear(linear_state, rhs: np.ndarray) -> np.ndarray:
 
     if hasattr(linear_state, "solve") and not isinstance(linear_state, dict):
         return linear_state.solve(rhs_array)
+
+    if isinstance(linear_state, dict) and linear_state.get("method") == "shift_reuse_block":
+        """Solve a changed PTC diagonal using the previous exact LU.
+
+        For a fixed steady Jacobian, two pseudo-transient systems differ by
+        ``-(rdt_new-rdt_old) M``.  The mass mask ``M`` has high rank, so this
+        is not a Sherman--Morrison--Woodbury update.  Instead, the factored
+        old system is used as a right-preconditioner in a small number of
+        stationary corrections.  The residual is always evaluated with the
+        new block matrix.  If it does not meet the requested linear tolerance,
+        the state is replaced in-place by an exact factorization of that
+        matrix.  Thus the optimization can only alter an accepted inexact
+        Newton correction; it can never leave a failed approximate LU active.
+        """
+        matrix = linear_state.get("matrix")
+        reference = linear_state.get("reference_lu")
+        if not isinstance(matrix, BlockTridiagJacobian) or not isinstance(reference, dict):
+            raise TypeError("Invalid shifted block-LU reuse state")
+
+        reuse_problem = linear_state.get("profile_problem")
+        t_reuse = _profile_start(reuse_problem)
+        max_corrections = max(0, int(linear_state.get("max_corrections", 0)))
+        linear_tol = max(float(linear_state.get("linear_tolerance", 1.0e-8)), 0.0)
+        rhs_norm = max(float(np.linalg.norm(rhs_array, ord=np.inf)), 1.0e-300)
+
+        # The reference is guaranteed by the caller to be an exact, unscaled
+        # block LU.  Calling this wrapper also retains its normal profiling.
+        solution = solve_linear(reference, rhs_array)
+        relative_residual = float("inf")
+        for correction in range(max_corrections + 1):
+            defect = rhs_array - matrix.matvec(solution)
+            relative_residual = float(np.linalg.norm(defect, ord=np.inf) / rhs_norm)
+            if np.isfinite(relative_residual) and relative_residual <= linear_tol:
+                entry = reuse_problem._profile.setdefault(
+                    "linear_shift_reuse_accepted", {"time_s": 0.0, "count": 0}
+                ) if getattr(reuse_problem, "_profile", None) is not None else None
+                if entry is not None:
+                    entry["count"] += 1
+                _profile_record(reuse_problem, "linear_shift_reuse", t_reuse)
+                return physical_solution(solution)
+            if correction < max_corrections:
+                solution += solve_linear(reference, defect)
+
+        # A failed approximation is not kept for a later RHS: factorize the
+        # requested current matrix and mutate this short-lived wrapper into the
+        # exact direct state.  Subsequent damping trials use that exact LU.
+        exact = factorize(matrix)
+        if isinstance(exact, dict):
+            exact["profile_problem"] = reuse_problem
+        linear_state.clear()
+        linear_state.update(exact)
+        if getattr(reuse_problem, "_profile", None) is not None:
+            entry = reuse_problem._profile.setdefault(
+                "linear_shift_reuse_fallback", {"time_s": 0.0, "count": 0}
+            )
+            entry["count"] += 1
+        _profile_record(reuse_problem, "linear_shift_reuse", t_reuse)
+        return solve_linear(linear_state, rhs_array)
+
     if isinstance(linear_state, dict) and linear_state.get("method") == "banded_lapack":
         gbtrs = get_lapack_funcs("gbtrs", dtype=np.float64)
         b = rhs_array.reshape(-1, 1)

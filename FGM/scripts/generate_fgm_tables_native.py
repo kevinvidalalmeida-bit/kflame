@@ -190,6 +190,7 @@ if materials_dir not in sys.path:
 
 from run_saved_comparison import FlameCase, _resolve_mechanism
 from solver import solve_free_flame, SolveOptions
+from equations import residual, solve_linear
 from problem import FreeFlameProblem
 from state import interpolate_state, pack_state, unpack_state
 from mechanism_data import load_mechanism
@@ -281,6 +282,123 @@ def load_seed_profile_npz(path: Path, n_species: int, source: str = "auto") -> d
     )
 
 
+def _jacobian_tangent_state(
+    problem: FreeFlameProblem,
+    target_phi: float,
+    previous: dict[str, Any],
+    damping: float,
+) -> tuple[np.ndarray, dict[str, float]] | None:
+    """Form a first-order continuation predictor from the prior stationary LU.
+
+    At an accepted state :math:`x_i` and ``lambda = log(phi)``, the discrete
+    tangent satisfies ``J_i dx/dlambda = -dF/dlambda``.  Rather than forming a
+    second finite-difference Jacobian, the residual of the *target physical
+    problem* at ``x_i`` provides the local chord:
+
+    ``dx ~= -J_i^{-1} F(x_i, lambda_target)``.
+
+    The LU is the exact stationary factorization retained in memory from the
+    preceding certified flame.  This function therefore performs one RHS and
+    one triangular solve; it does not run a Newton iteration on the target.
+    Any failure returns ``None`` so the normal copy/secant continuation remains
+    available, and every returned state is still corrected and certified by
+    ``solve_free_flame``.
+    """
+    try:
+        phi_source = float(np.asarray(previous["phi"], dtype=float).ravel()[0])
+        z = np.asarray(previous["z"], dtype=float)
+        x_previous = np.asarray(previous["x"], dtype=float)
+        linearization = previous["continuation_linearization"]
+        lu = linearization["lu"]
+        anchor_index = int(linearization["anchor_index"])
+        linearization_state = np.asarray(linearization["state"], dtype=float)
+    except (KeyError, TypeError, ValueError, IndexError):
+        return None
+
+    if phi_source <= 0.0 or target_phi <= 0.0 or z.ndim != 1 or z.size < 3:
+        return None
+    n_points = int(z.size)
+    n_species = int(problem.n_species)
+    expected = n_points * (n_species + 2)
+    if x_previous.size != expected:
+        return None
+    if (
+        not isinstance(linearization, dict)
+        or int(linearization.get("n_points", -1)) != n_points
+        or int(linearization.get("n_species", -1)) != n_species
+        or not 0 < anchor_index < n_points - 1
+        or not isinstance(lu, dict)
+        or lu.get("method") != "block_tridiag"
+    ):
+        return None
+    # A finite-difference Jacobian is local to both a mesh and a state. Do
+    # not silently apply a stale hand-off after any external seed mutation.
+    if (
+        linearization_state.shape != x_previous.shape
+        or not np.allclose(
+            linearization_state,
+            x_previous,
+            rtol=1.0e-11,
+            atol=1.0e-13,
+        )
+    ):
+        return None
+
+    lambda_source = float(np.log(phi_source))
+    lambda_target = float(np.log(target_phi))
+    delta_lambda = lambda_target - lambda_source
+    if not np.isfinite(delta_lambda) or abs(delta_lambda) <= 1.0e-14:
+        return None
+
+    # Evaluate the target residual on precisely the source mesh. The actual
+    # seeded solve below starts from this same mesh, so the tangent and
+    # corrector refer to the same discrete variables and anchor convention.
+    problem.z = z.copy()
+    problem.n_points = n_points
+    problem.width = float(z[-1] - z[0])
+    problem.solve_energy = True
+    try:
+        # The source LU contains a phase row at ``anchor_index``. Keep that
+        # row fixed while taking the parameter chord; only its prescribed
+        # target temperature changes with the new equilibrium state. Letting
+        # the target select a different node would pair F(lambda_target) with
+        # a Jacobian of another discrete system.
+        problem.j_fixed = anchor_index
+        problem.T_fixed_point = float(problem.anchor_T)
+        problem.backend = problem.backend_factory(problem)
+        target_residual = np.asarray(residual(x_previous, problem), dtype=float)
+        if target_residual.shape != x_previous.shape or not np.all(np.isfinite(target_residual)):
+            return None
+        # Written in sensitivity form to retain a measurable dF/dlambda. The
+        # multiplication by delta_lambda recovers the chord correction and
+        # avoids a second target-Jacobian assembly.
+        dF_dlambda = target_residual / delta_lambda
+        sensitivity = np.asarray(solve_linear(lu, -dF_dlambda), dtype=float)
+        correction = float(np.clip(damping, 0.0, 1.0)) * delta_lambda * sensitivity
+    except Exception:
+        return None
+
+    x_prediction = x_previous + correction
+    if x_prediction.shape != x_previous.shape or not np.all(np.isfinite(x_prediction)):
+        return None
+    return x_prediction, {
+        "lambda_source": lambda_source,
+        "lambda_target": lambda_target,
+        "delta_lambda": float(delta_lambda),
+        "source_jacobian_age": float(linearization.get("jacobian_age", np.nan)),
+        "source_jacobian_evaluations": float(
+            linearization.get("jacobian_evaluations", np.nan)
+        ),
+        "source_anchor_index": float(anchor_index),
+        "target_residual_inf_before_tangent": float(
+            np.linalg.norm(target_residual, ord=np.inf)
+        ),
+        "tangent_sensitivity_weighted_norm": float(
+            np.linalg.norm(sensitivity) / max(np.sqrt(sensitivity.size), 1.0)
+        ),
+    }
+
+
 def build_continuation_seed(
     problem: FreeFlameProblem,
     phi: float,
@@ -290,6 +408,7 @@ def build_continuation_seed(
     predictor_damping: float,
     predictor_frame: str = "z",
     trust_ratio: float = _CONTINUATION_MAX_PHI_RATIO,
+    predictor_model: str = "secant",
 ) -> dict[str, Any] | None:
     if prev_solution is None or "z" not in prev_solution or "x" not in prev_solution:
         return None
@@ -313,12 +432,31 @@ def build_continuation_seed(
     predictor_frame = str(predictor_frame).strip().lower()
     if predictor_frame not in ("z", "thermal"):
         raise ValueError("predictor_frame must be 'z' or 'thermal'")
+    predictor_model = str(predictor_model).strip().lower()
+    if predictor_model not in ("secant", "tangent"):
+        raise ValueError("predictor_model must be 'secant' or 'tangent'")
 
     x_seed = x_prev.copy()
     predictor_kind = "copy"
     predictor_metadata: dict[str, float] = {}
+    if use_predictor and predictor_model == "tangent":
+        tangent_prediction = _jacobian_tangent_state(
+            problem=problem,
+            target_phi=float(phi),
+            previous=prev_solution,
+            damping=float(predictor_damping),
+        )
+        if tangent_prediction is not None:
+            x_seed, predictor_metadata = tangent_prediction
+            predictor_kind = "tangent_jacobian"
+        else:
+            # No valid stationary source LU is a normal occurrence after a
+            # transient-only solve. Fall through to the existing predictor;
+            # the trace distinguishes this from a genuine tangent prediction.
+            predictor_metadata = {"tangent_fallback": 1.0}
     if (
         use_predictor
+        and predictor_kind == "copy"
         and prev_prev_solution is not None
         and "z" in prev_prev_solution
         and "x" in prev_prev_solution
@@ -373,19 +511,20 @@ def build_continuation_seed(
     sums = np.where(sums > 0.0, sums, 1.0)
     Y = Y / sums
 
-    # A phi change alters the whole unburned mixture, not only its boundary
-    # node. Project the target inlet composition through the preheat region
-    # with a thermal progress weight. This keeps the cold side physically
-    # coherent while retaining the predicted burned-state structure for the
-    # nonlinear corrector. It is parameter-independent and applies equally to
-    # copy, raw-z secant, and thermal-frame secant predictors.
+    # A copy or secant predictor has no direct knowledge of the changed inlet
+    # chemistry, so project the target fresh mixture through the preheat zone.
+    # The Jacobian tangent already contains that target-residual response and
+    # must not receive the same composition change a second time.
     source_inlet = Y[:, 0].copy()
     target_inlet = np.asarray(problem.Y_in, dtype=float)
     thermal_span = max(abs(float(T[-1] - float(problem.T_in))), 1.0e-12)
     thermal_progress = np.clip((T - float(problem.T_in)) / thermal_span, 0.0, 1.0)
     fresh_weight = 1.0 - thermal_progress
     inlet_delta = target_inlet - source_inlet
-    if np.max(np.abs(inlet_delta)) > 1.0e-14:
+    if (
+        not predictor_kind.startswith("tangent_jacobian")
+        and np.max(np.abs(inlet_delta)) > 1.0e-14
+    ):
         Y += fresh_weight[None, :] * inlet_delta[:, None]
         Y = np.clip(Y, 0.0, None)
         Y /= np.maximum(Y.sum(axis=0, keepdims=True), 1.0e-300)
@@ -402,6 +541,7 @@ def build_continuation_seed(
         "x": pack_state(u, T, Y),
         "predictor_kind": predictor_kind,
         "predictor_frame": predictor_frame,
+        "predictor_model": predictor_model,
     }
     if predictor_metadata:
         result["predictor_frame_metadata"] = predictor_metadata
@@ -601,6 +741,11 @@ def make_solve_options(args: argparse.Namespace) -> SolveOptions:
     opts.jacobian_mode = str(args.jacobian_mode)
     opts.precompute_jacobian_thermo = bool(args.precompute_jacobian_thermo)
     opts.compiled_block_substitution = bool(args.compiled_block_substitution)
+    opts.ptc_shift_lu_reuse = bool(args.ptc_shift_lu_reuse)
+    opts.ptc_shift_lu_reuse_max_corrections = int(args.ptc_shift_lu_reuse_corrections)
+    opts.ptc_shift_lu_reuse_linear_tolerance = float(
+        args.ptc_shift_lu_reuse_linear_tolerance
+    )
     opts.max_refine_passes = int(args.max_refine_passes)
     opts.require_grid_convergence = bool(args.require_grid_convergence)
     opts.auto_bootstrap_grids = bool(args.auto_bootstrap_grids)
@@ -676,21 +821,30 @@ def solve_flame_native(
         # is much closer to the next phi state, where a longer reuse window
         # avoids costly rebuilds without degrading the certified result.
         run_opts = copy.copy(opts)
+        predictor_damping = (
+            float(args.continuation_tangent_damping)
+            if str(args.continuation_predictor_model).strip().lower() == "tangent"
+            else float(args.continuation_predictor_damping)
+        )
+        t_predictor = time.perf_counter()
         seed_solution = build_continuation_seed(
             problem=problem,
             phi=float(phi),
             prev_solution=prev_solution,
             prev_prev_solution=prev_prev_solution,
             use_predictor=not bool(args.disable_continuation_predictor),
-            predictor_damping=float(args.continuation_predictor_damping),
+            predictor_damping=predictor_damping,
             predictor_frame=str(args.continuation_predictor_frame),
             trust_ratio=(
                 float(args.continuation_trust_ratio)
                 if continuation_trust_ratio is None
                 else float(continuation_trust_ratio)
             ),
+            predictor_model=str(args.continuation_predictor_model),
         )
+        predictor_build_time_s = float(time.perf_counter() - t_predictor)
         if seed_solution is not None:
+            seed_solution["predictor_build_time_s"] = predictor_build_time_s
             seed_solution = bound_continuation_seed_mesh(
                 seed_solution,
                 n_species=int(problem.n_species),
@@ -759,6 +913,7 @@ def solve_flame_native(
             }
         dt = float(time.perf_counter() - t0)
         report["jacobian_mode"] = str(jacobian_mode)
+        report["predictor_build_time_s"] = predictor_build_time_s
         return problem, x_sol, bool(solve_ok), report, dt
 
     requested_mode = str(args.jacobian_mode).strip().lower()
@@ -871,11 +1026,25 @@ def solve_flame_native(
         "z": z.copy(),
         "x": np.asarray(x_sol, dtype=float).copy(),
     }
+    linearization = getattr(problem, "_continuation_linearization", None)
+    if isinstance(linearization, dict):
+        # This hand-off is intentionally not serialised as a seed-cache field:
+        # it is valid only for the immediately neighbouring target on the
+        # current process and configuration.
+        next_solution["continuation_linearization"] = linearization
     continuation_trace = {
         "predictor_kind": predictor_kind,
         "predictor_frame": (
             str(selected_prediction.get("predictor_frame", "z"))
             if selected_prediction is not None else "none"
+        ),
+        "predictor_model": (
+            str(selected_prediction.get("predictor_model", "secant"))
+            if selected_prediction is not None else "none"
+        ),
+        "predictor_metadata": (
+            selected_prediction.get("predictor_frame_metadata", {})
+            if selected_prediction is not None else {}
         ),
         "seed_mesh_transfer": (
             str(selected_prediction.get("seed_mesh_transfer", "none"))
@@ -891,6 +1060,7 @@ def solve_flame_native(
         ),
         "seeded": bool(selected_prediction is not None),
         "prediction_defect": prediction_defect,
+        "predictor_build_time_s": float(report.get("predictor_build_time_s", 0.0)),
         "n_refine_passes": int(len(report.get("passes", []))),
         "n_domain_expansions": int(len(report.get("expansion_events", []))),
         "solve_time_s": float(dt),
@@ -1162,6 +1332,28 @@ def build_argparser() -> argparse.ArgumentParser:
         default=True,
         help="Fusiona en Numba las sustituciones de la LU block-tridiagonal.",
     )
+    p.add_argument(
+        "--ptc-shift-lu-reuse",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Experimental: ante un cambio de pseudo-tiempo, prueba la LU PTC "
+            "exacta anterior como precondicionador y vuelve a LU exacta si el "
+            "residual lineal no alcanza la tolerancia. Desactivado por defecto."
+        ),
+    )
+    p.add_argument(
+        "--ptc-shift-lu-reuse-corrections",
+        type=int,
+        default=2,
+        help="Numero maximo de correcciones con la LU PTC previa (experimental).",
+    )
+    p.add_argument(
+        "--ptc-shift-lu-reuse-linear-tolerance",
+        type=float,
+        default=1.0e-3,
+        help="Residual relativo maximo para aceptar la correccion LU reutilizada.",
+    )
     p.add_argument("--allow-failed-flamelets", action="store_true",
                    help="Permite guardar la tabla aunque algun flamelet no converja.")
     p.add_argument(
@@ -1177,9 +1369,27 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--disable-continuation", action="store_true",
                    help="Alias heredado de --continuation-mode cold.")
     p.add_argument("--disable-continuation-predictor", action="store_true",
-                   help="Desactiva predictor secante entre flamelets.")
+                   help="Desactiva los predictores parametricos entre flamelets.")
+    p.add_argument(
+        "--continuation-predictor-model",
+        choices=("secant", "tangent"),
+        default="secant",
+        help=(
+            "Modelo de semilla: secant reproduce el baseline; tangent reutiliza "
+            "la LU estacionaria de la llama anterior para una sensibilidad local."
+        ),
+    )
     p.add_argument("--continuation-predictor-damping", type=float, default=0.7,
                    help="Amortiguamiento del predictor secante en phi.")
+    p.add_argument(
+        "--continuation-tangent-damping",
+        type=float,
+        default=0.3,
+        help=(
+            "Amortiguamiento global del predictor tangente con Jacobiano. "
+            "No modifica el baseline secante."
+        ),
+    )
     p.add_argument(
         "--continuation-predictor-frame",
         choices=("z", "thermal"),
@@ -1843,8 +2053,16 @@ def main() -> None:
         "compiled_block_substitution": bool(args.compiled_block_substitution),
         "openblas_num_threads": os.environ.get("OPENBLAS_NUM_THREADS", "auto"),
         "continuation_predictor_enabled": not bool(args.disable_continuation_predictor),
+        "continuation_predictor_model": str(args.continuation_predictor_model),
         "continuation_predictor_damping": float(args.continuation_predictor_damping),
+        "continuation_tangent_damping": float(args.continuation_tangent_damping),
         "continuation_predictor_frame": str(args.continuation_predictor_frame),
+        "continuation_tangent": {
+            "coordinate": "log(phi)",
+            "linearization": "previous_certified_stationary_block_LU",
+            "target_derivative": "residual_chord_on_source_mesh",
+            "persistent_cache": False,
+        },
         "continuation_seed_mesh_points": int(args.continuation_seed_mesh_points),
         "continuation_trust_ratio": float(args.continuation_trust_ratio),
         "continuation_mode": str(args.continuation_mode),

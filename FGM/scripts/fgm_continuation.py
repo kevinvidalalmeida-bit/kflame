@@ -110,10 +110,14 @@ class AdaptiveContinuationController:
 
         The controller does not reject a physically certified flame merely
         because its predictor was poor.  The defect changes only the *next*
-        step.  Early copy predictions do not calibrate the secant reference.
+        step.  Early copy predictions do not calibrate the local-predictor reference.
         """
         defect = float(prediction_defect)
-        if predictor_kind.startswith("secant") and math.isfinite(defect) and defect > 0.0:
+        if (
+            predictor_kind.startswith(("secant", "tangent"))
+            and math.isfinite(defect)
+            and defect > 0.0
+        ):
             if self.defect_reference is None:
                 self._secant_defects.append(defect)
                 if len(self._secant_defects) >= self.config.calibration_samples:

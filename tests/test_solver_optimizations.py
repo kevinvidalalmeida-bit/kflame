@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -13,7 +14,7 @@ if str(V2) not in sys.path:
     sys.path.insert(0, str(V2))
 
 from equations import BlockTridiagJacobian, factorize, solve_linear
-from solver import _equilibrate_block_tridiag
+from solver import JacobianState, _equilibrate_block_tridiag, _remember_continuation_linearization
 
 
 class BlockDiagonalUpdateTests(unittest.TestCase):
@@ -96,6 +97,100 @@ class PhysicalLinearScalingTests(unittest.TestCase):
         actual = solve_linear(state, rhs)
         expected = solve_linear(factorize(raw), rhs)
         np.testing.assert_allclose(actual, expected, rtol=2.0e-11, atol=2.0e-11)
+
+
+class ContinuationLinearizationTests(unittest.TestCase):
+    def test_keeps_only_an_exact_stationary_block_lu(self) -> None:
+        n_blocks, block_size = 3, 2
+        matrix = BlockTridiagJacobian(
+            np.zeros((n_blocks - 1, block_size, block_size)),
+            np.tile(np.eye(block_size)[None, :, :], (n_blocks, 1, 1)),
+            np.zeros((n_blocks - 1, block_size, block_size)),
+        )
+        lu = factorize(matrix)
+        lu["profile_problem"] = object()
+        state = JacobianState(
+            J=matrix,
+            lu=lu,
+            age=2,
+            n_evals=5,
+            last_rdt=0.0,
+        )
+        problem = SimpleNamespace(n_points=n_blocks, n_species=0)
+        source_state = np.linspace(0.0, 1.0, n_blocks * block_size)
+
+        _remember_continuation_linearization(problem, source_state, state)
+
+        handoff = problem._continuation_linearization
+        self.assertEqual(handoff["n_points"], n_blocks)
+        self.assertEqual(handoff["n_species"], 0)
+        self.assertNotIn("profile_problem", handoff["lu"])
+        np.testing.assert_allclose(
+            solve_linear(handoff["lu"], source_state), source_state
+        )
+
+    def test_rejects_a_pseudo_transient_factorization(self) -> None:
+        matrix = BlockTridiagJacobian(
+            np.zeros((1, 2, 2)),
+            np.tile(np.eye(2)[None, :, :], (2, 1, 1)),
+            np.zeros((1, 2, 2)),
+        )
+        problem = SimpleNamespace(n_points=2, n_species=0)
+        state = JacobianState(J=matrix, lu=factorize(matrix), last_rdt=10.0)
+
+        _remember_continuation_linearization(problem, np.zeros(4), state)
+
+        self.assertFalse(hasattr(problem, "_continuation_linearization"))
+
+
+class ShiftedLUReuseTests(unittest.TestCase):
+    def _matrix(self, diagonal_shift: float = 0.0) -> BlockTridiagJacobian:
+        rng = np.random.default_rng(303)
+        n_blocks, block_size = 5, 3
+        lower = rng.normal(scale=0.02, size=(n_blocks - 1, block_size, block_size))
+        upper = rng.normal(scale=0.02, size=(n_blocks - 1, block_size, block_size))
+        diag = rng.normal(scale=0.05, size=(n_blocks, block_size, block_size))
+        diag += 2.0 * np.eye(block_size)[None, :, :]
+        diag[:, np.arange(block_size), np.arange(block_size)] += diagonal_shift
+        return BlockTridiagJacobian(lower, diag, upper)
+
+    def test_shifted_lu_corrections_match_exact_block_solution(self) -> None:
+        previous = self._matrix(0.0)
+        current = self._matrix(-0.025)
+        rng = np.random.default_rng(304)
+        rhs = rng.normal(size=current.shape[0])
+        state = {
+            "method": "shift_reuse_block",
+            "matrix": current,
+            "reference_lu": factorize(previous),
+            "max_corrections": 6,
+            "linear_tolerance": 1.0e-11,
+        }
+
+        actual = solve_linear(state, rhs)
+        expected = solve_linear(factorize(current), rhs)
+
+        self.assertEqual(state["method"], "shift_reuse_block")
+        np.testing.assert_allclose(actual, expected, rtol=2.0e-11, atol=2.0e-11)
+
+    def test_shifted_lu_falls_back_to_exact_factorization(self) -> None:
+        previous = self._matrix(0.0)
+        current = self._matrix(-1.2)
+        rng = np.random.default_rng(305)
+        rhs = rng.normal(size=current.shape[0])
+        state = {
+            "method": "shift_reuse_block",
+            "matrix": current,
+            "reference_lu": factorize(previous),
+            "max_corrections": 0,
+            "linear_tolerance": 1.0e-14,
+        }
+
+        actual = solve_linear(state, rhs)
+        expected = solve_linear(factorize(current), rhs)
+
+        self.assertEqual(state["method"], "block_tridiag")
+        np.testing.assert_allclose(actual, expected, rtol=2.0e-12, atol=2.0e-12)
 
 
 if __name__ == "__main__":

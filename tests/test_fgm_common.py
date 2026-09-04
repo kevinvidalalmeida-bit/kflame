@@ -225,7 +225,6 @@ class ThermalFramePredictorTests(unittest.TestCase):
         _u, _T, species = unpack_state(transferred["x"], 61, 2)
         np.testing.assert_allclose(np.sum(species, axis=0), 1.0, rtol=0.0, atol=1.0e-14)
 
-
 class ProgressGridTests(unittest.TestCase):
     def test_indicator_uses_envelope_across_flamelets(self) -> None:
         c = np.linspace(0.0, 1.0, 5)
