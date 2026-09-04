@@ -13,6 +13,8 @@ from dataclasses import dataclass, field
 import math
 from statistics import median
 
+import numpy as np
+
 
 @dataclass(frozen=True)
 class ContinuationConfig:
@@ -149,3 +151,171 @@ class AdaptiveContinuationController:
             "secant_calibration_count": int(len(self._secant_defects)),
             "retry": int(self._retry),
         }
+
+
+@dataclass(frozen=True)
+class BorderedArcLengthUpdate:
+    """One exact Schur-complement update of a bordered continuation system.
+
+    The stationary flame Jacobian is never treated as a low-rank update.  At
+    a current augmented iterate ``(x, lambda)``, the bordered Newton system is
+
+    ``[J  F_lambda; t_x^T  t_lambda] [dx; dlambda] = -[F; g]``.
+
+    With an already factored ``J``, two ordinary right-hand sides and a scalar
+    Schur complement are sufficient.  This object records the resulting
+    correction together with the scalar denominator so a caller can reject a
+    near-singular augmented step explicitly.
+    """
+
+    state_step: np.ndarray
+    parameter_step: float
+    constraint: float
+    schur_denominator: float
+    tangent_norm: float
+
+
+def _weighted_inner(
+    left: np.ndarray,
+    right: np.ndarray,
+    weights: np.ndarray,
+) -> float:
+    """Dimensionless mean inner product used by pseudo-arclength.
+
+    ``weights`` are inverse physical scales, e.g. the same per-variable
+    absolute-plus-relative scales used by the nonlinear solver.  Applying the
+    metric here makes the arclength condition independent of whether a state
+    component is represented in kelvin, velocity, or mass fraction.
+    """
+    left = np.asarray(left, dtype=float)
+    right = np.asarray(right, dtype=float)
+    weights = np.asarray(weights, dtype=float)
+    if left.shape != right.shape or left.shape != weights.shape or left.size == 0:
+        raise ValueError("Pseudo-arclength vectors must have the same nonempty shape.")
+    value = float(np.mean((weights * left) * (weights * right)))
+    if not math.isfinite(value):
+        raise ValueError("Non-finite pseudo-arclength metric.")
+    return value
+
+
+def normalise_arc_tangent(
+    state_sensitivity: np.ndarray,
+    parameter_sensitivity: float,
+    weights: np.ndarray,
+) -> tuple[np.ndarray, float, float]:
+    """Return a unit tangent under the physical continuation metric.
+
+    A first-order flame sensitivity normally has ``parameter_sensitivity=1``.
+    The separate parameter contribution deliberately remains dimensionless;
+    the state part is scaled by ``weights`` before normalisation.
+    """
+    state_sensitivity = np.asarray(state_sensitivity, dtype=float)
+    weights = np.asarray(weights, dtype=float)
+    parameter_sensitivity = float(parameter_sensitivity)
+    if (
+        state_sensitivity.shape != weights.shape
+        or state_sensitivity.size == 0
+        or not np.all(np.isfinite(state_sensitivity))
+        or not np.all(np.isfinite(weights))
+        or np.any(weights <= 0.0)
+        or not math.isfinite(parameter_sensitivity)
+    ):
+        raise ValueError("Invalid tangent or physical scales for pseudo-arclength.")
+    norm_sq = _weighted_inner(state_sensitivity, state_sensitivity, weights)
+    norm_sq += parameter_sensitivity * parameter_sensitivity
+    tangent_norm = math.sqrt(norm_sq)
+    if not math.isfinite(tangent_norm) or tangent_norm <= np.finfo(float).tiny:
+        raise ValueError("Degenerate pseudo-arclength tangent.")
+    return (
+        state_sensitivity / tangent_norm,
+        parameter_sensitivity / tangent_norm,
+        float(tangent_norm),
+    )
+
+
+def bordered_pseudo_arclength_update(
+    *,
+    solve_jacobian,
+    residual: np.ndarray,
+    parameter_residual_derivative: np.ndarray,
+    state: np.ndarray,
+    parameter: float,
+    predicted_state: np.ndarray,
+    predicted_parameter: float,
+    tangent_state: np.ndarray,
+    tangent_parameter: float,
+    weights: np.ndarray,
+    denominator_floor: float = 1.0e-12,
+) -> BorderedArcLengthUpdate:
+    """Solve one bordered pseudo-arclength Newton correction exactly.
+
+    ``solve_jacobian(rhs)`` must solve an *exact current stationary* Jacobian
+    system.  The function does not factorise a second global matrix and never
+    assumes that changing chemistry or transport is low rank.  A caller may
+    use the update only after checking bounds and the usual physical flame
+    certificate.
+
+    The returned formula is
+
+    ``a = J^-1(-F)``, ``b = J^-1(F_lambda)``,
+    ``dlambda = (-g - <t_x,a>) / (t_lambda - <t_x,b>)``,
+    ``dx = a - b dlambda``.
+    """
+    residual = np.asarray(residual, dtype=float)
+    f_lambda = np.asarray(parameter_residual_derivative, dtype=float)
+    state = np.asarray(state, dtype=float)
+    predicted_state = np.asarray(predicted_state, dtype=float)
+    tangent_state = np.asarray(tangent_state, dtype=float)
+    weights = np.asarray(weights, dtype=float)
+    parameter = float(parameter)
+    predicted_parameter = float(predicted_parameter)
+    tangent_parameter = float(tangent_parameter)
+    denominator_floor = float(denominator_floor)
+
+    vectors = (residual, f_lambda, state, predicted_state, tangent_state, weights)
+    if (
+        any(vector.shape != state.shape for vector in vectors)
+        or state.size == 0
+        or not all(np.all(np.isfinite(vector)) for vector in vectors)
+        or not math.isfinite(parameter)
+        or not math.isfinite(predicted_parameter)
+        or not math.isfinite(tangent_parameter)
+        or not math.isfinite(denominator_floor)
+        or denominator_floor <= 0.0
+    ):
+        raise ValueError("Invalid bordered pseudo-arclength inputs.")
+
+    tangent_norm_sq = _weighted_inner(tangent_state, tangent_state, weights)
+    tangent_norm_sq += tangent_parameter * tangent_parameter
+    if tangent_norm_sq <= np.finfo(float).tiny:
+        raise ValueError("Degenerate bordered pseudo-arclength tangent.")
+
+    constraint = _weighted_inner(
+        tangent_state, state - predicted_state, weights
+    ) + tangent_parameter * (parameter - predicted_parameter)
+    a = np.asarray(solve_jacobian(-residual), dtype=float)
+    b = np.asarray(solve_jacobian(f_lambda), dtype=float)
+    if (
+        a.shape != state.shape
+        or b.shape != state.shape
+        or not np.all(np.isfinite(a))
+        or not np.all(np.isfinite(b))
+    ):
+        raise ValueError("Jacobian solve failed inside bordered pseudo-arclength.")
+
+    tangent_a = _weighted_inner(tangent_state, a, weights)
+    tangent_b = _weighted_inner(tangent_state, b, weights)
+    denominator = tangent_parameter - tangent_b
+    if not math.isfinite(denominator) or abs(denominator) <= denominator_floor:
+        raise ValueError("Near-singular pseudo-arclength Schur complement.")
+    parameter_step = (-constraint - tangent_a) / denominator
+    state_step = a - b * parameter_step
+    if not math.isfinite(parameter_step) or not np.all(np.isfinite(state_step)):
+        raise ValueError("Non-finite bordered pseudo-arclength correction.")
+    return BorderedArcLengthUpdate(
+        state_step=np.asarray(state_step, dtype=float),
+        parameter_step=float(parameter_step),
+        constraint=float(constraint),
+        schur_denominator=float(denominator),
+        tangent_norm=float(math.sqrt(tangent_norm_sq)),
+    )

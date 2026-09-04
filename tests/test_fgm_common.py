@@ -28,8 +28,14 @@ from generate_fgm_tables_native import (
     _jacobian_tangent_state,
     build_continuation_seed,
 )
+from equations import BlockTridiagJacobian, factorize, solve_linear
 from state import pack_state, unpack_state
-from fgm_continuation import AdaptiveContinuationController, ContinuationConfig
+from fgm_continuation import (
+    AdaptiveContinuationController,
+    ContinuationConfig,
+    bordered_pseudo_arclength_update,
+    normalise_arc_tangent,
+)
 from run_paper_campaign import _pressure_prediction_defect, _pressure_secant_seed
 
 
@@ -96,6 +102,97 @@ class AdaptivePredictorCorrectorTests(unittest.TestCase):
             _, retry, can_retry = controller.reject()
             self.assertEqual(retry, expected_retry)
             self.assertEqual(can_retry, expected_retry < 4)
+
+
+class BorderedPseudoArcLengthTests(unittest.TestCase):
+    def test_schur_update_satisfies_linear_manifold_and_arc_constraint(self) -> None:
+        # F(x, lambda) = x - 2 lambda. The exact stationary Jacobian is one,
+        # so this also checks the signs in the Schur complement independently
+        # of the block-LU implementation used in flame calculations.
+        weights = np.ones(1)
+        tangent_x, tangent_lambda, tangent_norm = normalise_arc_tangent(
+            np.array([2.0]), 1.0, weights
+        )
+        update = bordered_pseudo_arclength_update(
+            solve_jacobian=lambda rhs: np.asarray(rhs, dtype=float),
+            residual=np.array([-0.10]),
+            parameter_residual_derivative=np.array([-2.0]),
+            state=np.array([0.40]),
+            parameter=0.25,
+            predicted_state=np.array([0.40]),
+            predicted_parameter=0.20,
+            tangent_state=tangent_x,
+            tangent_parameter=tangent_lambda,
+            weights=weights,
+        )
+        x_next = 0.40 + update.state_step[0]
+        lambda_next = 0.25 + update.parameter_step
+        self.assertAlmostEqual(x_next - 2.0 * lambda_next, 0.0, places=14)
+        self.assertAlmostEqual(x_next, 0.40, places=14)
+        self.assertAlmostEqual(lambda_next, 0.20, places=14)
+        self.assertAlmostEqual(tangent_norm, np.sqrt(5.0), places=14)
+        self.assertAlmostEqual(update.tangent_norm, 1.0, places=14)
+        self.assertGreater(abs(update.schur_denominator), 1.0)
+
+    def test_reuses_the_actual_block_lu_for_both_schur_right_hand_sides(self) -> None:
+        # This is the same block-tridiagonal factor/solve path used by V2,
+        # not a dense surrogate.  The augmented equation must close without
+        # forming or factorising a global bordered matrix.
+        matrix = BlockTridiagJacobian(
+            lower=np.array([[[0.5]]]),
+            diag=np.array([[[3.0]], [[4.0]]]),
+            upper=np.array([[[0.25]]]),
+        )
+        lu = factorize(matrix)
+        residual = np.array([0.3, -0.2])
+        f_lambda = np.array([-0.4, 0.6])
+        weights = np.ones(2)
+        tangent_x, tangent_lambda, _ = normalise_arc_tangent(
+            np.array([0.2, -0.1]), 1.0, weights
+        )
+        state = np.array([1.1, -0.7])
+        predicted_state = np.array([1.0, -0.75])
+        parameter, predicted_parameter = 0.08, 0.05
+        update = bordered_pseudo_arclength_update(
+            solve_jacobian=lambda rhs: solve_linear(lu, rhs),
+            residual=residual,
+            parameter_residual_derivative=f_lambda,
+            state=state,
+            parameter=parameter,
+            predicted_state=predicted_state,
+            predicted_parameter=predicted_parameter,
+            tangent_state=tangent_x,
+            tangent_parameter=tangent_lambda,
+            weights=weights,
+        )
+        np.testing.assert_allclose(
+            matrix.matvec(update.state_step) + f_lambda * update.parameter_step,
+            -residual,
+            rtol=0.0,
+            atol=2.0e-14,
+        )
+        constraint_after = (
+            np.mean(tangent_x * ((state + update.state_step) - predicted_state))
+            + tangent_lambda * ((parameter + update.parameter_step) - predicted_parameter)
+        )
+        self.assertAlmostEqual(constraint_after, 0.0, places=14)
+
+    def test_rejects_near_singular_schur_complement(self) -> None:
+        # With t_x=1, t_lambda=1 and J=1, F_lambda=1, the denominator
+        # t_lambda - t_x J^-1 F_lambda vanishes exactly.
+        with self.assertRaisesRegex(ValueError, "Schur complement"):
+            bordered_pseudo_arclength_update(
+                solve_jacobian=lambda rhs: np.asarray(rhs, dtype=float),
+                residual=np.array([0.0]),
+                parameter_residual_derivative=np.array([1.0]),
+                state=np.array([0.0]),
+                parameter=0.0,
+                predicted_state=np.array([0.0]),
+                predicted_parameter=0.0,
+                tangent_state=np.array([1.0]),
+                tangent_parameter=1.0,
+                weights=np.ones(1),
+            )
 
 
 class PressurePredictorTests(unittest.TestCase):
