@@ -50,7 +50,6 @@ from fgm_common import (
     parse_z_values,
     validate_fgm_table,
 )
-from fgm_continuation import AdaptiveContinuationController, ContinuationConfig
 
 
 _CONTINUATION_MAX_PHI_RATIO = 1.15
@@ -86,7 +85,6 @@ if materials_dir not in sys.path:
 
 from run_saved_comparison import FlameCase, _resolve_mechanism
 from solver import solve_free_flame, SolveOptions
-from equations import residual, solve_linear
 from problem import FreeFlameProblem
 from state import interpolate_state, pack_state, unpack_state
 from mechanism_data import load_mechanism
@@ -179,147 +177,13 @@ def load_seed_profile_npz(path: Path, n_species: int, source: str = "auto") -> d
     )
 
 
-def _jacobian_tangent_state(
-    problem: FreeFlameProblem,
-    target_phi: float,
-    previous: dict[str, Any],
-    damping: float,
-) -> tuple[np.ndarray, dict[str, float]] | None:
-    """Form a first-order continuation predictor from the prior stationary LU.
-
-    At an accepted state :math:`x_i` and ``lambda = log(phi)``, the discrete
-    tangent satisfies ``J_i dx/dlambda = -dF/dlambda``.  Rather than forming a
-    second finite-difference Jacobian, the residual of the *target physical
-    problem* at ``x_i`` and the retained source residual provide the local
-    parameter chord:
-
-    ``dx ~= -J_i^{-1} [F(x_i, lambda_target) - F(x_i, lambda_source)]``.
-
-    The subtraction is required whenever the source flame is accepted by the
-    operational ``weighted step + residual guard`` certificate instead of an
-    exact zero residual.  Using the target residual alone would incorrectly
-    interpret the remaining source solve error as a change in ``phi``.
-
-    The LU is the exact stationary factorization retained in memory from the
-    preceding certified flame.  This function therefore performs one RHS and
-    one triangular solve; it does not run a Newton iteration on the target.
-    Any failure returns ``None`` so the normal copy/secant continuation remains
-    available, and every returned state is still corrected and certified by
-    ``solve_free_flame``.
-    """
-    try:
-        phi_source = float(np.asarray(previous["phi"], dtype=float).ravel()[0])
-        z = np.asarray(previous["z"], dtype=float)
-        x_previous = np.asarray(previous["x"], dtype=float)
-        linearization = previous["continuation_linearization"]
-        lu = linearization["lu"]
-        anchor_index = int(linearization["anchor_index"])
-        linearization_state = np.asarray(linearization["state"], dtype=float)
-        source_residual = np.asarray(linearization["residual"], dtype=float)
-    except (KeyError, TypeError, ValueError, IndexError):
-        return None
-
-    if phi_source <= 0.0 or target_phi <= 0.0 or z.ndim != 1 or z.size < 3:
-        return None
-    n_points = int(z.size)
-    n_species = int(problem.n_species)
-    expected = n_points * (n_species + 2)
-    if x_previous.size != expected:
-        return None
-    if (
-        not isinstance(linearization, dict)
-        or int(linearization.get("n_points", -1)) != n_points
-        or int(linearization.get("n_species", -1)) != n_species
-        or not 0 < anchor_index < n_points - 1
-        or not isinstance(lu, dict)
-        or lu.get("method") != "block_tridiag"
-    ):
-        return None
-    # A finite-difference Jacobian is local to both a mesh and a state. Do
-    # not silently apply a stale hand-off after any external seed mutation.
-    if (
-        linearization_state.shape != x_previous.shape
-        or source_residual.shape != x_previous.shape
-        or not np.allclose(
-            linearization_state,
-            x_previous,
-            rtol=1.0e-11,
-            atol=1.0e-13,
-        )
-        or not np.all(np.isfinite(source_residual))
-    ):
-        return None
-
-    lambda_source = float(np.log(phi_source))
-    lambda_target = float(np.log(target_phi))
-    delta_lambda = lambda_target - lambda_source
-    if not np.isfinite(delta_lambda) or abs(delta_lambda) <= 1.0e-14:
-        return None
-
-    # Evaluate the target residual on precisely the source mesh. The actual
-    # seeded solve below starts from this same mesh, so the tangent and
-    # corrector refer to the same discrete variables and anchor convention.
-    problem.z = z.copy()
-    problem.n_points = n_points
-    problem.width = float(z[-1] - z[0])
-    problem.solve_energy = True
-    try:
-        # The source LU contains a phase row at ``anchor_index``. Keep that
-        # row fixed while taking the parameter chord; only its prescribed
-        # target temperature changes with the new equilibrium state. Letting
-        # the target select a different node would pair F(lambda_target) with
-        # a Jacobian of another discrete system.
-        problem.j_fixed = anchor_index
-        problem.T_fixed_point = float(problem.anchor_T)
-        problem.backend = problem.backend_factory(problem)
-        target_residual = np.asarray(residual(x_previous, problem), dtype=float)
-        if target_residual.shape != x_previous.shape or not np.all(np.isfinite(target_residual)):
-            return None
-        # Written in sensitivity form to retain a measurable dF/dlambda. The
-        # source subtraction preserves the distinction between a parameter
-        # chord and any residual left by the accepted source corrector. The
-        # multiplication by delta_lambda recovers the chord correction and
-        # avoids a second target-Jacobian assembly.
-        parameter_chord = target_residual - source_residual
-        dF_dlambda = parameter_chord / delta_lambda
-        sensitivity = np.asarray(solve_linear(lu, -dF_dlambda), dtype=float)
-        correction = float(np.clip(damping, 0.0, 1.0)) * delta_lambda * sensitivity
-    except Exception:
-        return None
-
-    x_prediction = x_previous + correction
-    if x_prediction.shape != x_previous.shape or not np.all(np.isfinite(x_prediction)):
-        return None
-    metadata: dict[str, float] = {
-        "lambda_source": lambda_source,
-        "lambda_target": lambda_target,
-        "delta_lambda": float(delta_lambda),
-        "source_jacobian_age": float(linearization.get("jacobian_age", np.nan)),
-        "source_jacobian_evaluations": float(
-            linearization.get("jacobian_evaluations", np.nan)
-        ),
-        "source_anchor_index": float(anchor_index),
-        "source_residual_inf": float(np.linalg.norm(source_residual, ord=np.inf)),
-        "target_residual_inf_before_tangent": float(
-            np.linalg.norm(target_residual, ord=np.inf)
-        ),
-        "parameter_chord_inf": float(np.linalg.norm(parameter_chord, ord=np.inf)),
-        "tangent_sensitivity_weighted_norm": float(
-            np.linalg.norm(sensitivity) / max(np.sqrt(sensitivity.size), 1.0)
-        ),
-    }
-    return x_prediction, metadata
-
-
 def build_continuation_seed(
     problem: FreeFlameProblem,
     phi: float,
     prev_solution: dict[str, np.ndarray] | None,
     prev_prev_solution: dict[str, np.ndarray] | None,
-    use_predictor: bool,
     predictor_damping: float,
     trust_ratio: float = _CONTINUATION_MAX_PHI_RATIO,
-    predictor_model: str = "secant",
 ) -> dict[str, Any] | None:
     if prev_solution is None or "z" not in prev_solution or "x" not in prev_solution:
         return None
@@ -340,32 +204,10 @@ def build_continuation_seed(
     if z_prev.ndim != 1 or z_prev.size < 2 or x_prev.size != expected:
         return None
 
-    predictor_model = str(predictor_model).strip().lower()
-    if predictor_model not in ("secant", "tangent"):
-        raise ValueError("predictor_model must be 'secant' or 'tangent'")
-
     x_seed = x_prev.copy()
     predictor_kind = "copy"
-    predictor_metadata: dict[str, float] = {}
-    if use_predictor and predictor_model == "tangent":
-        tangent_prediction = _jacobian_tangent_state(
-            problem=problem,
-            target_phi=float(phi),
-            previous=prev_solution,
-            damping=float(predictor_damping),
-        )
-        if tangent_prediction is not None:
-            x_seed, predictor_metadata = tangent_prediction
-            predictor_kind = "tangent_jacobian"
-        else:
-            # No valid stationary source LU is a normal occurrence after a
-            # transient-only solve. Fall through to the existing predictor;
-            # the trace distinguishes this from a genuine tangent prediction.
-            predictor_metadata = {"tangent_fallback": 1.0}
     if (
-        use_predictor
-        and predictor_kind == "copy"
-        and prev_prev_solution is not None
+        prev_prev_solution is not None
         and "z" in prev_prev_solution
         and "x" in prev_prev_solution
         and "phi" in prev_prev_solution
@@ -403,20 +245,15 @@ def build_continuation_seed(
     sums = np.where(sums > 0.0, sums, 1.0)
     Y = Y / sums
 
-    # A copy or secant predictor has no direct knowledge of the changed inlet
+    # The copy or secant predictor has no direct knowledge of the changed inlet
     # chemistry, so project the target fresh mixture through the preheat zone.
-    # The Jacobian tangent already contains that target-residual response and
-    # must not receive the same composition change a second time.
     source_inlet = Y[:, 0].copy()
     target_inlet = np.asarray(problem.Y_in, dtype=float)
     thermal_span = max(abs(float(T[-1] - float(problem.T_in))), 1.0e-12)
     thermal_progress = np.clip((T - float(problem.T_in)) / thermal_span, 0.0, 1.0)
     fresh_weight = 1.0 - thermal_progress
     inlet_delta = target_inlet - source_inlet
-    if (
-        not predictor_kind.startswith("tangent_jacobian")
-        and np.max(np.abs(inlet_delta)) > 1.0e-14
-    ):
+    if np.max(np.abs(inlet_delta)) > 1.0e-14:
         Y += fresh_weight[None, :] * inlet_delta[:, None]
         Y = np.clip(Y, 0.0, None)
         Y /= np.maximum(Y.sum(axis=0, keepdims=True), 1.0e-300)
@@ -433,10 +270,7 @@ def build_continuation_seed(
         "x": pack_state(u, T, Y),
         "predictor_kind": predictor_kind,
         "predictor_frame": "z",
-        "predictor_model": predictor_model,
     }
-    if predictor_metadata:
-        result["predictor_metadata"] = predictor_metadata
     return result
 
 
@@ -739,25 +573,18 @@ def solve_flame_native(
         # is much closer to the next phi state, where a longer reuse window
         # avoids costly rebuilds without degrading the certified result.
         run_opts = copy.copy(opts)
-        predictor_damping = (
-            float(args.continuation_tangent_damping)
-            if str(args.continuation_predictor_model).strip().lower() == "tangent"
-            else float(args.continuation_predictor_damping)
-        )
         t_predictor = time.perf_counter()
         seed_solution = build_continuation_seed(
             problem=problem,
             phi=float(phi),
             prev_solution=prev_solution,
             prev_prev_solution=prev_prev_solution,
-            use_predictor=not bool(args.disable_continuation_predictor),
-            predictor_damping=predictor_damping,
+            predictor_damping=float(args.continuation_predictor_damping),
             trust_ratio=(
                 float(args.continuation_trust_ratio)
                 if continuation_trust_ratio is None
                 else float(continuation_trust_ratio)
             ),
-            predictor_model=str(args.continuation_predictor_model),
         )
         predictor_build_time_s = float(time.perf_counter() - t_predictor)
         if seed_solution is not None:
@@ -959,25 +786,11 @@ def solve_flame_native(
         "z": z.copy(),
         "x": np.asarray(x_sol, dtype=float).copy(),
     }
-    linearization = getattr(problem, "_continuation_linearization", None)
-    if isinstance(linearization, dict):
-        # This hand-off is intentionally not serialised as a seed-cache field:
-        # it is valid only for the immediately neighbouring target on the
-        # current process and configuration.
-        next_solution["continuation_linearization"] = linearization
     continuation_trace = {
         "predictor_kind": predictor_kind,
         "predictor_frame": (
             str(selected_prediction.get("predictor_frame", "z"))
             if selected_prediction is not None else "none"
-        ),
-        "predictor_model": (
-            str(selected_prediction.get("predictor_model", "secant"))
-            if selected_prediction is not None else "none"
-        ),
-        "predictor_metadata": (
-            selected_prediction.get("predictor_metadata", {})
-            if selected_prediction is not None else {}
         ),
         "seed_mesh_transfer": (
             str(selected_prediction.get("seed_mesh_transfer", "none"))
@@ -1323,40 +1136,8 @@ def build_argparser() -> argparse.ArgumentParser:
     )
     p.add_argument("--allow-failed-flamelets", action="store_true",
                    help="Permite guardar la tabla aunque algun flamelet no converja.")
-    p.add_argument(
-        "--continuation-mode",
-        choices=("cold", "fixed", "fixed-bridges", "adaptive-pc"),
-        default="fixed",
-        help=(
-            "Politica paramétrica: cold no reutiliza perfiles vecinos; fixed "
-            "reproduce la region de confianza actual; fixed-bridges conserva "
-            "un paso fijo con puntos puente; adaptive-pc adapta ese paso en log(phi)."
-        ),
-    )
-    p.add_argument("--disable-continuation", action="store_true",
-                   help="Alias heredado de --continuation-mode cold.")
-    p.add_argument("--disable-continuation-predictor", action="store_true",
-                   help="Desactiva los predictores parametricos entre flamelets.")
-    p.add_argument(
-        "--continuation-predictor-model",
-        choices=("secant", "tangent"),
-        default="secant",
-        help=(
-            "Modelo de semilla: secant reproduce el baseline; tangent reutiliza "
-            "la LU estacionaria de la llama anterior para una sensibilidad local."
-        ),
-    )
     p.add_argument("--continuation-predictor-damping", type=float, default=0.7,
-                   help="Amortiguamiento del predictor secante en phi.")
-    p.add_argument(
-        "--continuation-tangent-damping",
-        type=float,
-        default=0.3,
-        help=(
-            "Amortiguamiento global del predictor tangente con Jacobiano. "
-            "No modifica el baseline secante."
-        ),
-    )
+                   help="Amortiguamiento del predictor secante en log(phi).")
     p.add_argument(
         "--continuation-seed-mesh-points",
         type=int,
@@ -1373,17 +1154,9 @@ def build_argparser() -> argparse.ArgumentParser:
         default=_CONTINUATION_MAX_PHI_RATIO,
         help=(
             "Razon multiplicativa maxima para reutilizar una semilla en phi; "
-            "0 desactiva solo esta cota para la ablacion no acotada."
+            "fuera de ella se reinicia desde el estado fisico."
         ),
     )
-    p.add_argument("--pc-initial-ratio", type=float, default=1.15,
-                   help="Paso inicial del predictor-corrector: exp(Delta log(phi)).")
-    p.add_argument("--pc-min-ratio", type=float, default=1.02,
-                   help="Paso multiplicativo mínimo del predictor-corrector.")
-    p.add_argument("--pc-max-ratio", type=float, default=1.20,
-                   help="Paso multiplicativo máximo del predictor-corrector.")
-    p.add_argument("--pc-max-retries", type=int, default=4,
-                   help="Reintentos con paso reducido antes de un arranque frío registrado.")
     p.add_argument("--restart-insert-anchor", action="store_true",
                    help="Inserta un punto exacto de ancla de T tambien en reinicios.")
     p.add_argument("--auto-bootstrap-grids", action=argparse.BooleanOptionalAction,
@@ -1428,8 +1201,6 @@ def build_argparser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = build_argparser().parse_args()
-    if bool(args.disable_continuation):
-        args.continuation_mode = "cold"
     transport_key = str(args.transport_model).strip().lower().replace("_", "-")
     is_multicomponent = transport_key in ("multicomponent", "multi-component", "multi")
     if bool(args.soret_enabled) and not is_multicomponent:
@@ -1444,19 +1215,6 @@ def main() -> None:
         )
     if int(args.local_jacobian_refresh_min_blocks) < 1:
         raise SystemExit("--local-jacobian-refresh-min-blocks debe ser al menos 1")
-    if args.continuation_mode == "adaptive-pc":
-        if not (
-            1.0 < float(args.pc_min_ratio) <= float(args.pc_initial_ratio)
-            <= float(args.pc_max_ratio)
-        ):
-            raise SystemExit(
-                "adaptive-pc requiere 1 < --pc-min-ratio <= "
-                "--pc-initial-ratio <= --pc-max-ratio"
-            )
-    if args.continuation_mode == "fixed-bridges" and float(args.continuation_trust_ratio) <= 1.0:
-        raise SystemExit(
-            "fixed-bridges requiere --continuation-trust-ratio mayor que uno."
-        )
     t_global0 = time.perf_counter()
     bilger_gas = ct.Solution(args.mech)
 
@@ -1483,11 +1241,9 @@ def main() -> None:
             dtype=float,
         )
 
-    if args.continuation_mode in ("adaptive-pc", "fixed-bridges") and (
-        np.any(phi_vals <= 0.0) or np.any(np.diff(phi_vals) <= 0.0)
-    ):
+    if np.any(phi_vals <= 0.0) or np.any(np.diff(phi_vals) <= 0.0):
         raise SystemExit(
-            "La continuacion con puentes requiere phi positivos y estrictamente crecientes; "
+            "La continuacion secante requiere phi positivos y estrictamente crecientes; "
             "ordene --phi-values de pobre a rico."
         )
 
@@ -1539,7 +1295,7 @@ def main() -> None:
         f"c_fine={args.c_fine}, bias={args.refine_bias:g}"
     )
     print(f"mode            : {'Z-grid' if z_mode else 'phi-grid'}")
-    print(f"continuation    : {args.continuation_mode}")
+    print("continuation    : local secant with trust-region restart")
     print(f"phis            : {phi_vals}")
     if z_mode:
         print(f"Z target        : {[f'{z:.4f}' for z in z_targets]}")
@@ -1573,7 +1329,6 @@ def main() -> None:
     if (
         parallel_workers > 1
         and len(phi_vals) > 1
-        and args.continuation_mode in ("cold", "fixed")
         and not bool(args.disable_seed_cache)
         and not args.seed_profile_npz.strip()
     ):
@@ -1692,156 +1447,6 @@ def main() -> None:
                 )
                 if cached_path is not None:
                     seed_cache_written.append(str(cached_path.resolve()))
-    elif args.continuation_mode in ("adaptive-pc", "fixed-bridges"):
-        # This path is sequential by design. A cache can seed the first
-        # corrected state, but every bridge remains a fully certified solve.
-        initial_seed = prev_solution
-        prev_solution = None
-        prev_prev_solution = None
-        current_phi: float | None = None
-        if args.continuation_mode == "fixed-bridges":
-            fixed_ratio = float(args.continuation_trust_ratio)
-            controller_config = ContinuationConfig(
-                initial_ratio=fixed_ratio,
-                min_ratio=fixed_ratio,
-                max_ratio=fixed_ratio,
-                max_retries=int(args.pc_max_retries),
-            )
-        else:
-            controller_config = ContinuationConfig(
-                initial_ratio=float(args.pc_initial_ratio),
-                min_ratio=float(args.pc_min_ratio),
-                max_ratio=float(args.pc_max_ratio),
-                max_retries=int(args.pc_max_retries),
-            )
-        controller = AdaptiveContinuationController(controller_config)
-
-        def commit_adaptive(rec: FlameRecord, trace: dict[str, Any],
-                            requested: bool, bridge: bool) -> None:
-            nonlocal species_names, used_progress_species
-            rec.requested = bool(requested)
-            rec.bridge = bool(bridge)
-            records.append(rec)
-            continuation_trace.append(trace)
-            if species_names is None:
-                species_names = list(ct.Solution(args.mech).species_names)
-            c_tmp, _, used = compute_progress_variable(
-                species_names=species_names, Y=rec.Y, T=rec.T,
-                progress_weights=progress_weights,
-            )
-            rec.c = c_tmp
-            if used:
-                used_progress_species = used
-            if rec.solve_ok and rec.final_accepted:
-                cached_path = write_cached_seed(
-                    args, resolved_mech=resolved_mech, rec=rec,
-                    species_names=species_names,
-                )
-                if cached_path is not None:
-                    seed_cache_written.append(str(cached_path.resolve()))
-
-        for requested_index, target in enumerate(phi_vals, start=1):
-            target_phi = float(target)
-            while current_phi is None or not np.isclose(
-                np.log(current_phi), np.log(target_phi), rtol=0.0, atol=1.0e-13
-            ):
-                if current_phi is None:
-                    proposal = None
-                    trial_phi = target_phi
-                    seed, seed_previous, bridge = initial_seed, None, False
-                else:
-                    proposal = controller.propose(current_phi, target_phi)
-                    trial_phi = float(proposal.phi_trial)
-                    seed, seed_previous = prev_solution, prev_prev_solution
-                    bridge = bool(proposal.is_bridge)
-
-                before = controller.snapshot()
-                print(
-                    f"\n[{requested_index}/{len(phi_vals)}] {args.continuation_mode} "
-                    f"target={target_phi:.4f}, trial={trial_phi:.4f}"
-                    f"{' [bridge]' if bridge else ''} ..."
-                )
-                rec, corrected, solve_trace = solve_flame_native(
-                    phi=trial_phi, args=args, mech_data=mech_data, opts=opts,
-                    progress_weights=progress_weights, prev_solution=seed,
-                    prev_prev_solution=seed_previous, continuation_trust_ratio=0.0,
-                )
-                accepted = bool(rec.solve_ok and rec.final_accepted)
-                trace: dict[str, Any] = {
-                    "mode": str(args.continuation_mode),
-                    "requested_index": int(requested_index - 1),
-                    "phi_from": None if current_phi is None else float(current_phi),
-                    "phi_target": target_phi,
-                    "phi_trial": trial_phi,
-                    "requested": not bridge,
-                    "bridge": bridge,
-                    "log_step": None if proposal is None else float(proposal.log_step),
-                    "retry": 0 if proposal is None else int(proposal.retry),
-                    "controller_before": before,
-                    **solve_trace,
-                    "accepted": accepted,
-                }
-                if accepted:
-                    trace["next_log_step"] = controller.accept(
-                        rec.prediction_defect, rec.predictor_kind
-                    )
-                    trace["controller_after"] = controller.snapshot()
-                    commit_adaptive(rec, trace, requested=not bridge, bridge=bridge)
-                    print(
-                        f"  OK | predictor={rec.predictor_kind} | "
-                        f"eta_p={rec.prediction_defect:.3e} | "
-                        f"Su={rec.Su_m_per_s:.4f} m/s | n={rec.n_points} | "
-                        f"t={rec.solve_time_s:.2f}s"
-                    )
-                    prev_prev_solution, prev_solution = prev_solution, corrected
-                    current_phi, initial_seed = trial_phi, None
-                    continue
-
-                # No failed correction is inserted into the FGM table or cache.
-                if proposal is not None:
-                    next_step, retry, can_retry = controller.reject()
-                else:
-                    next_step, retry, can_retry = None, 0, False
-                trace.update({
-                    "accepted": False,
-                    "next_log_step": next_step,
-                    "retry_after_reject": retry,
-                    "controller_after_reject": controller.snapshot(),
-                })
-                continuation_trace.append(trace)
-                if can_retry:
-                    print(f"  RETRY | next ratio={np.exp(next_step):.4f} (retry {retry})")
-                    continue
-
-                # Recovery is an explicit cold target solve, not a hidden seed.
-                print("  COLD FALLBACK | continuation budget exhausted")
-                cold_rec, cold_solution, cold_trace = solve_flame_native(
-                    phi=target_phi, args=args, mech_data=mech_data, opts=opts,
-                    progress_weights=progress_weights, prev_solution=None,
-                    prev_prev_solution=None, continuation_trust_ratio=0.0,
-                )
-                cold_accepted = bool(cold_rec.solve_ok and cold_rec.final_accepted)
-                cold_trace_record: dict[str, Any] = {
-                    "mode": str(args.continuation_mode),
-                    "requested_index": int(requested_index - 1),
-                    "phi_from": None if current_phi is None else float(current_phi),
-                    "phi_target": target_phi,
-                    "phi_trial": target_phi,
-                    "requested": True,
-                    "bridge": False,
-                    "cold_fallback": True,
-                    **cold_trace,
-                    "accepted": cold_accepted,
-                    "controller_after": controller.snapshot(),
-                }
-                if not cold_accepted and not bool(args.allow_failed_flamelets):
-                    raise RuntimeError(
-                        f"Flamelet phi={target_phi:.6g} no aceptado tras agotar "
-                        "predictor-corrector y arranque frío."
-                    )
-                commit_adaptive(cold_rec, cold_trace_record, requested=True, bridge=False)
-                prev_prev_solution, prev_solution = prev_solution, cold_solution
-                current_phi, initial_seed = target_phi, None
     else:
         for i, phi in enumerate(phi_vals, start=1):
             z_tag = z_targets[i - 1] if z_mode else Z_preview[i - 1]
@@ -1873,17 +1478,15 @@ def main() -> None:
                 mech_data=mech_data, opts=opts,
                 progress_weights=progress_weights,
                 prev_solution=(
-                    None if args.continuation_mode == "cold"
-                    else (seed_for_phi if seed_for_phi is not None else prev_solution)
+                    seed_for_phi if seed_for_phi is not None else prev_solution
                 ),
                 prev_prev_solution=(
-                    None if args.continuation_mode == "cold" or seed_for_phi is not None
-                    else prev_prev_solution
+                    None if seed_for_phi is not None else prev_prev_solution
                 ),
             )
             records.append(rec)
             continuation_trace.append({
-                "mode": str(args.continuation_mode),
+                "mode": "fixed-secant",
                 "requested_index": int(i - 1),
                 "phi_from": None if prev_solution is None else float(np.asarray(prev_solution["phi"]).ravel()[0]),
                 "phi_target": float(phi),
@@ -1898,7 +1501,7 @@ def main() -> None:
                   f"n={rec.n_points} | ||F||inf={rec.residual_inf:.3e} | "
                   f"wstep={rec.weighted_step_norm:.3e} | "
                   f"t={rec.solve_time_s:.2f}s")
-            if rec.solve_ok and rec.final_accepted and args.continuation_mode == "fixed":
+            if rec.solve_ok and rec.final_accepted:
                 prev_prev_solution = prev_solution
                 prev_solution = next_solution
             elif not bool(args.allow_failed_flamelets):
@@ -2031,19 +1634,12 @@ def main() -> None:
             ),
         },
         "openblas_num_threads": os.environ.get("OPENBLAS_NUM_THREADS", "auto"),
-        "continuation_predictor_enabled": not bool(args.disable_continuation_predictor),
-        "continuation_predictor_model": str(args.continuation_predictor_model),
+        "continuation_predictor_enabled": True,
+        "continuation_predictor_model": "secant_log_phi",
         "continuation_predictor_damping": float(args.continuation_predictor_damping),
-        "continuation_tangent_damping": float(args.continuation_tangent_damping),
-        "continuation_tangent": {
-            "coordinate": "log(phi)",
-            "linearization": "previous_certified_stationary_block_LU",
-            "target_derivative": "residual_chord_on_source_mesh",
-            "persistent_cache": False,
-        },
         "continuation_seed_mesh_points": int(args.continuation_seed_mesh_points),
         "continuation_trust_ratio": float(args.continuation_trust_ratio),
-        "continuation_mode": str(args.continuation_mode),
+        "continuation_mode": "fixed-secant",
         "profile_solver": bool(args.profile_solver),
         "continuation_trace": "continuation_trace.json",
         "continuation_schedule": "continuation_schedule.json",
@@ -2051,16 +1647,6 @@ def main() -> None:
         "continuation_trace_rejections": int(
             sum(not bool(item.get("accepted", False)) for item in continuation_trace)
         ),
-        "continuation_pc": {
-            "coordinate": "log(phi)",
-            "initial_ratio": float(args.pc_initial_ratio),
-            "min_ratio": float(args.pc_min_ratio),
-            "max_ratio": float(args.pc_max_ratio),
-            "max_retries": int(args.pc_max_retries),
-            "bridge_rows_included": bool(
-                args.continuation_mode in ("fixed-bridges", "adaptive-pc")
-            ),
-        },
         "restart_insert_anchor": bool(args.restart_insert_anchor),
         "seed_cache_dir": str(seed_cache_directory(args).resolve()),
         "seed_cache_used": seed_cache_used,

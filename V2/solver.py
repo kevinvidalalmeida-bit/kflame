@@ -606,70 +606,11 @@ class JacobianState:
     age: int = 10000
     n_evals: int = 0
     n_local_refreshes: int = 0
-    # True only after a complete stationary finite-difference assembly.  A
-    # local refresh is a valid quasi-Newton corrector matrix but must never be
-    # exported as the exact tangent linearization of a neighbouring flamelet.
-    exact_steady: bool = False
     last_rdt: float | None = None
 
     def is_stale(self, max_age: int) -> bool:
         # Cantera refreshes when age() > maxAge
         return self.J is None or self.lu is None or self.age > max_age
-
-
-def _remember_continuation_linearization(
-    problem,
-    x: np.ndarray,
-    jac: JacobianState | None,
-    source_residual: np.ndarray | None = None,
-) -> None:
-    """Keep a valid stationary LU for one neighbouring continuation step.
-
-    This is deliberately an in-memory hand-off, never a cache entry.  A
-    parameter predictor may use it to form a first-order sensitivity on the
-    *next* target, but the target still goes through the complete nonlinear
-    solve and certificate.  ``source_residual`` is stored together with the
-    factorization when available.  This matters because a Cantera-style
-    operational certificate can accept a small-but-nonzero stationary
-    residual: a parameter derivative must use
-    ``F(x, lambda_target) - F(x, lambda_source)``, not the target residual
-    alone.  Only an exact stationary factorization is kept:
-    a PTC factorization carries an artificial mass shift and must not be used
-    as the derivative of the stationary flame family.
-    """
-    if (
-        jac is None
-        or jac.J is None
-        or not isinstance(jac.J, BlockTridiagJacobian)
-        or not isinstance(jac.lu, dict)
-        or jac.lu.get("method") != "block_tridiag"
-        or not bool(jac.exact_steady)
-        or jac.last_rdt is None
-        or not np.isclose(float(jac.last_rdt), 0.0, rtol=0.0, atol=0.0)
-    ):
-        return
-
-    # The factorization itself owns the numeric arrays. Dropping this optional
-    # profiling back-reference prevents a previous problem from being retained
-    # for the whole FGM sweep.
-    lu = dict(jac.lu)
-    lu.pop("profile_problem", None)
-    handoff = {
-        "lu": lu,
-        "n_points": int(problem.n_points),
-        "n_species": int(problem.n_species),
-        "anchor_index": (
-            int(problem.j_fixed) if getattr(problem, "j_fixed", None) is not None else -1
-        ),
-        "jacobian_age": int(jac.age),
-        "jacobian_evaluations": int(jac.n_evals),
-        "state": np.asarray(x, dtype=float).copy(),
-    }
-    if source_residual is not None:
-        source_residual = np.asarray(source_residual, dtype=float)
-        if source_residual.shape == np.asarray(x).shape and np.all(np.isfinite(source_residual)):
-            handoff["residual"] = source_residual.copy()
-    problem._continuation_linearization = handoff
 
 
 def _build_linear_model(steady_fun, x: np.ndarray, problem,
@@ -960,7 +901,6 @@ def newton_solve(
                 jac_state.ss_diag = ss_diag
                 jac_state.age = 0
                 jac_state.n_evals += 1
-                jac_state.exact_steady = True
                 jac_state.last_rdt = rdt_curr
                 force_new_jac = False
             except Exception as exc:
@@ -1136,7 +1076,6 @@ def newton_solve(
                     jac_state.age = 0
                     jac_state.n_evals += 1
                     jac_state.n_local_refreshes += 1
-                    jac_state.exact_steady = False
                     jac_state.last_rdt = rdt_curr
                     local_refresh_info = dict(refresh_info)
                     damp_ok = True
@@ -1518,12 +1457,6 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                     jac = None
                     attempt += 1
                     continue
-            _remember_continuation_linearization(
-                problem,
-                x_ss,
-                jac,
-                source_residual=residual(x_ss, problem, force_exact_transport=True),
-            )
             if steady_callback is not None:
                 steady_callback(x_ss)
             if opts.verbose:
@@ -1536,12 +1469,6 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
             Finf_limit = _final_residual_limit(opts)
             residual_ok = (not np.isfinite(Finf_limit)) or Finf <= Finf_limit
             if residual_ok:
-                _remember_continuation_linearization(
-                    problem,
-                    x_ss,
-                    jac,
-                    source_residual=residual(x_ss, problem, force_exact_transport=True),
-                )
                 if steady_callback is not None:
                     steady_callback(x_ss)
                 history.append(

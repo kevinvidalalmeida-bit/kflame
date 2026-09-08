@@ -2393,10 +2393,14 @@ convergencia sin modificar los balances finales.
 
 La mezcla fresca se construye a partir de combustible, oxidante y \(\phi\). Un
 equilibrio HP proporciona \(\Tad\) y la composición quemada. La conjetura inicial
-interpola suavemente entre ambos estados sobre ocho nodos y estima \(u\) a partir
-de conservación de flujo. Este uso puntual de \Cantera para composición y
-equilibrio no convierte a \Cantera en el solver de la llama \Vdos; las
-iteraciones posteriores usan el backend nativo.
+interpola suavemente entre ambos estados sobre una malla nominal de ocho nodos
+y estima \(u\) a partir de conservación de flujo. Si la temperatura de anclaje
+queda entre dos nodos, se inserta un nodo en su posición interpolada para
+imponer la condición de fase sin desplazarla a una celda vecina. Una semilla
+procedente de continuación sustituye esta conjetura fría y conserva su propia
+malla inicial. Este uso puntual de \Cantera para composición y equilibrio no
+convierte a \Cantera en el solver de la llama \Vdos; las iteraciones posteriores
+usan el backend nativo.
 
 Se aplican los límites numéricos de admisibilidad, según la \cref{eq:state-bounds}:
 \begin{equation}
@@ -2411,15 +2415,20 @@ La composición se interpola y normaliza al cambiar de malla; esa normalización
 garantiza suma unitaria, pero no sustituye una comprobación de balances.
 
 \subsubsection{Inicialización de la extensión Soret}
-La ruta evaluada inicializa el problema mediante una llama nativa promediada
-por mezcla, seguida del corrector multicomponente con Soret y nuevo refinamiento.
-En la etapa preliminar se duplican los umbrales de pendiente y curvatura; el
-corrector recupera los umbrales solicitados. El coste reportado incluye ambas
-etapas y ambas comparten el presupuesto temporal. Si falla la primera, su
-perfil no se publica como solución Soret. La reutilización de propiedades de
-cara durante las iteraciones exige reevaluar el transporte completo para
-aceptar el estado final. Una convergencia sobre la malla provisional no se
-considera aceptación espacial.
+En las campañas Soret reportadas se activa un arranque de dos etapas: una llama
+nativa promediada por mezcla construye una semilla y un corrector posterior
+resuelve el modelo multicomponente con Soret. La primera etapa usa límites de
+pendiente y curvatura multiplicados por dos; el corrector recupera los valores
+solicitados y ejecuta de nuevo el ciclo de refinamiento. Esta estrategia es una
+opción explícita de la configuración Soret, no un paso que se active para el
+caso base sin Soret.
+
+El coste reportado incluye ambas etapas y ambas comparten el presupuesto
+temporal. Si falla la primera, su perfil no se publica como solución Soret.
+Durante las iteraciones del corrector puede reutilizarse el cierre de
+transporte de cara entre reconstrucciones del Jacobiano; antes de aceptar, el
+residual se reevalúa con transporte multicomponente/Soret actualizado. Una
+convergencia sobre la malla provisional no se considera aceptación espacial.
 
 La aceptación final se aplica al modelo solicitado, con las propiedades
 completas actualizadas y los controles de la \cref{sec:certification}.
@@ -2440,8 +2449,8 @@ intermedia sustituye el certificado del modelo físico solicitado.}
 \textbf{Etapa} & \textbf{Caso base sin Soret} & \textbf{Extensión con Soret}\\
 \midrule
 Inicialización fría & Mezcla fresca, equilibrio y perfil suave; sin llama
-guardada. & Mismos datos físicos; llama nativa preliminar promediada por mezcla
-y corrector multicomponente.\\
+guardada. & En la configuración Soret evaluada: llama nativa preliminar
+promediada por mezcla y corrector multicomponente.\\
 Transporte & Difusión promediada por mezcla con flujo másico corregido. &
 Difusión multicomponente y térmica; eliminación exacta del sistema térmico.\\
 Jacobiano & Diferencias finitas locales con transporte congelado. & Misma
@@ -2451,9 +2460,9 @@ PTC--SER y BE de rescate; LU pivotada y sustituciones compiladas.}\\
 Química & \multicolumn{2}{p{0.72\textwidth}}{Evaluación nativa por lotes,
 productos de concentración especializados y tratamiento consistente de las
 pequeñas fracciones negativas durante Newton.}\\
-Aceptación & Residual completo y controles de estado, malla y dominio. &
-Mismos controles, con transporte multicomponente/Soret actualizado y malla final
-del modelo solicitado.\\
+Aceptación & Estado finito, norma ponderada, guarda de residual, malla y
+dominio. & Mismos controles, tras reevaluar el transporte solicitado sobre la
+malla final.\\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -2486,8 +2495,8 @@ semilla; el estado publicable procede siempre del corrector del modelo completo.
     {En cada resolución: Newton amortiguado, PTC--SER y BE de rescate\\
      Química nativa, Jacobiano local y resolución directa por bloques};
   \node[common] (cert) at (0,-7.9)
-    {Certificar con propiedades completas actualizadas\\
-     Estado, composición, convergencia no lineal, malla y dominio};
+    {Aceptar el solve con propiedades completas actualizadas\\
+     Estado finito, control no lineal, malla y dominio};
   \node[common] (out) at (0,-9.6)
     {Solo si se acepta: velocidad y perfiles finales\\
      Uso posterior en FGM o comparación independiente};
@@ -2694,6 +2703,20 @@ El filtro permite crecimiento transitorio: no equivale a descenso estricto
 del residual. La aceptación de un paso PTC tampoco equivale a certificar
 la llama; esta requiere volver a comprobar el problema estacionario.
 
+\subsubsection{Rescate con temperatura prescrita}
+La jerarquía anterior se ejecuta primero con la ecuación de energía activa.
+Si esa etapa completa no obtiene una solución, V2 conserva temporalmente el
+perfil térmico del último iterado y resuelve continuidad y especies con
+temperatura prescrita. Esta etapa no representa una llama final ni evalúa el
+dominio, porque el perfil térmico aún no proviene del balance de energía.
+Cuando produce una semilla admisible, se reactiva la energía, se restablece el
+anclaje térmico y se repite la resolución completa antes del refinamiento.
+
+Este rescate amplía la cuenca de convergencia sin alterar el problema que se
+certifica: solo una solución obtenida después de reactivar la energía puede
+avanzar al control espacial. Si la etapa con temperatura prescrita falla o se
+agota el presupuesto temporal, la llama se rechaza.
+
 \begin{table}[htbp]
 \centering
 \caption{Una corrección PTC--SER linealmente implícita.}
@@ -2713,9 +2736,11 @@ los niveles fallan, reducir el paso y activar el rescate BE. \\
 \end{tabularx}
 \end{table}
 
-La \cref{fig:nonlinear-flow} conecta esta jerarquía de decisión con el control
-espacial de la sección siguiente. Una raíz aceptable en la malla actual
-todavía debe superar la revisión de malla y dominio.
+La \cref{fig:nonlinear-flow} representa la jerarquía interna de una etapa con
+energía activa. Si esa etapa no entrega una solución, se aplica el rescate con
+temperatura prescrita descrito antes de reiniciar una etapa completa con energía
+activa. Una raíz aceptable en la malla actual todavía debe superar la revisión
+de malla y dominio.
 
 \begin{figure}[htbp]
 \centering
@@ -2743,10 +2768,10 @@ todavía debe superar la revisión de malla y dominio.
     node[pos=.5,above,font=\footnotesize]{si cambia malla o dominio: interpolar}(eval.north);
   \draw[arr] (final)--node[right,font=\footnotesize]{aceptado}(out);
 \end{tikzpicture}
-\caption{Jerarquía de resolución y certificación. Todo paso aceptado de Newton,
-PTC o BE vuelve a la evaluación no lineal; no se refina una llama solo por
-haber completado un rescate. Si se agota un presupuesto o falla el certificado
-completo, no se publica la solución.}
+\caption{Jerarquía interna de una etapa con energía activa. Todo paso aceptado
+de Newton, PTC o BE vuelve a la evaluación no lineal; no se refina una llama
+solo por haber completado un rescate. El rescate externo con temperatura
+prescrita se aplica únicamente si la etapa completa falla.}
 \label{fig:nonlinear-flow}
 \end{figure}
 
@@ -2809,50 +2834,52 @@ eliminaciones consecutivas. \\
 \end{tabularx}
 \end{table}
 
-Se consideran temperatura, velocidad y especies suficientemente activas, no
-todas las trazas por igual. Los umbrales estrictos usados en la comparación son
+Cuando están habilitados, el refinador examina \(u\), \(T\) mientras la energía
+está activa y cada perfil \(Y_k\). Los perfiles de rango despreciable se omiten
+por el umbral interno del refinador, de modo que una traza prácticamente
+constante no marca nodos. Los umbrales estrictos usados en la comparación son
 ratio \(=2.5\), slope \(=0.04\), curve \(=0.08\) y prune \(=0.003\), después de
 una fase base con \((3,0.08,0.12,0.01)\).
 
 La convergencia del sistema no implica convergencia de malla. El ciclo es:
 resolver, marcar, interpolar, volver a resolver y detenerse solo cuando no se
-requieren cambios materiales. La configuración de referencia permite hasta seis ciclos; agotar el
-presupuesto sin estabilizar la malla produce un rechazo, no una convergencia. Si la llama se
+requieren cambios materiales. La configuración de referencia permite hasta seis
+ciclos y un máximo de nodos declarado; si el límite de ciclos se alcanza con
+marcas pendientes y se exige convergencia de malla, el solve se rechaza. Si la llama se
 aproxima al borde, el dominio se duplica, hasta una anchura máxima predefinida;
 el criterio de pendiente de borde por defecto es \(0.02\).
 
 \subsection{Criterios de aceptación}
 \label{sec:certification}
 
-Una salida del solver no se incorpora automáticamente a la tabla. Cada
-\(\mathcal A_\ell\) es una condición lógica que vale verdadero si supera
-su comprobación; el operador \(\land\) exige que se cumplan todas.
-El predicado global se expresa en la \cref{eq:acceptance-predicate}:
+Una salida del solver no se incorpora automáticamente a la tabla. Es útil
+separar el predicado automático de aceptación de las verificaciones físicas
+posteriores: el primero decide si la corrida terminó de forma controlada; las
+segundas establecen si la solución es suficientemente precisa para un resultado
+científico. Cada \(\mathcal A_\ell\) vale verdadero si supera su comprobación y
+el operador \(\land\) exige que todas se cumplan. El predicado automático es:
 \begin{equation}
-  \mathcal A=\mathcal A_{\rm estado}\land
-  \mathcal A_{\text{composición}}\land
+  \mathcal A_{\rm solver}=\mathcal A_{\rm estado}\land
   \mathcal A_{\rm NL}\land
   \mathcal A_{\rm malla}\land
-  \mathcal A_{\rm dominio}\land
-  \mathcal A_{\text{física}}.
+  \mathcal A_{\rm dominio}.
   \label{eq:acceptance-predicate}
 \end{equation}
-La \cref{eq:acceptance-predicate} exige simultáneamente todas las capas y la
-\cref{tab:acceptance-layers} desarrolla cada factor. Así se distingue entre
-la convergencia interna de Newton y la aceptación científica de la llama.
+La \cref{eq:acceptance-predicate} corresponde a la aceptación final emitida
+por el solver, junto con la terminación satisfactoria del ciclo espacial. La
+\cref{tab:acceptance-layers} distingue esas condiciones automáticas de los
+controles que se calculan al verificar y publicar una campaña.
 
 \begin{table}[htbp]
 \centering
-\caption{Capas de aceptación de una llama individual.}
+\caption{Predicado automático y verificaciones posteriores de una llama individual.}
 \label{tab:acceptance-layers}
 \begin{tabularx}{\textwidth}{@{}p{0.20\textwidth}YY@{}}
 \toprule
 \textbf{Capa} & \textbf{Prueba} & \textbf{Error que evita} \\
 \midrule
-Estado & Valores finitos y límites de la \cref{eq:state-bounds}. & NaN, temperatura
+Estado finito & Valores finitos y límites de la \cref{eq:state-bounds}. & NaN, temperatura
 fuera de las cotas numéricas o pasos inadmisibles. \\
-Composición & \(\sum_kY_k\) dentro de tolerancia y fracciones normalizables. &
-Pérdida artificial de masa. \\
 No lineal & \(\norm{\vect s}_w<1\) y
 \(\norm{\vect F}_\infty\le F_{\rm guard}\) en modo tipo Cantera. & Falsa
 convergencia por paso pequeño con residual patológico. \\
@@ -2860,15 +2887,21 @@ Malla & Ninguna inserción o eliminación material pendiente. & Resultado
 dependiente de una discretización todavía cambiante. \\
 Dominio & Pendientes relativas de temperatura en ambos bordes menores que el
 umbral. & Frente truncado o demasiado próximo a una frontera. \\
-Física & Flujo másico, perfiles, temperatura quemada y liberación de calor
-coherentes. & Raíz algebraica no representativa de la llama buscada. \\
+\midrule
+Composición y conservación & \(\sum_kY_k\), flujo másico y balances elementales
+reconstruidos. & Pérdida artificial de masa o de elementos. \\
+Coherencia física & Perfiles, temperatura quemada, espesor y liberación de calor
+comparados sobre una malla común. & Raíz algebraica no representativa de la llama buscada. \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-Se guardan el estado de aceptación, norma, residual, número de nodos y tiempo.
-La certificación no demuestra por sí sola exactitud frente a un experimento, pero
-impide confundir ``el proceso terminó'' con ``la llama es apta para tabular''.
+La composición se normaliza durante las transferencias de malla y se controla
+en las verificaciones de campaña, pero no se utiliza como una cuarta guarda
+oculta dentro del predicado de convergencia. Se guardan el estado de aceptación,
+norma, residual, número de nodos y tiempo. La aceptación automática no demuestra
+por sí sola exactitud frente a un experimento, pero impide confundir ``el proceso
+terminó'' con ``la llama es apta para tabular''.
 
 En las campañas aquí descritas se utiliza \(F_{\rm guard}=10^4\). Es una
 guarda operacional de un vector con componentes de distintas escalas; no es
@@ -2894,15 +2927,18 @@ la configuración de cada ejecución.
 \midrule
 1 & Construir la malla inicial y el estado físico, o transferir una semilla
 certificada. \\
-2 & Intentar Newton amortiguado; si no globaliza, intentar una corrección
-PTC--SER y, si esta se rechaza, un paso BE convergido. \\
-3 & Repetir hasta satisfacer norma ponderada, guarda de residual y límites de
-estado. \\
-4 & Expandir el dominio si un borde no representa un estado asintótico;
+2 & Resolver con la energía activa mediante Newton amortiguado; si no globaliza,
+intentar una corrección PTC--SER y, si esta se rechaza, un rescate BE convergido. \\
+3 & Si la etapa energética falla sin agotar el tiempo, fijar temporalmente el
+perfil térmico, corregir continuidad y especies, reactivar energía y volver al
+paso 2. Esta etapa intermedia no decide dominio ni aceptación. \\
+4 & Repetir hasta satisfacer norma ponderada, guarda de residual y límites de
+estado con la energía activa. \\
+5 & Expandir el dominio si un borde no representa un estado asintótico;
 transferir el perfil y volver al paso 2. \\
-5 & Aplicar ratio, pendiente, curvatura y poda; transferir el estado y volver al
+6 & Aplicar ratio, pendiente, curvatura y poda; transferir el estado y volver al
 paso 2 si cambia la malla. \\
-6 & Emitir una solución solo si convergen el problema no lineal, la malla y el
+7 & Emitir una solución solo si convergen el problema no lineal, la malla y el
 dominio; en otro caso, registrar rechazo. \\
 \bottomrule
 \end{tabularx}
@@ -3098,44 +3134,6 @@ continuación es local; los saltos no locales se reinician en esta referencia.}
 El control adaptativo de paso se distingue de estos predictores: decide
 dónde resolver, no cómo inicializar la llama. Su evaluación pendiente se
 delimita en la \cref{sec:future-adaptive-pc}.
-
-\subsubsection{Predictor tangente con linealización estacionaria}
-
-La sensibilidad de una rama regular satisface la
-\cref{eq:fgm-exact-tangent}, obtenida al diferenciar
-\(\vect F(\vect x(\ell),\ell)=0\) con la malla y la convención de anclaje fijas:
-\begin{equation}
- \mat J_F\frac{\dd\vect x}{\dd\ell}
- =-\frac{\partial\vect F}{\partial\ell}.
- \label{eq:fgm-exact-tangent}
-\end{equation}
-Para construir una semilla se reutiliza la factorización estacionaria disponible
-y se aproxima la variación paramétrica por la diferencia de residuales de la
-\cref{eq:fgm-tangent-predictor}:
-\begin{equation}
- \begin{aligned}
- \mat J_i\vect t_i
- &=-\frac{\vect F(\vect x_i,\ell_{i+1})-\vect F(\vect x_i,\ell_i)}
-              {\ell_{i+1}-\ell_i},\\
- \vect x_{i+1}^{\rm pred}
- &=\vect x_i+\gamma_t(\ell_{i+1}-\ell_i)\vect t_i.
- \end{aligned}
- \label{eq:fgm-tangent-predictor}
-\end{equation}
-Se mantiene el índice del anclaje y se actualizan los datos físicos del objetivo.
-La resta del residual de origen es necesaria: una solución aceptada conserva un
-residual finito, que no debe interpretarse como efecto de cambiar \(\phi\).
-La matriz \(\mat J_i\) sigue siendo una aproximación local, de modo que
-\(\vect t_i\) es una sensibilidad aproximada, no una derivada exacta de la rama.
-
-El factor \(\gamma_t\) amortigua el predictor y se registra en cada campaña.
-Esta construcción requiere una evaluación del residual objetivo y un nuevo
-lado derecho con factores existentes; no reemplaza el corrector completo.
-Si no se dispone de una linealización compatible con el estado y la malla,
-se utiliza copia o secante. Las tres semillas se proyectan y se certifican
-bajo las mismas condiciones. El predictor tangente se emplea en la ablación
-de la \cref{sec:local-refresh-ablation}; no se atribuye a todos los barridos
-históricos.
 
 \subsubsection{Corrector FGM y refresco local del Jacobiano}
 \label{sec:local-jacobian-refresh}

@@ -17,9 +17,7 @@ if str(V2) not in sys.path:
 import equations
 from equations import BlockTridiagJacobian, factorize, refresh_block_tridiag_jacobian_columns, solve_linear
 from solver import (
-    JacobianState,
     _local_linearisation_defect_blocks,
-    _remember_continuation_linearization,
 )
 
 
@@ -176,76 +174,6 @@ class CompiledBlockSubstitutionTests(unittest.TestCase):
 
         np.testing.assert_allclose(actual, expected, rtol=2.0e-12, atol=2.0e-12)
         np.testing.assert_allclose(actual, fallback, rtol=2.0e-12, atol=2.0e-12)
-
-
-class ContinuationLinearizationTests(unittest.TestCase):
-    def test_keeps_only_an_exact_stationary_block_lu(self) -> None:
-        n_blocks, block_size = 3, 2
-        matrix = BlockTridiagJacobian(
-            np.zeros((n_blocks - 1, block_size, block_size)),
-            np.tile(np.eye(block_size)[None, :, :], (n_blocks, 1, 1)),
-            np.zeros((n_blocks - 1, block_size, block_size)),
-        )
-        lu = factorize(matrix)
-        lu["profile_problem"] = object()
-        state = JacobianState(
-            J=matrix,
-            lu=lu,
-            age=2,
-            n_evals=5,
-            exact_steady=True,
-            last_rdt=0.0,
-        )
-        problem = SimpleNamespace(n_points=n_blocks, n_species=0)
-        source_state = np.linspace(0.0, 1.0, n_blocks * block_size)
-        source_residual = np.linspace(-2.0, 3.0, n_blocks * block_size)
-
-        _remember_continuation_linearization(
-            problem,
-            source_state,
-            state,
-            source_residual=source_residual,
-        )
-
-        handoff = problem._continuation_linearization
-        self.assertEqual(handoff["n_points"], n_blocks)
-        self.assertEqual(handoff["n_species"], 0)
-        self.assertNotIn("profile_problem", handoff["lu"])
-        np.testing.assert_allclose(handoff["residual"], source_residual)
-        np.testing.assert_allclose(
-            solve_linear(handoff["lu"], source_state), source_state
-        )
-
-    def test_rejects_a_pseudo_transient_factorization(self) -> None:
-        matrix = BlockTridiagJacobian(
-            np.zeros((1, 2, 2)),
-            np.tile(np.eye(2)[None, :, :], (2, 1, 1)),
-            np.zeros((1, 2, 2)),
-        )
-        problem = SimpleNamespace(n_points=2, n_species=0)
-        state = JacobianState(J=matrix, lu=factorize(matrix), last_rdt=10.0)
-
-        _remember_continuation_linearization(problem, np.zeros(4), state)
-
-        self.assertFalse(hasattr(problem, "_continuation_linearization"))
-
-    def test_rejects_a_local_quasi_newton_factorization(self) -> None:
-        matrix = BlockTridiagJacobian(
-            np.zeros((1, 2, 2)),
-            np.tile(np.eye(2)[None, :, :], (2, 1, 1)),
-            np.zeros((1, 2, 2)),
-        )
-        problem = SimpleNamespace(n_points=2, n_species=0)
-        state = JacobianState(
-            J=matrix,
-            lu=factorize(matrix),
-            exact_steady=False,
-            last_rdt=0.0,
-        )
-
-        _remember_continuation_linearization(problem, np.zeros(4), state)
-
-        self.assertFalse(hasattr(problem, "_continuation_linearization"))
 
 
 if __name__ == "__main__":

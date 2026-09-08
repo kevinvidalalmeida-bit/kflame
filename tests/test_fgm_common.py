@@ -25,15 +25,9 @@ from generate_fgm_tables_native import (
     bound_continuation_seed_mesh,
     build_argparser,
     _is_local_phi_step,
-    _jacobian_tangent_state,
     build_continuation_seed,
 )
 from state import pack_state, unpack_state
-from fgm_continuation import (
-    AdaptiveContinuationController,
-    ContinuationConfig,
-)
-from run_paper_campaign import _pressure_prediction_defect, _pressure_secant_seed
 
 
 class ContinuationTrustRegionTests(unittest.TestCase):
@@ -50,57 +44,6 @@ class ContinuationTrustRegionTests(unittest.TestCase):
         self.assertFalse(_is_local_phi_step(0.0, 1.0, 0.0))
 
 
-class AdaptivePredictorCorrectorTests(unittest.TestCase):
-    def test_uses_log_phi_and_inserts_a_bridge(self) -> None:
-        controller = AdaptiveContinuationController(
-            ContinuationConfig(initial_ratio=1.15, min_ratio=1.02, max_ratio=1.20)
-        )
-        proposal = controller.propose(0.7, 0.9)
-        self.assertTrue(proposal.is_bridge)
-        self.assertAlmostEqual(proposal.phi_trial / 0.7, 1.15, places=12)
-        self.assertAlmostEqual(proposal.log_step, np.log(1.15), places=12)
-
-    def test_endpoint_is_preserved_when_inside_step(self) -> None:
-        controller = AdaptiveContinuationController()
-        proposal = controller.propose(0.9, 1.0)
-        self.assertFalse(proposal.is_bridge)
-        self.assertEqual(proposal.phi_trial, 1.0)
-
-    def test_secant_defects_calibrate_and_change_next_step(self) -> None:
-        controller = AdaptiveContinuationController()
-        for defect in (10.0, 12.0, 14.0):
-            controller.accept(defect, "secant")
-        self.assertEqual(controller.defect_reference, 12.0)
-        before = float(controller.log_step)
-        after = controller.accept(48.0, "secant")
-        self.assertLess(after, before)
-        self.assertGreaterEqual(after, controller.config.min_log_step)
-
-    def test_rejection_shrinks_and_exhausts_at_minimum_step(self) -> None:
-        controller = AdaptiveContinuationController(
-            ContinuationConfig(initial_ratio=1.04, min_ratio=1.02, max_ratio=1.20,
-                               max_retries=4)
-        )
-        step, retry, can_retry = controller.reject()
-        self.assertEqual(retry, 1)
-        self.assertFalse(can_retry)
-        self.assertEqual(step, controller.config.min_log_step)
-
-    def test_four_rejections_trigger_cold_fallback_budget(self) -> None:
-        controller = AdaptiveContinuationController(
-            ContinuationConfig(
-                initial_ratio=1.20,
-                min_ratio=1.0001,
-                max_ratio=1.20,
-                max_retries=4,
-            )
-        )
-        for expected_retry in range(1, 5):
-            _, retry, can_retry = controller.reject()
-            self.assertEqual(retry, expected_retry)
-            self.assertEqual(can_retry, expected_retry < 4)
-
-
 class LocalJacobianRefreshPolicyTests(unittest.TestCase):
     def test_fgm_continuation_enables_the_certified_rescue_by_default(self) -> None:
         parser = build_argparser()
@@ -108,56 +51,6 @@ class LocalJacobianRefreshPolicyTests(unittest.TestCase):
         self.assertFalse(
             parser.parse_args(["--no-local-jacobian-refresh"]).local_jacobian_refresh
         )
-
-
-class PressurePredictorTests(unittest.TestCase):
-    @staticmethod
-    def _state(offset: float) -> dict[str, np.ndarray]:
-        z = np.array([0.0, 0.4, 1.0])
-        u = np.array([0.3, 0.4, 0.5]) + offset
-        temperature = np.array([300.0, 1100.0, 1800.0]) + 100.0 * offset
-        species = np.array([
-            [0.8, 0.4, 0.1],
-            [0.2, 0.6, 0.9],
-        ])
-        return {"z": z, "u": u, "T": temperature, "Y": species}
-
-    def test_secant_uses_log_pressure_and_keeps_mass_closure(self) -> None:
-        first = self._state(0.0)
-        second = self._state(0.1)
-        predicted, kind = _pressure_secant_seed(
-            previous=second,
-            previous_pressure=2.0,
-            previous_previous=first,
-            previous_previous_pressure=1.0,
-            target_pressure=4.0,
-        )
-        # With a log-pressure ratio of two and damping 0.7, the state moves
-        # 70% of the latest secant increment.
-        np.testing.assert_allclose(predicted["u"], second["u"] + 0.7 * (second["u"] - first["u"]))
-        np.testing.assert_allclose(np.sum(predicted["Y"], axis=0), 1.0)
-        self.assertEqual(kind, "secant_log_pressure")
-
-    def test_first_pressure_transition_is_a_copy_and_defect_is_mesh_invariant(self) -> None:
-        state = self._state(0.1)
-        predicted, kind = _pressure_secant_seed(
-            previous=state,
-            previous_pressure=1.0,
-            previous_previous=None,
-            previous_previous_pressure=None,
-            target_pressure=1.5,
-        )
-        corrected = {
-            "z": np.linspace(0.0, 1.0, 9),
-            "u": np.interp(np.linspace(0.0, 1.0, 9), state["z"], state["u"]),
-            "T": np.interp(np.linspace(0.0, 1.0, 9), state["z"], state["T"]),
-            "Y": np.vstack([
-                np.interp(np.linspace(0.0, 1.0, 9), state["z"], state["Y"][k])
-                for k in range(state["Y"].shape[0])
-            ]),
-        }
-        self.assertEqual(kind, "copy")
-        self.assertLess(_pressure_prediction_defect(corrected, predicted), 1.0e-10)
 
 
 class ContinuationSeedTests(unittest.TestCase):
@@ -185,7 +78,6 @@ class ContinuationSeedTests(unittest.TestCase):
             phi=1.02,
             prev_solution={"phi": np.array([1.0]), "z": z, "x": x},
             prev_prev_solution=None,
-            use_predictor=False,
             predictor_damping=0.7,
             trust_ratio=1.15,
         )
@@ -211,99 +103,6 @@ class ContinuationSeedTests(unittest.TestCase):
         _u, _T, species = unpack_state(transferred["x"], 61, 2)
         np.testing.assert_allclose(np.sum(species, axis=0), 1.0, rtol=0.0, atol=1.0e-14)
 
-
-class JacobianTangentChordTests(unittest.TestCase):
-    def test_tangent_uses_the_parameter_chord_not_the_target_residual(self) -> None:
-        """A nonzero accepted source residual must cancel from dF/dlambda."""
-        source_state = np.array([0.30, 300.0, 0.35, 900.0, 0.40, 1800.0])
-        source_residual = np.array([9.0, -4.0, 2.0, 7.0, -3.0, 5.0])
-        target_residual = source_residual + np.array([0.5, -0.7, 0.1, 0.4, 0.2, -0.3])
-        delta_lambda = 0.1
-        problem = SimpleNamespace(
-            n_species=0,
-            z=np.array([0.0, 0.5, 1.0]),
-            n_points=3,
-            width=1.0,
-            solve_energy=True,
-            anchor_T=1000.0,
-            backend_factory=lambda _problem: object(),
-        )
-        previous = {
-            "phi": np.array([1.0]),
-            "z": problem.z.copy(),
-            "x": source_state.copy(),
-            "continuation_linearization": {
-                "lu": {"method": "block_tridiag"},
-                "n_points": 3,
-                "n_species": 0,
-                "anchor_index": 1,
-                "state": source_state.copy(),
-                "residual": source_residual.copy(),
-            },
-        }
-        observed: dict[str, np.ndarray] = {}
-
-        def fake_solve(_lu, rhs):
-            observed["rhs"] = np.asarray(rhs, dtype=float).copy()
-            return np.zeros_like(rhs, dtype=float)
-
-        with patch(
-            "generate_fgm_tables_native.residual",
-            return_value=target_residual,
-        ), patch(
-            "generate_fgm_tables_native.solve_linear",
-            side_effect=fake_solve,
-        ):
-            result = _jacobian_tangent_state(
-                problem=problem,
-                target_phi=float(np.exp(delta_lambda)),
-                previous=previous,
-                damping=1.0,
-            )
-
-        self.assertIsNotNone(result)
-        predicted, metadata = result
-        np.testing.assert_allclose(predicted, source_state)
-        np.testing.assert_allclose(
-            observed["rhs"],
-            -(target_residual - source_residual) / delta_lambda,
-        )
-        self.assertAlmostEqual(metadata["source_residual_inf"], 9.0)
-        self.assertAlmostEqual(
-            metadata["parameter_chord_inf"], 0.7,
-        )
-
-    def test_tangent_refuses_an_unpaired_source_residual(self) -> None:
-        source_state = np.array([0.30, 300.0, 0.35, 900.0, 0.40, 1800.0])
-        problem = SimpleNamespace(
-            n_species=0,
-            z=np.array([0.0, 0.5, 1.0]),
-            n_points=3,
-            width=1.0,
-            solve_energy=True,
-            anchor_T=1000.0,
-            backend_factory=lambda _problem: object(),
-        )
-        previous = {
-            "phi": np.array([1.0]),
-            "z": problem.z.copy(),
-            "x": source_state.copy(),
-            "continuation_linearization": {
-                "lu": {"method": "block_tridiag"},
-                "n_points": 3,
-                "n_species": 0,
-                "anchor_index": 1,
-                "state": source_state.copy(),
-            },
-        }
-        self.assertIsNone(
-            _jacobian_tangent_state(
-                problem=problem,
-                target_phi=1.02,
-                previous=previous,
-                damping=1.0,
-            )
-        )
 
 class ProgressGridTests(unittest.TestCase):
     def test_indicator_uses_envelope_across_flamelets(self) -> None:
