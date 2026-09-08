@@ -15,7 +15,8 @@ os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("NUMBA_NUM_THREADS", "4")
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+import copy
 from typing import Any
 
 import numpy as np
@@ -1240,6 +1241,15 @@ class SolveOptions:
     local_jacobian_refresh_defect_threshold: float = 0.20
     local_jacobian_refresh_max_fraction: float = 0.35
     local_jacobian_refresh_min_blocks: int = 1
+    # Exact multicomponent/Soret faces are refreshed with each Jacobian and
+    # checked again at acceptance. Between refreshes, trial residuals may reuse
+    # that same face closure to avoid repeated 3N transport solves.
+    lag_multicomponent_transport: bool = False
+    # Optional native transport/multilevel continuation for a cold multi flame.
+    # The intermediate mixture flame has a coarser mesh; the final multi/Soret
+    # corrector always restores the requested mesh and acceptance tolerances.
+    multicomponent_bootstrap: bool = False
+    bootstrap_mesh_factor: float = 2.0
     alpha_min: float = 1e-10
 
     # Time-stepping (híbrido)
@@ -1297,6 +1307,8 @@ class SolveOptions:
     max_total_time_s: float = 300.0
     verbose: bool = True
     profile: bool = False
+    # Opt-in diagnostic history; not used in timed production comparisons.
+    trace_solver: bool = False
 
 
 class DomainTooNarrowError(RuntimeError):
@@ -1332,6 +1344,23 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
     """
     x = np.asarray(x0, dtype=float).copy()
     history: list[dict] = []
+    trace_enabled = bool(getattr(opts, "trace_solver", False))
+    if trace_enabled:
+        if not hasattr(problem, "_solver_trace"):
+            problem._solver_trace = []
+        # Keep a live reference: domain callbacks may interrupt this stage.
+        problem._solver_trace.append(dict(
+            label=label, energy=bool(problem.solve_energy),
+            n_points=int(problem.n_points), width=float(problem.width),
+            transport=str(problem.case.transport_model),
+            soret=bool(problem.case.soret_enabled), history=history,
+        ))
+
+    def trace_state(state):
+        u, temperature, y = unpack_state(state, problem.n_points, problem.n_species)
+        return dict(u0=float(u[0]), Tmin=float(temperature.min()),
+                    Tmax=float(temperature.max()), Tb=float(temperature[-1]),
+                    Ymin=float(y.min()), sumY_error=float(np.max(abs(y.sum(axis=0) - 1))))
 
     # Jacobian finite-difference settings (Cantera-like).
     problem.jacobian_rel_perturb = float(getattr(opts, "jac_eps", 1e-5))
@@ -1344,6 +1373,8 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
     )
     problem.local_jacobian_refresh = bool(
         getattr(opts, "local_jacobian_refresh", False)
+    ) and not bool(
+        getattr(getattr(problem, "backend", None), "uses_multicomponent_flux", False)
     )
     problem.local_jacobian_refresh_defect_threshold = float(
         max(0.0, getattr(opts, "local_jacobian_refresh_defect_threshold", 0.20))
@@ -1358,6 +1389,9 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
     problem.local_jacobian_refresh_min_blocks = int(
         max(1, getattr(opts, "local_jacobian_refresh_min_blocks", 1))
     )
+    problem.lag_multicomponent_transport = bool(
+        getattr(opts, "lag_multicomponent_transport", False)
+    ) and bool(getattr(getattr(problem, "backend", None), "uses_multicomponent_flux", False))
     steady_fun = _make_steady_fun(problem)
     jac: JacobianState | None = None
     dt = float(opts.time_step)
@@ -1459,13 +1493,36 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                 "newton_Finf": newton_Finf,
             }
         )
+        if trace_enabled:
+            history[-1].update(iterations=hist_ss, state=trace_state(x_ss))
 
         if ok_ss:
+            if bool(getattr(problem, "lag_multicomponent_transport", False)):
+                exact_finf = _residual_inf(problem, x_ss, force_exact_transport=True)
+                exact_limit = _final_residual_limit(opts)
+                if not np.isfinite(exact_finf) or (
+                    np.isfinite(exact_limit) and exact_finf > exact_limit
+                ):
+                    history.append(
+                        {
+                            "cycle": attempt,
+                            "phase": "exact_transport_reject",
+                            "ok": False,
+                            "Finf_exact": float(exact_finf),
+                            "Finf_limit": float(exact_limit),
+                        }
+                    )
+                    if hasattr(problem, "_frozen_multicomponent_transport"):
+                        delattr(problem, "_frozen_multicomponent_transport")
+                    x = x_ss
+                    jac = None
+                    attempt += 1
+                    continue
             _remember_continuation_linearization(
                 problem,
                 x_ss,
                 jac,
-                source_residual=steady_fun(x_ss, problem),
+                source_residual=residual(x_ss, problem, force_exact_transport=True),
             )
             if steady_callback is not None:
                 steady_callback(x_ss)
@@ -1483,7 +1540,7 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                     problem,
                     x_ss,
                     jac,
-                    source_residual=steady_fun(x_ss, problem),
+                    source_residual=residual(x_ss, problem, force_exact_transport=True),
                 )
                 if steady_callback is not None:
                     steady_callback(x_ss)
@@ -1601,6 +1658,8 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                     "steady_norm_after": steady_norm_after,
                 }
             )
+            if trace_enabled:
+                history[-1].update(iterations=hist_ts, state=trace_state(x_ts))
 
             if step_ok:
                 successive_failures = 0
@@ -1720,8 +1779,14 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
 # ---------------------------------------------------------------------------
 #  Refinamiento (Sim1D::refine)
 # ---------------------------------------------------------------------------
-def _residual_inf(problem, x: np.ndarray) -> float:
-    return float(np.linalg.norm(residual(x, problem), ord=np.inf))
+def _residual_inf(
+    problem, x: np.ndarray, *, force_exact_transport: bool = True
+) -> float:
+    return float(
+        np.linalg.norm(
+            residual(x, problem, force_exact_transport=force_exact_transport), ord=np.inf
+        )
+    )
 
 
 def _final_residual_limit(opts: SolveOptions) -> float:
@@ -1759,14 +1824,15 @@ def _acceptance_criterion(opts: SolveOptions) -> str:
 def _acceptance_status(problem, x: np.ndarray, opts: SolveOptions) -> dict[str, Any]:
     Finf = _residual_inf(problem, x)
     Finf_limit = _final_residual_limit(opts)
-    residual_ok = (not np.isfinite(Finf_limit)) or Finf <= Finf_limit
+    finite_state = bool(np.isfinite(x).all() and np.isfinite(Finf))
+    residual_ok = finite_state and ((not np.isfinite(Finf_limit)) or Finf <= Finf_limit)
 
     weighted_step_norm = float(getattr(problem, "last_weighted_step_norm", float("nan")))
     weighted_limit = _weighted_step_limit(opts)
     weighted_ok = np.isfinite(weighted_step_norm) and weighted_step_norm <= weighted_limit
 
     guard_limit = _residual_guard_limit(opts)
-    guard_ok = (not np.isfinite(guard_limit)) or Finf <= guard_limit
+    guard_ok = finite_state and ((not np.isfinite(guard_limit)) or Finf <= guard_limit)
 
     criterion = _acceptance_criterion(opts)
     if criterion == "cantera":
@@ -1779,6 +1845,7 @@ def _acceptance_status(problem, x: np.ndarray, opts: SolveOptions) -> dict[str, 
     return {
         "criterion": criterion,
         "accepted": bool(accepted),
+        "finite_state_and_residual": finite_state,
         "Finf": float(Finf),
         "Finf_limit": float(Finf_limit),
         "residual_accepted": bool(residual_ok),
@@ -1953,7 +2020,13 @@ def _refine_and_solve(
             _, T_old, _ = unpack_state(x_last_ss, n_last_ss, problem.n_species)
             problem.setup_fixed_temperature(T_profile=T_old)
             info["restored"] = True
-            return x_last_ss, not bool(info.get("solve_timeout", False)), log
+            info["reason"] = "refined_solve_failed"
+            info["grid_converged"] = False
+            # Restoring a coarse converged state is recovery, not evidence of
+            # mesh convergence. Also discard metrics measured on the failed
+            # refined state; they do not certify this restored vector.
+            problem.last_weighted_step_norm = float("nan")
+            return x_last_ss, False, log
 
     log.append({
         "reason": "max_refine_passes_reached",
@@ -2014,7 +2087,10 @@ def _solve_auto_stages(
 
         x_b, ok_b, hist_b = _hybrid_newton(
             problem, x, opts, label="Stage B: energia OFF",
-            steady_callback=width_check, deadline=deadline)
+            # Prescribed temperature is not a solved energy balance. Its edge
+            # gradients cannot diagnose a truncated physical flame. Check the
+            # domain after energy is restored, with the unchanged threshold.
+            steady_callback=None, deadline=deadline)
         report["stage_B"] = {
             "ok": ok_b,
             "steps": len(hist_b),
@@ -2368,6 +2444,50 @@ def _refine_grid_once(problem, x: np.ndarray, opts: SolveOptions) -> tuple[np.nd
 # ---------------------------------------------------------------------------
 #  Interfaz principal (Sim1D::solve con auto=True)
 # ---------------------------------------------------------------------------
+def _solve_transport_bootstrap(problem, opts, started):
+    coarse_case = copy.copy(problem.case)
+    coarse_case.transport_model = "mixture-averaged"
+    coarse_case.soret_enabled = False
+    coarse = type(problem)(coarse_case, n_points=problem.n_points, locs=problem.locs)
+    coarse.assume_finite_y = bool(getattr(problem, "assume_finite_y", False))
+    if hasattr(problem, "backend_factory"):
+        coarse.backend_factory = problem.backend_factory
+    _refresh_backend(coarse)
+    factor = float(opts.bootstrap_mesh_factor)
+    if not np.isfinite(factor) or factor < 1.0:
+        raise ValueError("bootstrap_mesh_factor must be finite and >= 1")
+    preliminary = replace(
+        opts, multicomponent_bootstrap=False,
+        refine_slope=min(1.0, opts.refine_slope * factor),
+        refine_curve=min(1.0, opts.refine_curve * factor),
+        max_total_time_s=max(0.01, opts.max_total_time_s - (time.perf_counter() - started)),
+    )
+    x, ok, first = solve_free_flame(coarse, options=preliminary)
+    first["transport_model"] = "mixture-averaged"
+    first["refine_slope"] = preliminary.refine_slope
+    first["refine_curve"] = preliminary.refine_curve
+    problem.z = coarse.z.copy()
+    problem.n_points = coarse.n_points
+    problem.width = coarse.width
+    if not ok:
+        # This profile belongs to an intermediate physical model. It cannot
+        # be returned as a certified solution of the requested Soret problem.
+        return x, False, dict(
+            solved=False, final_accepted=False, grid_converged=False,
+            reason="transport_bootstrap_failed", transport_bootstrap=first,
+            n_points_final=problem.n_points,
+            total_time_s=time.perf_counter() - started,
+        )
+    final_options = replace(opts, multicomponent_bootstrap=False,
+        max_total_time_s=max(0.01, opts.max_total_time_s - (time.perf_counter() - started)))
+    x, ok, final = solve_free_flame(problem, x0=x, options=final_options)
+    final["transport_model"] = problem.transport_model
+    final["target_corrector_time_s"] = final["total_time_s"]
+    final["transport_bootstrap"] = first
+    final["total_time_s"] = time.perf_counter() - started
+    return x, ok, final
+
+
 def solve_free_flame(
     problem,
     x0: np.ndarray | None = None,
@@ -2381,6 +2501,8 @@ def solve_free_flame(
       4. Si el dominio queda angosto, expandir y repetir (auto-width check).
     """
     opts = options or SolveOptions()
+    if bool(getattr(opts, "trace_solver", False)):
+        problem._solver_trace = []
     report: dict[str, Any] = {"passes": [], "domain_checks": []}
     t_start = time.perf_counter()
     deadline = (t_start + opts.max_total_time_s
@@ -2391,6 +2513,11 @@ def solve_free_flame(
         delattr(problem, "_profile")
     if problem.backend is None:
         _refresh_backend(problem)
+
+    if x0 is None and bool(opts.multicomponent_bootstrap) and bool(
+        getattr(problem.backend, "uses_multicomponent_flux", False)
+    ):
+        return _solve_transport_bootstrap(problem, opts, t_start)
 
     restart_mode = x0 is not None
     x = None if x0 is None else problem.reset_bad_values(np.asarray(x0, dtype=float))
@@ -2427,8 +2554,9 @@ def solve_free_flame(
                     report["timeout_before_solve"] = True
                     break
 
-                # Keep and propagate the latest state unless there is no seed yet.
-                # This preserves the post-expansion solution path like Cantera.
+                # Keep the latest iterate as a seed, including after domain
+                # expansion. It is not a certificate: every grid is solved and
+                # checked again before the final state can be accepted.
                 use_initial_guess = (x_work is None)
                 insert_anchor = (
                     use_initial_guess
@@ -2603,6 +2731,8 @@ def solve_free_flame(
     report["final_accepted"] = bool(final_accepted)
     if bool(getattr(opts, "profile", False)):
         report["profile"] = _profile_snapshot(getattr(problem, "_profile", {}))
+    if bool(getattr(opts, "trace_solver", False)):
+        report["solver_trace"] = getattr(problem, "_solver_trace", [])
     if opts.verbose:
         print(f"\n{'='*60}")
         print(f"  Resuelto: {solved}  n_pts={problem.n_points}"

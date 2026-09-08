@@ -285,22 +285,6 @@
   doi = {10.1007/BFb0035362}
 }
 
-@misc{GoodwinCantera2023,
-  author = {Goodwin, D. G. and Moffat, H. K. and Schoegl, I. and Speth, R. L. and Weber, B. W.},
-  title = {{Cantera}: An Object-oriented Software Toolkit for Chemical Kinetics, Thermodynamics, and Transport Processes},
-  year = {2023},
-  doi = {10.5281/zenodo.8137090},
-  note = {Version 3.0.0}
-}
-
-@misc{CanteraDocs32,
-  author = {{Cantera Developers}},
-  title = {One-dimensional flames: governing equations, discretization, nonlinear solver and grid refinement},
-  howpublished = {\emph{Cantera 3.2.0 Documentation}. \url{https://cantera.org/stable/reference/onedim/index.html}},
-  year = {2025},
-  note = {Consulta: 26 de agosto de 2026}
-}
-
 @article{Bilger1989,
   author = {Bilger, R. W.},
   title = {The structure of turbulent nonpremixed flames},
@@ -329,13 +313,6 @@
   pages = {1100--1102},
   year = {1972},
   doi = {10.1063/1.1678363}
-}
-
-@misc{SmithGRI30,
-  author = {Smith, G. P. and Golden, D. M. and Frenklach, M. and others},
-  title = {{GRI-Mech 3.0}},
-  year = {1999},
-  howpublished = {\url{http://combustion.berkeley.edu/gri-mech/}}
 }
 
 @article{KelleyKeyes1998,
@@ -392,16 +369,6 @@
   doi = {10.1016/j.cpc.2017.02.004}
 }
 
-@article{DanciuKinetiX2025,
-  author = {Danciu, B. and Frouzakis, C. E.},
-  title = {{KinetiX}: Performance portable code generation for chemical kinetics and transport},
-  journal = {Computer Physics Communications},
-  volume = {310},
-  pages = {109504},
-  year = {2025},
-  doi = {10.1016/j.cpc.2025.109504}
-}
-
 @article{VirtanenSciPy2020,
   author = {Virtanen, P. and Gommers, R. and Oliphant, T. E. and others},
   title = {{SciPy} 1.0: fundamental algorithms for scientific computing in Python},
@@ -420,7 +387,6 @@
   doi = {10.1145/2833157.2833162}
 }
 
-
 @article{Grcar1988,
   author  = {Grcar, Joseph F. and Kee, Robert J. and Smooke, Mitchell D. and Miller, James A.},
   title   = {A Hybrid Newton/Time-Integration Procedure for the Solution of Steady, Laminar, One-Dimensional, Premixed Flames},
@@ -430,17 +396,6 @@
   pages   = {1773--1782},
   year    = {1988},
   doi     = {10.1016/S0082-0784(88)80411-9}
-}
-
-@article{GiovangigliSmooke1993,
-  author  = {Giovangigli, Vincent and Smooke, Mitchell D.},
-  title   = {Application of Continuation Methods to Plane Premixed Laminar Flames},
-  journal = {Combustion Science and Technology},
-  volume  = {87},
-  number  = {1--6},
-  pages   = {241--256},
-  year    = {1993},
-  doi     = {10.1080/00102209208947217}
 }
 
 @inproceedings{Langer2018,
@@ -484,23 +439,6 @@
   doi     = {10.1080/13647830.2022.2153739}
 }
 
-@article{Perini2025,
-  author  = {Perini, Federico and Fiorini, Niccol{\`o} and Cheli, Lapo and Vichi, Giovanni and Reitz, Rolf Deneys},
-  title   = {Multigrid Laminar Flame Calculations Using Sparser Analytical Jacobians, Parallel Iterative Solvers, and Hybrid Integration},
-  journal = {Combustion Theory and Modelling},
-  volume  = {29},
-  number  = {3},
-  year    = {2025},
-  doi     = {10.1080/13647830.2025.2477717}
-}
-
-@misc{SmithGRI1999,
-  author = {Smith, Gregory P. and Golden, David M. and Frenklach, Michael and Moriarty, Nigel W. and Eiteneer, Boris and Goldenberg, Mikhail and Bowman, C. Thomas and Hanson, Ronald K. and Song, Soonho and Gardiner, William C., Jr. and Lissianski, Vitali V. and Qin, Zhiwei},
-  title  = {{GRI-Mech} 3.0},
-  year   = {1999},
-  url    = {http://combustion.berkeley.edu/gri-mech/version30/text30.html}
-}
-
 @article{LongEmber2018,
   author  = {Long, Alan E. and Speth, Raymond L. and Green, William H.},
   title   = {Ember: An Open-Source, Transient Solver for 1D Reacting Flow Using Large Kinetic Models, Applied to Strained Extinction},
@@ -517,4 +455,198 @@
   institution = {Naciones Unidas},
   number      = {A/RES/70/1},
   year        = {2015}
+}
+
+@misc{GoodwinCantera2025,
+  author       = {Goodwin, David G. and Moffat, Harry K. and Schoegl, Ingmar and Speth, Raymond L. and Weber, Bryan W.},
+  title        = {{Cantera}: An Object-oriented Software Toolkit for Chemical Kinetics, Thermodynamics, and Transport Processes},
+  year         = {2025},
+  note         = {Version 3.2.0},
+  howpublished = {\url{https://www.cantera.org}},
+  doi          = {10.5281/zenodo.17620923}
+}
+
+@misc{CanteraDocs32,
+  author       = {{Cantera Developers}},
+  title        = {One-dimensional Flames},
+  howpublished = {\emph{Cantera 3.2.0 Documentation}. \url{https://cantera.org/3.2/reference/onedim/index.html}},
+  year         = {2025},
+  note         = {Consulta: 26 de agosto de 2026}
+}
+
+@misc{CanteraSource32,
+  author       = {{Cantera Developers}},
+  title        = {{Cantera} 3.2.0: stoichiometric reaction-rate evaluation},
+  howpublished = {Source code, \texttt{StoichManager.h}. \url{https://github.com/Cantera/cantera/blob/v3.2.0/include/cantera/kinetics/StoichManager.h}},
+  year         = {2025},
+  note         = {Consulta: 7 de septiembre de 2026}
+}
+
+@article{DanciuKinetiX2025,
+  author  = {Danciu, Bogdan A. and Frouzakis, Christos E.},
+  title   = {{KinetiX}: A Performance Portable Code Generator for Chemical Kinetics and Transport Properties},
+  journal = {Computer Physics Communications},
+  volume  = {310},
+  pages   = {109504},
+  year    = {2025},
+  doi     = {10.1016/j.cpc.2025.109504}
+}
+
+@article{Perini2025,
+  author  = {Perini, Federico and Fiorini, Niccol{\`o} and Cheli, Lapo and Vichi, Giovanni and Reitz, Rolf Deneys},
+  title   = {Multigrid Laminar Flame Calculations Using Sparser Analytical Jacobians, Parallel Iterative Solvers, and Hybrid Integration},
+  journal = {Combustion Theory and Modelling},
+  volume  = {29},
+  number  = {3},
+  pages   = {305--331},
+  year    = {2025},
+  doi     = {10.1080/13647830.2025.2477717}
+}
+
+@misc{SmithGRI1999,
+  author = {Smith, Gregory P. and Golden, David M. and Frenklach, Michael and Moriarty, Nigel W. and Eiteneer, Boris and Goldenberg, Mikhail and Bowman, C. Thomas and Hanson, Ronald K. and Song, Soonho and Gardiner, William C., Jr. and Lissianski, Vitali V. and Qin, Zhiwei},
+  title  = {{GRI-Mech} 3.0},
+  year   = {1999},
+  url    = {http://combustion.berkeley.edu/gri-mech/version30/text30.html}
+}
+
+@article{GiovangigliSmooke1993,
+  author  = {Giovangigli, V. and Smooke, M. D.},
+  title   = {Application of Continuation Methods to Plane Premixed Laminar Flames},
+  journal = {Combustion Science and Technology},
+  volume  = {87},
+  number  = {1--6},
+  pages   = {241--256},
+  year    = {1993},
+  doi     = {10.1080/00102209208947217}
+}
+
+@article{MulderVanLeer1985,
+  author  = {Mulder, W. A. and Van Leer, B.},
+  title   = {Experiments with Implicit Upwind Methods for the {Euler} Equations},
+  journal = {Journal of Computational Physics},
+  volume  = {59},
+  number  = {2},
+  pages   = {232--246},
+  year    = {1985},
+  doi     = {10.1016/0021-9991(85)90144-5}
+}
+
+@article{Mulder1985,
+  author  = {Mulder, W. A.},
+  title   = {Multigrid Relaxation for the {Euler} Equations},
+  journal = {Journal of Computational Physics},
+  volume  = {60},
+  number  = {2},
+  pages   = {235--252},
+  year    = {1985},
+  doi     = {10.1016/0021-9991(85)90005-1}
+}
+
+@article{Roache1998,
+  author  = {Roache, P. J.},
+  title   = {Verification of Codes and Calculations},
+  journal = {AIAA Journal},
+  volume  = {36},
+  number  = {5},
+  pages   = {696--702},
+  year    = {1998},
+  doi     = {10.2514/2.457}
+}
+
+@article{CuociOperatorSplitting2013,
+  author  = {Cuoci, Alberto and Frassoldati, Alessio and Faravelli, Tiziano and Ranzi, Eliseo},
+  title   = {Numerical Modeling of Laminar Flames with Detailed Kinetics Based on the Operator-Splitting Method},
+  journal = {Energy \& Fuels},
+  volume  = {27},
+  number  = {12},
+  pages   = {7730--7753},
+  year    = {2013},
+  doi     = {10.1021/ef4016334}
+}
+
+@article{CuociOpenSMOKE2015,
+  author  = {Cuoci, Alberto and Frassoldati, Alessio and Faravelli, Tiziano and Ranzi, Eliseo},
+  title   = {{OpenSMOKE++}: An Object-Oriented Framework for the Numerical Modeling of Reactive Systems with Detailed Kinetic Mechanisms},
+  journal = {Computer Physics Communications},
+  volume  = {192},
+  pages   = {237--264},
+  year    = {2015},
+  doi     = {10.1016/j.cpc.2015.02.014}
+}
+
+@inproceedings{Huck2018,
+  author    = {H{\"u}ck, Alexander and Kreutzer, Sebastian and Messig, Danny and Scholtissek, Arne and Bischof, Christian and Hasse, Christian},
+  title     = {Application of Algorithmic Differentiation for Exact Jacobians to the Universal Laminar Flame Solver},
+  booktitle = {Computational Science -- ICCS 2018},
+  editor    = {Shi, Yong and Fu, Haohuan and Tian, Yingjie and Krzhizhanovskaya, Valeria V. and Lees, Michael Harold and Dongarra, Jack and Sloot, Peter M. A.},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {10862},
+  pages     = {480--486},
+  publisher = {Springer International Publishing},
+  address   = {Cham},
+  year      = {2018},
+  doi       = {10.1007/978-3-319-93713-7_43}
+}
+
+@article{GrcarSoret2009,
+  author  = {Grcar, Joseph F. and Bell, John B. and Day, Marcus S.},
+  title   = {The Soret Effect in Naturally Propagating, Premixed, Lean, Hydrogen--Air Flames},
+  journal = {Proceedings of the Combustion Institute},
+  volume  = {32},
+  number  = {1},
+  pages   = {1173--1180},
+  year    = {2009},
+  doi     = {10.1016/j.proci.2008.06.075}
+}
+
+@article{CisnerosGaribay2026,
+  author  = {Cisneros-Garibay, Esteban and {Le Berre}, Henry and Adam, Dimitrios and Bryngelson, Spencer H. and Freund, Jonathan B.},
+  title   = {{Pyrometheus}: Symbolic Abstractions for {XPU} and Automatically Differentiated Computation of Combustion Kinetics and Thermodynamics},
+  journal = {Computer Physics Communications},
+  volume  = {320},
+  pages   = {109987},
+  year    = {2026},
+  doi     = {10.1016/j.cpc.2025.109987}
+}
+
+@article{Bottler2024,
+  author  = {B{\"o}ttler, Hannes and Kaddar, Driss and Karpowski, T. Jeremy P. and Ferraro, Federica and Scholtissek, Arne and Nicolai, Hendrik and Hasse, Christian},
+  title   = {Can Flamelet Manifolds Capture the Interactions of Thermo-Diffusive Instabilities and Turbulence in Lean Hydrogen Flames?---An A-Priori Analysis},
+  journal = {International Journal of Hydrogen Energy},
+  volume  = {56},
+  pages   = {1397--1407},
+  year    = {2024},
+  doi     = {10.1016/j.ijhydene.2023.12.193}
+}
+
+@article{SanchezBahoque2024,
+  author  = {{Sanchez Bahoque}, Gabriela and van Oijen, Jeroen},
+  title   = {Flamelet Generated Manifolds for Lean Premixed Turbulent Hydrogen Flames},
+  journal = {Proceedings of the Combustion Institute},
+  volume  = {40},
+  number  = {1--4},
+  pages   = {105614},
+  year    = {2024},
+  doi     = {10.1016/j.proci.2024.105614}
+}
+
+@article{KaiAyukawa2024,
+  author  = {Kai, Reo and Ayukawa, Shinya and Kinuta, Kazuhiro and Kurose, Ryoichi},
+  title   = {Effects of Preferential Diffusion and Flame Stretch on {FGM} Method for Numerical Simulations of Ammonia/Air Premixed Combustion},
+  journal = {Applications in Energy and Combustion Science},
+  volume  = {17},
+  pages   = {100253},
+  year    = {2024},
+  doi     = {10.1016/j.jaecs.2024.100253}
+}
+
+@article{Kinuta2024,
+  author  = {Kinuta, Kazuhiro and Kai, Reo and Yada, Kotaro and Kurose, Ryoichi},
+  title   = {{FGM} Modeling Considering Preferential Diffusion, Flame Stretch, and Non-Adiabatic Effects for Hydrogen-Air Premixed Flame Wall Flashback},
+  journal = {Combustion and Flame},
+  volume  = {269},
+  pages   = {113718},
+  year    = {2024},
+  doi     = {10.1016/j.combustflame.2024.113718}
 }

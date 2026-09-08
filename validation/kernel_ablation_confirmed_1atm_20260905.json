@@ -1,0 +1,177 @@
+{
+  "campaigns": [
+    {
+      "directory": "resultados\\kernel_ablation\\20260905_164234",
+      "summary_sha256": "833bb08b7d7f08a62375f2097cbb89b0f3810ff3ecb74557a8b971c691a0ad22",
+      "full_stack_warmup": true,
+      "warmup_runs": [
+        {
+          "case": "ch4_1",
+          "variant": "baseline",
+          "accepted": true,
+          "time_s": 7.954225900000893
+        },
+        {
+          "case": "ch4_1",
+          "variant": "products",
+          "accepted": true,
+          "time_s": 4.569572099979268
+        },
+        {
+          "case": "h2_1",
+          "variant": "baseline",
+          "accepted": true,
+          "time_s": 9.070767900004284
+        },
+        {
+          "case": "h2_1",
+          "variant": "products",
+          "accepted": true,
+          "time_s": 6.461173699994106
+        }
+      ],
+      "source_sha256": {
+        "validation\\benchmark_kernel_ablation.py": "62f0b2c66136d9afec3485cb0fbf4a7efde157c69627c6c22dabb03347b2550f",
+        "V2\\equations.py": "bdd6a38f842207c163d7eec4a2ff135eb4f0cac67c886989ecff1d3d850e4e35",
+        "V2\\materiales\\kinetics_native.py": "520908e5408b0fe1828fa94be0ea629016eb5fc3428f7048695067ffc9df45e3",
+        "V2\\materiales\\species_backend_native.py": "0c6299ed614e68d420d1d970ea69636d2f7c4ba30cad3ee4df4e8be0e7b97da5"
+      },
+      "cases": [
+        {
+          "case": "ch4_1",
+          "all_accepted": true,
+          "statistics": {
+            "baseline": {
+              "n": 7,
+              "raw_s": [
+                4.953030300006503,
+                4.963551199994981,
+                4.851796800008742,
+                4.952230800001416,
+                4.970314800011693,
+                4.907967600011034,
+                4.893749900016701
+              ],
+              "median_s": 4.952230800001416,
+              "quartiles_s": [
+                4.900858750013867,
+                4.958290750000742
+              ],
+              "all_same_mesh_as_baseline": true,
+              "max_absolute_profile_differences": {
+                "z": 0.0,
+                "T": 0.0,
+                "Y": 0.0,
+                "u": 0.0
+              },
+              "reduction_percent": 0.0,
+              "paired_ratio_ci95": [
+                1.0,
+                1.0
+              ]
+            },
+            "products": {
+              "n": 7,
+              "raw_s": [
+                4.661563400004525,
+                4.523424799990607,
+                4.719993100006832,
+                4.407778299995698,
+                4.576319199986756,
+                4.618482100020628,
+                4.598287800006801
+              ],
+              "median_s": 4.598287800006801,
+              "quartiles_s": [
+                4.549871999988682,
+                4.640022750012577
+              ],
+              "all_same_mesh_as_baseline": true,
+              "max_absolute_profile_differences": {
+                "z": 0.0,
+                "T": 9.51195033849217e-09,
+                "Y": 1.3603979054366278e-12,
+                "u": 9.527378885820781e-12
+              },
+              "reduction_percent": 7.147142657295246,
+              "paired_ratio_ci95": [
+                0.9113283247677955,
+                0.952554481786782
+              ]
+            }
+          }
+        },
+        {
+          "case": "h2_1",
+          "all_accepted": true,
+          "statistics": {
+            "baseline": {
+              "n": 7,
+              "raw_s": [
+                6.796355099999346,
+                6.924531299999217,
+                7.0246195000072476,
+                6.907512800011318,
+                6.848700000002282,
+                6.96127400000114,
+                7.016847899998538
+              ],
+              "median_s": 6.924531299999217,
+              "quartiles_s": [
+                6.8781064000068,
+                6.989060949999839
+              ],
+              "all_same_mesh_as_baseline": true,
+              "max_absolute_profile_differences": {
+                "z": 0.0,
+                "T": 0.0,
+                "Y": 0.0,
+                "u": 0.0
+              },
+              "reduction_percent": 0.0,
+              "paired_ratio_ci95": [
+                1.0,
+                1.0
+              ]
+            },
+            "products": {
+              "n": 7,
+              "raw_s": [
+                6.493342800007667,
+                6.565975100005744,
+                6.516162500018254,
+                6.363215500023216,
+                6.600068299972918,
+                6.503315099980682,
+                6.682639999984531
+              ],
+              "median_s": 6.516162500018254,
+              "quartiles_s": [
+                6.498328949994175,
+                6.583021699989331
+              ],
+              "all_same_mesh_as_baseline": true,
+              "max_absolute_profile_differences": {
+                "z": 0.0,
+                "T": 1.1281144907115959e-09,
+                "Y": 5.002664948960955e-13,
+                "u": 3.369571288658335e-11
+              },
+              "reduction_percent": 5.897421533512437,
+              "paired_ratio_ci95": [
+                0.9286452539493711,
+                0.9636965117424795
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Cold flame initialization, not cold compilation: predeclared warm-up is separate and never a seed.",
+    "Bootstrap intervals with three pairs are exploratory, not a substitute for a larger campaign.",
+    "Kernel/same-mesh equivalence is not a mesh independence or experimental validation study.",
+    "These are within-V2 ablations; they do not measure Cantera performance."
+  ]
+}

@@ -26,6 +26,16 @@ class SpeciesBackend:
                     getattr(problem.case, "soret_enabled", False))
         )
 
+        # A Solution defaults to mixture-averaged transport independently of
+        # the case definition. Set the requested model before reading any
+        # coefficients so this reference backend never changes the closure
+        # silently.
+        self.gas.transport_model = self.transport_model
+        model_key = self.transport_model.strip().lower().replace("_", "-")
+        self.uses_multicomponent_flux = model_key in (
+            "multicomponent", "multi-component", "multi"
+        )
+
         if self.flux_gradient_basis not in ("molar", "mole", "mass"):
             raise ValueError(
                 "flux_gradient_basis debe ser 'molar' o 'mass'."
@@ -49,15 +59,18 @@ class SpeciesBackend:
                     "La instalación de Cantera no expone mix_diff_coeffs_mass."
                 )
 
-        # Declarado explícitamente: el solver base free-flame se deja
-        # en mezcla-averaged / multicomponent SIN Soret, salvo que se extienda
-        # el residual con el término térmico correspondiente.
-        if self.soret_enabled:
-            raise NotImplementedError(
-                "soret_enabled=True fue solicitado, pero el término de Soret "
-                "todavía no está implementado en residual.py. "
-                "Usa soret_enabled=False para la versión actual alineada con "
-                "free premixed flame base."
+        # This V2 extension validates the multicomponent closure only.
+        # Cantera 3.2 also offers a distinct mixture-averaged Soret model;
+        # mixing its coefficients with Dixon--Lewis is not an equivalent test.
+        if self.soret_enabled and not self.uses_multicomponent_flux:
+            raise ValueError(
+                "La extensión Soret validada de V2 requiere transport_model='multicomponent'. "
+                "El modelo Soret mixture-averaged de Cantera 3.2 no está implementado aquí."
+            )
+        if self.uses_multicomponent_flux and self.flux_gradient_basis not in ("molar", "mole"):
+            raise ValueError(
+                "La ruta multicomponente/Soret de referencia usa gradientes "
+                "molares, igual que Flow1D de Cantera."
             )
 
     # ------------------------------------------------------------------
@@ -180,6 +193,42 @@ class SpeciesBackend:
         Dm = self._get_mix_diff_coeffs()
         lam = float(gas.thermal_conductivity)
         return rho, Dm, lam, gas.mean_molecular_weight
+
+    def eval_multicomponent_face_transport(self, T_face: np.ndarray,
+                                            Y_face: np.ndarray):
+        """Return exact Cantera face data for the multicomponent closure.
+
+        The caller applies the public ``Flow1D`` expression: ordinary
+        multicomponent diffusion plus ``-D_k^T grad(log(T))`` when Soret is
+        enabled. This is a reference path, not a claim that the native
+        mixture-averaged kernel implements multicomponent transport.
+        """
+        if not self.uses_multicomponent_flux:
+            return None
+
+        T_face = np.asarray(T_face, dtype=float)
+        Y_face = np.asarray(Y_face, dtype=float)
+        if T_face.ndim != 1 or Y_face.shape != (self.n_species, T_face.size):
+            raise ValueError("T_face/Y_face tienen dimensiones incompatibles.")
+
+        n_faces = int(T_face.size)
+        rho = np.empty(n_faces, dtype=float)
+        lam = np.empty(n_faces, dtype=float)
+        W_mix = np.empty(n_faces, dtype=float)
+        multi = np.empty((self.n_species, self.n_species, n_faces), dtype=float)
+        dthermal = np.zeros((self.n_species, n_faces), dtype=float)
+
+        for jf in range(n_faces):
+            self._set_state_unnormalized(float(T_face[jf]), Y_face[:, jf])
+            gas = self.gas
+            rho[jf] = float(gas.density)
+            lam[jf] = float(gas.thermal_conductivity)
+            W_mix[jf] = float(gas.mean_molecular_weight)
+            multi[:, :, jf] = np.asarray(gas.multi_diff_coeffs, dtype=float)
+            if self.soret_enabled:
+                dthermal[:, jf] = np.asarray(gas.thermal_diff_coeffs, dtype=float)
+
+        return rho, lam, W_mix, multi, dthermal
 
     def eval_midpoint_full(self, T_left: float, T_right: float,
                            Y_left: np.ndarray, Y_right: np.ndarray):

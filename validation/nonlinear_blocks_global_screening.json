@@ -1,0 +1,561 @@
+{
+  "campaigns": [
+    {
+      "directory": "resultados\\cold_strategies\\20260907_071615",
+      "raw_sha256": "30316f8f44c0a7ac4bba6cb086e9ed3be79b784ababdd4e1c24fdc7acda80bc5",
+      "source_sha256": {
+        "validation\\benchmark_cold_strategies.py": "b18e5fd6ec56874d0633f7459e181a6076a58d869beab1d70677942c411ecaa7",
+        "validation\\cold_strategy_kernels.py": "defaef41c2734fa44c5de2aa49d485b7856f61d378304db1917452dc476f425f",
+        "V2\\equations.py": "bdd6a38f842207c163d7eec4a2ff135eb4f0cac67c886989ecff1d3d850e4e35",
+        "V2\\solver.py": "a05d7a2178e8c059596e3d151e05466ffd012eb52440197a4c4157267196af9e",
+        "V2\\materiales\\species_backend_native.py": "0c6299ed614e68d420d1d970ea69636d2f7c4ba30cad3ee4df4e8be0e7b97da5",
+        "V2\\materiales\\kinetics_native.py": "520908e5408b0fe1828fa94be0ea629016eb5fc3428f7048695067ffc9df45e3",
+        "validation\\cold_mesh_budget.py": "9f25bb4dfe16516399da47cb2e908b57ae074c8b8bf6b048ba478cc52061c5be",
+        "validation\\cold_two_grid.py": "ff1492f35dd5634d7454dbb98810fa561482331c77c7813fffae4ce0d9dad687",
+        "V2\\analyze_soret_validation.py": "a9648d99265dfd33a884cf844cc81685e8c17697e1f48e30801efd3f751ad5f2",
+        "V2\\audit_soret_solver_trace.py": "25c24fe88d8be9276989912a54fc9175814ec2e08000f6d9bfcdc93f9c7d2b87",
+        "V2\\benchmark_soret_native.py": "bab93ded7ccd7927e91ddb113c07fcb2ef22a541712da0b09d48bd9f8293d369",
+        "V2\\config.py": "b17d7c363f5619499888aa9953d8b043d4096f39dad2b6aa3a4f4a366d062c35",
+        "V2\\plot_saved_comparison.py": "c765e343a6f2b2f0f1d390d2e17809c9fac6def32fe2c0e1d974ecf54853a1df",
+        "V2\\problem.py": "bf5bd8d6d9e71ffa8463ef8914b3edcfc69788f8cfe344ddcc406fb51b0ffaa4",
+        "V2\\refine_soret_validation.py": "ccf3b427ea7526c69d80b3f6eba0f41021369fa39b282c5531fd9cf9f5038e76",
+        "V2\\run_saved_comparison.py": "cc7747863e54a70ffc2a77add3755a749bbdbc6e08b0603a072e4fc5458de685",
+        "V2\\species_backend.py": "daeacfd193afb942ba9ed555c915074809ad62d5c6a05426fd0bd8331416e62f",
+        "V2\\state.py": "7f151533c07d5332fac60bcaeeb8d27c412743559f2dfe08ed4fcd2cc71aab00",
+        "V2\\trace_cantera_soret.py": "1f1e9932787b70bb9243bbf6fd72797ef1baba0b8aeb2c434e7dee1c252cd3fb",
+        "V2\\materiales\\collision_integrals_native.py": "168ac1d16fd1a85c0417750761f5b08650f597f8062d4f4fb7f07a1da557f959",
+        "V2\\materiales\\mechanism_data.py": "bce21a5f71d484798006ca75fc565b9784edee7e8eb1e40796c4c6b074a2f2f0",
+        "V2\\materiales\\thermo_native.py": "6afbbe05bc1404b8ca12cd122e88da2d3b72a6a30011dccfabbe0e7fbea584f0",
+        "V2\\materiales\\transport_multicomponent_kernels.py": "537844f3cf03998281638115db867fbb3df0088ef3afbe39076cca394713c5f6",
+        "V2\\materiales\\transport_multicomponent_native.py": "c09ef5e4a01199926d854e1a1c6a6fe94abd607834efb156e7619d5352f359dc",
+        "V2\\materiales\\transport_native.py": "87853760cd078be99c94678bff3117fb90fd2cadc8fb8bb4f2615ed96adbc581",
+        "validation\\cold_compiled_lu.py": "3d6e74487efb91c01e6ab7099a68554ba72640509a7975b9ebbee9042a236127",
+        "validation\\cold_dependencies.py": "a05c7973a023c71d03354c95ff1ae41edc078f979d9527c6f558cadb8ffa62c8",
+        "validation\\cold_exact_residual.py": "658b3d8a57f6afabd13ddf871546c0b7ef320079f62d35c4760b3fdb00beb44a",
+        "validation\\cold_generated_chemistry.py": "5d22d9a3662270fffeed7d7161f2834f857b5c7994a2f722b55bcc8307dc47fc",
+        "validation\\cold_nonlinear_blocks.py": "7851f922a0dfaeb40b1e2dda2919d9d77cb4d6de3a3a36e42406e5a997e2e8c7",
+        "validation\\cold_streamed_jacobian.py": "b605f7e4fc8be7dd48bb01359c02531f9e128ce5f583627ac4d40a35bc03d546",
+        "validation\\cold_transport_candidates.py": "1d1bdff1ebf0a5c1f3c27e66d8bc56fda521ae1f0b1e91bb2c34671a58e7f5d7",
+        "validation\\analyze_cold_strategies.py": "099271da35b8ee525f29c0348e5fc6b41c2b87a5d172f1ffc72a69331f689ff2",
+        "V2\\materiales\\collision_integrals_mm.json": "d615ab6a957338231f55307f50062572a87dc126b41c415b0a7276eb30e2c145"
+      },
+      "kernel_sha256": {
+        "baseline": "production"
+      },
+      "expected_repetitions": 1,
+      "cases": {
+        "ch4_1": {
+          "baseline": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "ch4_1",
+                "variant": "baseline",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 3.7758456000010483,
+                "strategy_trace": [],
+                "Finf": 1748.5019918150165,
+                "species_sum_error": 1.6909695865763297e-10,
+                "mass_flow_error": 1.2355964163731997e-06,
+                "final_weighted_norm": 0.2040750665815072
+              }
+            ],
+            "n": 1,
+            "profiles": {
+              "0": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              3.77191359999415
+            ],
+            "median_s": 3.77191359999415,
+            "quartiles_s": [
+              3.77191359999415,
+              3.77191359999415
+            ],
+            "reduction_percent": 0.0
+          },
+          "nonlinear-blocks-global": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "ch4_1",
+                "variant": "nonlinear-blocks-global",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 3.7217084000003524,
+                "strategy_trace": [
+                  {
+                    "kind": "nonlinear_blocks",
+                    "nodes": 9,
+                    "local_trials": 14,
+                    "local_updates": 6,
+                    "singular_blocks": 0,
+                    "local_factorizations": 8,
+                    "accepted": true,
+                    "global_descent": true,
+                    "accepted_merits": [
+                      8.138162567923771,
+                      8.131708809421143,
+                      8.070462063221871,
+                      7.942086465190828,
+                      7.863166414742056,
+                      7.832934682676534
+                    ],
+                    "merit_initial": 8.141543137069808,
+                    "merit_final": 7.832934682676534,
+                    "reason": "improved",
+                    "time_s": 0.009749899996677414
+                  }
+                ],
+                "Finf": 1748.5018231924985,
+                "species_sum_error": 1.6909118549790492e-10,
+                "mass_flow_error": 1.2355973494484632e-06,
+                "final_weighted_norm": 0.20407500068944112
+              }
+            ],
+            "n": 1,
+            "profiles": {
+              "0": {
+                "bitwise_equal": false,
+                "Su_relative": 3.490763234026417e-12,
+                "E2_T": 3.3443221551129764e-13,
+                "E2_qdot": 1.9105862077767426e-11,
+                "E2_Y": {
+                  "H2": 4.999713995823023e-12,
+                  "H": 4.368947088215612e-12,
+                  "O": 4.89776485444778e-12,
+                  "O2": 5.156714627504791e-13,
+                  "OH": 1.4287743637256186e-12,
+                  "H2O": 1.2226329536038659e-12,
+                  "HO2": 1.619455013861547e-11,
+                  "H2O2": 4.1425720786979374e-11,
+                  "CH2": 2.7204996788723805e-11,
+                  "CH3": 1.9477809627816884e-11,
+                  "CH4": 5.429014891176353e-13,
+                  "CO": 2.5923883214981715e-12,
+                  "CO2": 7.569645550531679e-13,
+                  "HCO": 2.413738583883334e-11,
+                  "CH2O": 1.3611719240501819e-11,
+                  "CH3O": 1.6082279371765503e-11,
+                  "CH3OH": 1.729135668727187e-11,
+                  "C2H2": 1.6938007785737415e-11,
+                  "C2H4": 1.581486910385338e-11,
+                  "C2H5": 2.278196561015822e-11,
+                  "C2H6": 1.656559486118111e-11,
+                  "HCCO": 2.451960206943502e-11,
+                  "CH2CO": 1.6236815300074915e-11,
+                  "NO": 1.569714953611202e-12,
+                  "N2": 2.461349056084834e-13,
+                  "C3H8": 2.012270006101623e-11,
+                  "CH3CHO": 1.752499015810495e-11
+                },
+                "E2_Y_max": 4.1425720786979374e-11,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              3.7699648999987403
+            ],
+            "median_s": 3.7699648999987403,
+            "quartiles_s": [
+              3.7699648999987403,
+              3.7699648999987403
+            ],
+            "reduction_percent": 0.051663431405557514
+          }
+        },
+        "h2_1": {
+          "baseline": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "h2_1",
+                "variant": "baseline",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 5.167329399992013,
+                "strategy_trace": [],
+                "Finf": 6.763742732171108,
+                "species_sum_error": 6.188383139260623e-13,
+                "mass_flow_error": 2.1501270865725724e-10,
+                "final_weighted_norm": 0.00012219229564118278
+              }
+            ],
+            "n": 1,
+            "profiles": {
+              "0": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              4.9219214000040665
+            ],
+            "median_s": 4.9219214000040665,
+            "quartiles_s": [
+              4.9219214000040665,
+              4.9219214000040665
+            ],
+            "reduction_percent": 0.0
+          },
+          "nonlinear-blocks-global": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "h2_1",
+                "variant": "nonlinear-blocks-global",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 4.914284399987082,
+                "strategy_trace": [
+                  {
+                    "kind": "nonlinear_blocks",
+                    "nodes": 9,
+                    "local_trials": 15,
+                    "local_updates": 5,
+                    "singular_blocks": 0,
+                    "local_factorizations": 8,
+                    "accepted": true,
+                    "global_descent": true,
+                    "accepted_merits": [
+                      7.888090746239488,
+                      7.882349971130581,
+                      7.692164866783606,
+                      7.617511871805384,
+                      7.614389006912719
+                    ],
+                    "merit_initial": 7.889558905427158,
+                    "merit_final": 7.614389006912719,
+                    "reason": "improved",
+                    "time_s": 0.00960069999564439
+                  }
+                ],
+                "Finf": 6.763795436240695,
+                "species_sum_error": 7.547296121401814e-13,
+                "mass_flow_error": 2.1504435017969812e-10,
+                "final_weighted_norm": 0.00012188075474486987
+              }
+            ],
+            "n": 1,
+            "profiles": {
+              "0": {
+                "bitwise_equal": false,
+                "Su_relative": 1.2647660696529783e-12,
+                "E2_T": 9.790822460310753e-14,
+                "E2_qdot": 1.620136382564656e-11,
+                "E2_Y": {
+                  "H2": 3.5967631896868975e-13,
+                  "H": 1.6639760931730544e-12,
+                  "O": 1.3814407121038752e-12,
+                  "O2": 4.1323694688443596e-13,
+                  "OH": 9.991687638732187e-13,
+                  "H2O": 1.9326027810445615e-13,
+                  "HO2": 2.597980612272427e-11,
+                  "H2O2": 2.6584879279797486e-11,
+                  "NO": 2.8799413826324713e-10,
+                  "N2": 6.054745151189993e-14
+                },
+                "E2_Y_max": 2.8799413826324713e-10,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              4.996763299990562
+            ],
+            "median_s": 4.996763299990562,
+            "quartiles_s": [
+              4.996763299990562,
+              4.996763299990562
+            ],
+            "reduction_percent": -1.5205829980631913
+          }
+        },
+        "ch4_10": {
+          "baseline": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "ch4_10",
+                "variant": "baseline",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 21.65512910000689,
+                "strategy_trace": [],
+                "Finf": 6246.177389605016,
+                "species_sum_error": 2.2403958688244074e-09,
+                "mass_flow_error": 3.850263492395019e-09,
+                "final_weighted_norm": 0.8089622282504684
+              }
+            ],
+            "n": 1,
+            "profiles": {
+              "0": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              21.794896200008225
+            ],
+            "median_s": 21.794896200008225,
+            "quartiles_s": [
+              21.794896200008225,
+              21.794896200008225
+            ],
+            "reduction_percent": 0.0
+          },
+          "nonlinear-blocks-global": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "ch4_10",
+                "variant": "nonlinear-blocks-global",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 21.76647580000281,
+                "strategy_trace": [
+                  {
+                    "kind": "nonlinear_blocks",
+                    "nodes": 9,
+                    "local_trials": 15,
+                    "local_updates": 8,
+                    "singular_blocks": 0,
+                    "local_factorizations": 8,
+                    "accepted": true,
+                    "global_descent": true,
+                    "accepted_merits": [
+                      9.194267330048861,
+                      9.170416727337404,
+                      9.170253819609254,
+                      9.135987328708833,
+                      9.097953745134104,
+                      9.027823046469617,
+                      8.862111125266898,
+                      8.85988352894266
+                    ],
+                    "merit_initial": 9.196878370519215,
+                    "merit_final": 8.85988352894266,
+                    "reason": "improved",
+                    "time_s": 0.009776000006240793
+                  }
+                ],
+                "Finf": 6246.174592401339,
+                "species_sum_error": 2.240409191500703e-09,
+                "mass_flow_error": 3.850269263794726e-09,
+                "final_weighted_norm": 0.8089625850668413
+              }
+            ],
+            "n": 1,
+            "profiles": {
+              "0": {
+                "bitwise_equal": false,
+                "Su_relative": 1.9710566512287642e-11,
+                "E2_T": 3.728917032846914e-12,
+                "E2_qdot": 1.4541397039756551e-10,
+                "E2_Y": {
+                  "H2": 1.8709668528361198e-10,
+                  "H": 6.37152423823042e-11,
+                  "O": 1.8453235985950844e-10,
+                  "O2": 5.942849793442809e-12,
+                  "OH": 5.423798782142843e-11,
+                  "H2O": 9.245754092486179e-11,
+                  "HO2": 5.3291737057305585e-11,
+                  "H2O2": 3.943916700305657e-11,
+                  "CH2": 2.398582377914108e-10,
+                  "CH3": 1.5441794051351305e-10,
+                  "CH4": 1.0140839771471643e-12,
+                  "CO": 2.728046999772187e-11,
+                  "CO2": 1.1903425080852052e-10,
+                  "CH2O": 5.078218282985438e-11,
+                  "CH3OH": 7.627407056700814e-11,
+                  "C2H2": 2.4378755331003734e-10,
+                  "C2H4": 1.2652905887601502e-10,
+                  "C2H5": 1.512439226805947e-10,
+                  "C2H6": 8.70425263125636e-11,
+                  "HCCO": 2.411075100045403e-10,
+                  "CH2CO": 1.1920128215346102e-10,
+                  "NO": 1.8993876246401497e-10,
+                  "N2": 7.779508703687901e-12,
+                  "C3H8": 7.986303156876732e-11,
+                  "CH3CHO": 1.0408012979702442e-10
+                },
+                "E2_Y_max": 2.4378755331003734e-10,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              23.205950799994753
+            ],
+            "median_s": 23.205950799994753,
+            "quartiles_s": [
+              23.205950799994753,
+              23.205950799994753
+            ],
+            "reduction_percent": -6.474243267953694
+          }
+        },
+        "h2_10": {
+          "baseline": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "h2_10",
+                "variant": "baseline",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 52.539541099991766,
+                "strategy_trace": [],
+                "Finf": 0.3585920419101835,
+                "species_sum_error": 3.8899994336816235e-12,
+                "mass_flow_error": 2.0140555195537962e-12,
+                "final_weighted_norm": 7.101137262384788e-06
+              }
+            ],
+            "n": 1,
+            "profiles": {
+              "0": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              41.65759539999999
+            ],
+            "median_s": 41.65759539999999,
+            "quartiles_s": [
+              41.65759539999999,
+              41.65759539999999
+            ],
+            "reduction_percent": 0.0
+          },
+          "nonlinear-blocks-global": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "h2_10",
+                "variant": "nonlinear-blocks-global",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 52.74990270000126,
+                "strategy_trace": [
+                  {
+                    "kind": "nonlinear_blocks",
+                    "nodes": 9,
+                    "local_trials": 19,
+                    "local_updates": 5,
+                    "singular_blocks": 0,
+                    "local_factorizations": 8,
+                    "accepted": true,
+                    "global_descent": true,
+                    "accepted_merits": [
+                      8.927900332935192,
+                      8.909936490228777,
+                      8.797446656429656,
+                      8.581949496966162,
+                      8.581941677721863
+                    ],
+                    "merit_initial": 8.928278786127812,
+                    "merit_final": 8.581941677721863,
+                    "reason": "improved",
+                    "time_s": 0.016359100001864135
+                  }
+                ],
+                "Finf": 0.3585920419101835,
+                "species_sum_error": 3.8899994336816235e-12,
+                "mass_flow_error": 2.0140555195537962e-12,
+                "final_weighted_norm": 7.101137262384788e-06
+              }
+            ],
+            "n": 1,
+            "profiles": {
+              "0": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              43.57424159999937
+            ],
+            "median_s": 43.57424159999937,
+            "quartiles_s": [
+              43.57424159999937,
+              43.57424159999937
+            ],
+            "reduction_percent": -4.600952555219684
+          }
+        }
+      }
+    }
+  ],
+  "limitations": [
+    "Cold flame, warmed compiler; no seed reuse.",
+    "These are within-V2 ablations, not new Cantera timings.",
+    "One repetition gives screening evidence, not a confidence interval.",
+    "The two-grid variant is a prototype, not a complete recursive FAS solver.",
+    "Final residual and weighted norm do not prove mesh/domain independence."
+  ]
+}

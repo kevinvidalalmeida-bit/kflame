@@ -1,0 +1,10 @@
+{
+  "campaigns": [
+    {
+      "directory": "resultados\\cold_strategies\\20260907_073004",
+      "measured_profiles_verified": 12,
+      "source_snapshots_verified": 36,
+      "source_snapshot_available": true
+    }
+  ]
+}

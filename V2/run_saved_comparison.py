@@ -376,12 +376,6 @@ def main() -> None:
     parser.add_argument("--loglevel", type=int, default=0, help="Cantera solve loglevel.")
     parser.add_argument("--max-products", type=int, default=6)
     parser.add_argument(
-        "--upwind-factor",
-        type=float,
-        default=1.0,
-        help="V2 convective weight: 1.0=upwind, 0.0=centered. Cantera reference is unchanged.",
-    )
-    parser.add_argument(
         "--verbose-ours",
         action="store_true",
         help="Print detailed progress from the V2 solver.",
@@ -393,11 +387,8 @@ def main() -> None:
         help="Use the fused compiled substitution for the block-tridiagonal LU.",
     )
     args = parser.parse_args()
-    if not 0.0 <= float(args.upwind_factor) <= 1.0:
-        raise SystemExit("--upwind-factor must be between 0.0 and 1.0")
 
     case = _default_case()
-    case.upwind_factor = float(args.upwind_factor)
     run_dir, _, _ = run(
         args.output_root,
         case=case,

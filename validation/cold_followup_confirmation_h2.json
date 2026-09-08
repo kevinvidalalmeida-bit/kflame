@@ -1,0 +1,5009 @@
+{
+  "campaigns": [
+    {
+      "directory": "resultados\\cold_strategies\\20260906_120654",
+      "raw_sha256": "daf946ff432ac9c269e1196779ff3ddf48116e6a01fb25d6b74c49141996f4cb",
+      "source_sha256": {
+        "validation\\benchmark_cold_strategies.py": "561861a3a0efcb313bc2f943a6c42105a7341f2603050b4067cf32b16d5df631",
+        "validation\\cold_strategy_kernels.py": "defaef41c2734fa44c5de2aa49d485b7856f61d378304db1917452dc476f425f",
+        "V2\\equations.py": "bdd6a38f842207c163d7eec4a2ff135eb4f0cac67c886989ecff1d3d850e4e35",
+        "V2\\solver.py": "a05d7a2178e8c059596e3d151e05466ffd012eb52440197a4c4157267196af9e",
+        "V2\\materiales\\species_backend_native.py": "0c6299ed614e68d420d1d970ea69636d2f7c4ba30cad3ee4df4e8be0e7b97da5",
+        "V2\\materiales\\kinetics_native.py": "520908e5408b0fe1828fa94be0ea629016eb5fc3428f7048695067ffc9df45e3",
+        "validation\\cold_mesh_budget.py": "9f25bb4dfe16516399da47cb2e908b57ae074c8b8bf6b048ba478cc52061c5be",
+        "validation\\cold_two_grid.py": "ff1492f35dd5634d7454dbb98810fa561482331c77c7813fffae4ce0d9dad687",
+        "V2\\analyze_soret_validation.py": "a9648d99265dfd33a884cf844cc81685e8c17697e1f48e30801efd3f751ad5f2",
+        "V2\\audit_soret_solver_trace.py": "25c24fe88d8be9276989912a54fc9175814ec2e08000f6d9bfcdc93f9c7d2b87",
+        "V2\\benchmark_soret_native.py": "bab93ded7ccd7927e91ddb113c07fcb2ef22a541712da0b09d48bd9f8293d369",
+        "V2\\config.py": "b17d7c363f5619499888aa9953d8b043d4096f39dad2b6aa3a4f4a366d062c35",
+        "V2\\plot_saved_comparison.py": "c765e343a6f2b2f0f1d390d2e17809c9fac6def32fe2c0e1d974ecf54853a1df",
+        "V2\\problem.py": "bf5bd8d6d9e71ffa8463ef8914b3edcfc69788f8cfe344ddcc406fb51b0ffaa4",
+        "V2\\refine_soret_validation.py": "ccf3b427ea7526c69d80b3f6eba0f41021369fa39b282c5531fd9cf9f5038e76",
+        "V2\\run_saved_comparison.py": "cc7747863e54a70ffc2a77add3755a749bbdbc6e08b0603a072e4fc5458de685",
+        "V2\\species_backend.py": "daeacfd193afb942ba9ed555c915074809ad62d5c6a05426fd0bd8331416e62f",
+        "V2\\state.py": "7f151533c07d5332fac60bcaeeb8d27c412743559f2dfe08ed4fcd2cc71aab00",
+        "V2\\trace_cantera_soret.py": "1f1e9932787b70bb9243bbf6fd72797ef1baba0b8aeb2c434e7dee1c252cd3fb",
+        "V2\\materiales\\collision_integrals_native.py": "168ac1d16fd1a85c0417750761f5b08650f597f8062d4f4fb7f07a1da557f959",
+        "V2\\materiales\\mechanism_data.py": "bce21a5f71d484798006ca75fc565b9784edee7e8eb1e40796c4c6b074a2f2f0",
+        "V2\\materiales\\thermo_native.py": "6afbbe05bc1404b8ca12cd122e88da2d3b72a6a30011dccfabbe0e7fbea584f0",
+        "V2\\materiales\\transport_multicomponent_kernels.py": "537844f3cf03998281638115db867fbb3df0088ef3afbe39076cca394713c5f6",
+        "V2\\materiales\\transport_multicomponent_native.py": "c09ef5e4a01199926d854e1a1c6a6fe94abd607834efb156e7619d5352f359dc",
+        "V2\\materiales\\transport_native.py": "87853760cd078be99c94678bff3117fb90fd2cadc8fb8bb4f2615ed96adbc581",
+        "validation\\cold_dependencies.py": "a05c7973a023c71d03354c95ff1ae41edc078f979d9527c6f558cadb8ffa62c8",
+        "validation\\cold_streamed_jacobian.py": "b605f7e4fc8be7dd48bb01359c02531f9e128ce5f583627ac4d40a35bc03d546",
+        "validation\\cold_transport_candidates.py": "1d1bdff1ebf0a5c1f3c27e66d8bc56fda521ae1f0b1e91bb2c34671a58e7f5d7",
+        "validation\\analyze_cold_strategies.py": "4a54231c80fbbc7d580ba2d6c6397003cb3c9f11145f07bd7dca53ce043b1e78",
+        "V2\\materiales\\collision_integrals_mm.json": "d615ab6a957338231f55307f50062572a87dc126b41c415b0a7276eb30e2c145"
+      },
+      "kernel_sha256": {
+        "baseline": "production",
+        "thermal": "672f52298ee3fec12ecdffa2201c0833d446056499e989fd476abb6b2435f56d",
+        "powers": "cad6ee9c9f4e8176875415302c10d4b7660072dca116209e2ce573128f4bee0a",
+        "serial": "002852c7d2f1d951139654bc3c2f4465f7d3607707b384319fbac5feaf71a68b"
+      },
+      "expected_repetitions": 3,
+      "cases": {
+        "h2_1": {
+          "baseline": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "h2_1",
+                "variant": "baseline",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 6.4049260999963735,
+                "strategy_trace": [],
+                "Finf": 6.763742732171108,
+                "species_sum_error": 6.188383139260623e-13,
+                "mass_flow_error": 2.1501270865725724e-10,
+                "final_weighted_norm": 0.00012219229564118278
+              }
+            ],
+            "n": 3,
+            "profiles": {
+              "0": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              },
+              "1": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              },
+              "2": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              6.3029341000001295,
+              6.494778000000224,
+              6.615324699996563
+            ],
+            "median_s": 6.494778000000224,
+            "quartiles_s": [
+              6.398856050000177,
+              6.555051349998394
+            ],
+            "reduction_percent": 0.0,
+            "paired_ratio_ci95": [
+              1.0,
+              1.0
+            ]
+          },
+          "dependencies": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "h2_1",
+                "variant": "dependencies",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 6.10042919999978,
+                "strategy_trace": [
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 27,
+                    "thermal_states": 54,
+                    "chemistry_states": 1458,
+                    "skipped_velocity_states": 27
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 27,
+                    "thermal_states": 54,
+                    "chemistry_states": 1458,
+                    "skipped_velocity_states": 27
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 27,
+                    "thermal_states": 54,
+                    "chemistry_states": 1458,
+                    "skipped_velocity_states": 27
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 27,
+                    "thermal_states": 54,
+                    "chemistry_states": 1458,
+                    "skipped_velocity_states": 27
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 27,
+                    "thermal_states": 54,
+                    "chemistry_states": 1458,
+                    "skipped_velocity_states": 27
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 27,
+                    "thermal_states": 54,
+                    "chemistry_states": 1458,
+                    "skipped_velocity_states": 27
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 27,
+                    "thermal_states": 54,
+                    "chemistry_states": 1458,
+                    "skipped_velocity_states": 27
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 27,
+                    "thermal_states": 54,
+                    "chemistry_states": 1458,
+                    "skipped_velocity_states": 27
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 27,
+                    "thermal_states": 54,
+                    "chemistry_states": 1458,
+                    "skipped_velocity_states": 27
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 27,
+                    "thermal_states": 54,
+                    "chemistry_states": 1458,
+                    "skipped_velocity_states": 27
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 27,
+                    "thermal_states": 54,
+                    "chemistry_states": 1458,
+                    "skipped_velocity_states": 27
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 35,
+                    "thermal_states": 70,
+                    "chemistry_states": 1890,
+                    "skipped_velocity_states": 35
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 35,
+                    "thermal_states": 70,
+                    "chemistry_states": 1890,
+                    "skipped_velocity_states": 35
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 35,
+                    "thermal_states": 70,
+                    "chemistry_states": 1890,
+                    "skipped_velocity_states": 35
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 35,
+                    "thermal_states": 70,
+                    "chemistry_states": 1890,
+                    "skipped_velocity_states": 35
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 43,
+                    "thermal_states": 86,
+                    "chemistry_states": 2322,
+                    "skipped_velocity_states": 43
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 43,
+                    "thermal_states": 86,
+                    "chemistry_states": 2322,
+                    "skipped_velocity_states": 43
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 52,
+                    "thermal_states": 104,
+                    "chemistry_states": 2808,
+                    "skipped_velocity_states": 52
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 52,
+                    "thermal_states": 104,
+                    "chemistry_states": 2808,
+                    "skipped_velocity_states": 52
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 63,
+                    "thermal_states": 126,
+                    "chemistry_states": 3402,
+                    "skipped_velocity_states": 63
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 77,
+                    "thermal_states": 154,
+                    "chemistry_states": 4158,
+                    "skipped_velocity_states": 77
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 97,
+                    "thermal_states": 194,
+                    "chemistry_states": 5238,
+                    "skipped_velocity_states": 97
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 108,
+                    "thermal_states": 216,
+                    "chemistry_states": 5832,
+                    "skipped_velocity_states": 108
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 108,
+                    "thermal_states": 216,
+                    "chemistry_states": 5832,
+                    "skipped_velocity_states": 108
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 108,
+                    "thermal_states": 216,
+                    "chemistry_states": 5832,
+                    "skipped_velocity_states": 108
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 108,
+                    "thermal_states": 216,
+                    "chemistry_states": 5832,
+                    "skipped_velocity_states": 108
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 108,
+                    "thermal_states": 216,
+                    "chemistry_states": 5832,
+                    "skipped_velocity_states": 108
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 108,
+                    "thermal_states": 216,
+                    "chemistry_states": 5832,
+                    "skipped_velocity_states": 108
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 198,
+                    "thermal_states": 396,
+                    "chemistry_states": 10692,
+                    "skipped_velocity_states": 198
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 198,
+                    "thermal_states": 396,
+                    "chemistry_states": 10692,
+                    "skipped_velocity_states": 198
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 198,
+                    "thermal_states": 396,
+                    "chemistry_states": 10692,
+                    "skipped_velocity_states": 198
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 201,
+                    "thermal_states": 402,
+                    "chemistry_states": 10854,
+                    "skipped_velocity_states": 201
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 203,
+                    "thermal_states": 406,
+                    "chemistry_states": 10962,
+                    "skipped_velocity_states": 203
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 205,
+                    "thermal_states": 410,
+                    "chemistry_states": 11070,
+                    "skipped_velocity_states": 205
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 207,
+                    "thermal_states": 414,
+                    "chemistry_states": 11178,
+                    "skipped_velocity_states": 207
+                  }
+                ],
+                "Finf": 6.763742732171108,
+                "species_sum_error": 6.188383139260623e-13,
+                "mass_flow_error": 2.1501270865725724e-10,
+                "final_weighted_norm": 0.00012219229564118278
+              }
+            ],
+            "n": 3,
+            "profiles": {
+              "0": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              },
+              "1": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              },
+              "2": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              6.131132399998023,
+              6.5939521999971475,
+              6.556447599999956
+            ],
+            "median_s": 6.556447599999956,
+            "quartiles_s": [
+              6.3437899999989895,
+              6.575199899998552
+            ],
+            "reduction_percent": -0.949525911428073,
+            "paired_ratio_ci95": [
+              0.9727425834894732,
+              1.0152698367822457
+            ]
+          },
+          "transport-action-shared": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "h2_1",
+                "variant": "transport-action-shared",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 42.49976450000395,
+                "strategy_trace": [
+                  {
+                    "kind": "transport_action",
+                    "faces": 107,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 107,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 107,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 107,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 107,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 107,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 107,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 197,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 197,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 197,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 197,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 197,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 200,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 200,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 200,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 202,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 202,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 202,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 204,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 204,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 204,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 206,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 206,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 206,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 206,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 206,
+                    "shared_factorization": true
+                  }
+                ],
+                "Finf": 6.7637374883509676,
+                "species_sum_error": 6.188383139260623e-13,
+                "mass_flow_error": 2.1501270865725724e-10,
+                "final_weighted_norm": 0.00012219229564118278
+              }
+            ],
+            "n": 3,
+            "profiles": {
+              "0": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              },
+              "1": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              },
+              "2": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              6.799820100000943,
+              6.543022799996834,
+              6.901319899996452
+            ],
+            "median_s": 6.799820100000943,
+            "quartiles_s": [
+              6.671421449998888,
+              6.850569999998697
+            ],
+            "reduction_percent": -4.696728664177718,
+            "paired_ratio_ci95": [
+              1.0074282446600342,
+              1.0788340782431476
+            ]
+          }
+        },
+        "h2_10": {
+          "baseline": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "h2_10",
+                "variant": "baseline",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 54.922737799999595,
+                "strategy_trace": [],
+                "Finf": 0.3585920419101835,
+                "species_sum_error": 3.8899994336816235e-12,
+                "mass_flow_error": 2.0140555195537962e-12,
+                "final_weighted_norm": 7.101137262384788e-06
+              }
+            ],
+            "n": 3,
+            "profiles": {
+              "0": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              },
+              "1": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              },
+              "2": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              58.753040800002054,
+              62.321081900001445,
+              65.49961099999928
+            ],
+            "median_s": 62.321081900001445,
+            "quartiles_s": [
+              60.53706135000175,
+              63.91034645000036
+            ],
+            "reduction_percent": 0.0,
+            "paired_ratio_ci95": [
+              1.0,
+              1.0
+            ]
+          },
+          "dependencies": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "h2_10",
+                "variant": "dependencies",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 52.89060410000093,
+                "strategy_trace": [
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 9,
+                    "thermal_states": 18,
+                    "chemistry_states": 486,
+                    "skipped_velocity_states": 9
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 17,
+                    "thermal_states": 34,
+                    "chemistry_states": 918,
+                    "skipped_velocity_states": 17
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 25,
+                    "thermal_states": 50,
+                    "chemistry_states": 1350,
+                    "skipped_velocity_states": 25
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 25,
+                    "thermal_states": 50,
+                    "chemistry_states": 1350,
+                    "skipped_velocity_states": 25
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 25,
+                    "thermal_states": 50,
+                    "chemistry_states": 1350,
+                    "skipped_velocity_states": 25
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 25,
+                    "thermal_states": 50,
+                    "chemistry_states": 1350,
+                    "skipped_velocity_states": 25
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 25,
+                    "thermal_states": 50,
+                    "chemistry_states": 1350,
+                    "skipped_velocity_states": 25
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 25,
+                    "thermal_states": 50,
+                    "chemistry_states": 1350,
+                    "skipped_velocity_states": 25
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 25,
+                    "thermal_states": 50,
+                    "chemistry_states": 1350,
+                    "skipped_velocity_states": 25
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 25,
+                    "thermal_states": 50,
+                    "chemistry_states": 1350,
+                    "skipped_velocity_states": 25
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 25,
+                    "thermal_states": 50,
+                    "chemistry_states": 1350,
+                    "skipped_velocity_states": 25
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 25,
+                    "thermal_states": 50,
+                    "chemistry_states": 1350,
+                    "skipped_velocity_states": 25
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 25,
+                    "thermal_states": 50,
+                    "chemistry_states": 1350,
+                    "skipped_velocity_states": 25
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 25,
+                    "thermal_states": 50,
+                    "chemistry_states": 1350,
+                    "skipped_velocity_states": 25
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 25,
+                    "thermal_states": 50,
+                    "chemistry_states": 1350,
+                    "skipped_velocity_states": 25
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 25,
+                    "thermal_states": 50,
+                    "chemistry_states": 1350,
+                    "skipped_velocity_states": 25
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 25,
+                    "thermal_states": 50,
+                    "chemistry_states": 1350,
+                    "skipped_velocity_states": 25
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 25,
+                    "thermal_states": 50,
+                    "chemistry_states": 1350,
+                    "skipped_velocity_states": 25
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 25,
+                    "thermal_states": 50,
+                    "chemistry_states": 1350,
+                    "skipped_velocity_states": 25
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 25,
+                    "thermal_states": 50,
+                    "chemistry_states": 1350,
+                    "skipped_velocity_states": 25
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 25,
+                    "thermal_states": 50,
+                    "chemistry_states": 1350,
+                    "skipped_velocity_states": 25
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 25,
+                    "thermal_states": 50,
+                    "chemistry_states": 1350,
+                    "skipped_velocity_states": 25
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 25,
+                    "thermal_states": 50,
+                    "chemistry_states": 1350,
+                    "skipped_velocity_states": 25
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 39,
+                    "thermal_states": 78,
+                    "chemistry_states": 2106,
+                    "skipped_velocity_states": 39
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 39,
+                    "thermal_states": 78,
+                    "chemistry_states": 2106,
+                    "skipped_velocity_states": 39
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 39,
+                    "thermal_states": 78,
+                    "chemistry_states": 2106,
+                    "skipped_velocity_states": 39
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 39,
+                    "thermal_states": 78,
+                    "chemistry_states": 2106,
+                    "skipped_velocity_states": 39
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 39,
+                    "thermal_states": 78,
+                    "chemistry_states": 2106,
+                    "skipped_velocity_states": 39
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 39,
+                    "thermal_states": 78,
+                    "chemistry_states": 2106,
+                    "skipped_velocity_states": 39
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 39,
+                    "thermal_states": 78,
+                    "chemistry_states": 2106,
+                    "skipped_velocity_states": 39
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 39,
+                    "thermal_states": 78,
+                    "chemistry_states": 2106,
+                    "skipped_velocity_states": 39
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 39,
+                    "thermal_states": 78,
+                    "chemistry_states": 2106,
+                    "skipped_velocity_states": 39
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 39,
+                    "thermal_states": 78,
+                    "chemistry_states": 2106,
+                    "skipped_velocity_states": 39
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 39,
+                    "thermal_states": 78,
+                    "chemistry_states": 2106,
+                    "skipped_velocity_states": 39
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 39,
+                    "thermal_states": 78,
+                    "chemistry_states": 2106,
+                    "skipped_velocity_states": 39
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 39,
+                    "thermal_states": 78,
+                    "chemistry_states": 2106,
+                    "skipped_velocity_states": 39
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 39,
+                    "thermal_states": 78,
+                    "chemistry_states": 2106,
+                    "skipped_velocity_states": 39
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 39,
+                    "thermal_states": 78,
+                    "chemistry_states": 2106,
+                    "skipped_velocity_states": 39
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 39,
+                    "thermal_states": 78,
+                    "chemistry_states": 2106,
+                    "skipped_velocity_states": 39
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 39,
+                    "thermal_states": 78,
+                    "chemistry_states": 2106,
+                    "skipped_velocity_states": 39
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 39,
+                    "thermal_states": 78,
+                    "chemistry_states": 2106,
+                    "skipped_velocity_states": 39
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 63,
+                    "thermal_states": 126,
+                    "chemistry_states": 3402,
+                    "skipped_velocity_states": 63
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 63,
+                    "thermal_states": 126,
+                    "chemistry_states": 3402,
+                    "skipped_velocity_states": 63
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 63,
+                    "thermal_states": 126,
+                    "chemistry_states": 3402,
+                    "skipped_velocity_states": 63
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 63,
+                    "thermal_states": 126,
+                    "chemistry_states": 3402,
+                    "skipped_velocity_states": 63
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 63,
+                    "thermal_states": 126,
+                    "chemistry_states": 3402,
+                    "skipped_velocity_states": 63
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 63,
+                    "thermal_states": 126,
+                    "chemistry_states": 3402,
+                    "skipped_velocity_states": 63
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 63,
+                    "thermal_states": 126,
+                    "chemistry_states": 3402,
+                    "skipped_velocity_states": 63
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 63,
+                    "thermal_states": 126,
+                    "chemistry_states": 3402,
+                    "skipped_velocity_states": 63
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 63,
+                    "thermal_states": 126,
+                    "chemistry_states": 3402,
+                    "skipped_velocity_states": 63
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 63,
+                    "thermal_states": 126,
+                    "chemistry_states": 3402,
+                    "skipped_velocity_states": 63
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 63,
+                    "thermal_states": 126,
+                    "chemistry_states": 3402,
+                    "skipped_velocity_states": 63
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 63,
+                    "thermal_states": 126,
+                    "chemistry_states": 3402,
+                    "skipped_velocity_states": 63
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 63,
+                    "thermal_states": 126,
+                    "chemistry_states": 3402,
+                    "skipped_velocity_states": 63
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 63,
+                    "thermal_states": 126,
+                    "chemistry_states": 3402,
+                    "skipped_velocity_states": 63
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 63,
+                    "thermal_states": 126,
+                    "chemistry_states": 3402,
+                    "skipped_velocity_states": 63
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 63,
+                    "thermal_states": 126,
+                    "chemistry_states": 3402,
+                    "skipped_velocity_states": 63
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 63,
+                    "thermal_states": 126,
+                    "chemistry_states": 3402,
+                    "skipped_velocity_states": 63
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 63,
+                    "thermal_states": 126,
+                    "chemistry_states": 3402,
+                    "skipped_velocity_states": 63
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 63,
+                    "thermal_states": 126,
+                    "chemistry_states": 3402,
+                    "skipped_velocity_states": 63
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 86,
+                    "thermal_states": 172,
+                    "chemistry_states": 4644,
+                    "skipped_velocity_states": 86
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 86,
+                    "thermal_states": 172,
+                    "chemistry_states": 4644,
+                    "skipped_velocity_states": 86
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 86,
+                    "thermal_states": 172,
+                    "chemistry_states": 4644,
+                    "skipped_velocity_states": 86
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 86,
+                    "thermal_states": 172,
+                    "chemistry_states": 4644,
+                    "skipped_velocity_states": 86
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 86,
+                    "thermal_states": 172,
+                    "chemistry_states": 4644,
+                    "skipped_velocity_states": 86
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 86,
+                    "thermal_states": 172,
+                    "chemistry_states": 4644,
+                    "skipped_velocity_states": 86
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 86,
+                    "thermal_states": 172,
+                    "chemistry_states": 4644,
+                    "skipped_velocity_states": 86
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 86,
+                    "thermal_states": 172,
+                    "chemistry_states": 4644,
+                    "skipped_velocity_states": 86
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 86,
+                    "thermal_states": 172,
+                    "chemistry_states": 4644,
+                    "skipped_velocity_states": 86
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 86,
+                    "thermal_states": 172,
+                    "chemistry_states": 4644,
+                    "skipped_velocity_states": 86
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 86,
+                    "thermal_states": 172,
+                    "chemistry_states": 4644,
+                    "skipped_velocity_states": 86
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 86,
+                    "thermal_states": 172,
+                    "chemistry_states": 4644,
+                    "skipped_velocity_states": 86
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 86,
+                    "thermal_states": 172,
+                    "chemistry_states": 4644,
+                    "skipped_velocity_states": 86
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 86,
+                    "thermal_states": 172,
+                    "chemistry_states": 4644,
+                    "skipped_velocity_states": 86
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 86,
+                    "thermal_states": 172,
+                    "chemistry_states": 4644,
+                    "skipped_velocity_states": 86
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 86,
+                    "thermal_states": 172,
+                    "chemistry_states": 4644,
+                    "skipped_velocity_states": 86
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 86,
+                    "thermal_states": 172,
+                    "chemistry_states": 4644,
+                    "skipped_velocity_states": 86
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 86,
+                    "thermal_states": 172,
+                    "chemistry_states": 4644,
+                    "skipped_velocity_states": 86
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 86,
+                    "thermal_states": 172,
+                    "chemistry_states": 4644,
+                    "skipped_velocity_states": 86
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 105,
+                    "thermal_states": 210,
+                    "chemistry_states": 5670,
+                    "skipped_velocity_states": 105
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 105,
+                    "thermal_states": 210,
+                    "chemistry_states": 5670,
+                    "skipped_velocity_states": 105
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 105,
+                    "thermal_states": 210,
+                    "chemistry_states": 5670,
+                    "skipped_velocity_states": 105
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 105,
+                    "thermal_states": 210,
+                    "chemistry_states": 5670,
+                    "skipped_velocity_states": 105
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 105,
+                    "thermal_states": 210,
+                    "chemistry_states": 5670,
+                    "skipped_velocity_states": 105
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 105,
+                    "thermal_states": 210,
+                    "chemistry_states": 5670,
+                    "skipped_velocity_states": 105
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 105,
+                    "thermal_states": 210,
+                    "chemistry_states": 5670,
+                    "skipped_velocity_states": 105
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 105,
+                    "thermal_states": 210,
+                    "chemistry_states": 5670,
+                    "skipped_velocity_states": 105
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 105,
+                    "thermal_states": 210,
+                    "chemistry_states": 5670,
+                    "skipped_velocity_states": 105
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 105,
+                    "thermal_states": 210,
+                    "chemistry_states": 5670,
+                    "skipped_velocity_states": 105
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 105,
+                    "thermal_states": 210,
+                    "chemistry_states": 5670,
+                    "skipped_velocity_states": 105
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 105,
+                    "thermal_states": 210,
+                    "chemistry_states": 5670,
+                    "skipped_velocity_states": 105
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 105,
+                    "thermal_states": 210,
+                    "chemistry_states": 5670,
+                    "skipped_velocity_states": 105
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 105,
+                    "thermal_states": 210,
+                    "chemistry_states": 5670,
+                    "skipped_velocity_states": 105
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 105,
+                    "thermal_states": 210,
+                    "chemistry_states": 5670,
+                    "skipped_velocity_states": 105
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 105,
+                    "thermal_states": 210,
+                    "chemistry_states": 5670,
+                    "skipped_velocity_states": 105
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 105,
+                    "thermal_states": 210,
+                    "chemistry_states": 5670,
+                    "skipped_velocity_states": 105
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 105,
+                    "thermal_states": 210,
+                    "chemistry_states": 5670,
+                    "skipped_velocity_states": 105
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 105,
+                    "thermal_states": 210,
+                    "chemistry_states": 5670,
+                    "skipped_velocity_states": 105
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 130,
+                    "thermal_states": 260,
+                    "chemistry_states": 7020,
+                    "skipped_velocity_states": 130
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 130,
+                    "thermal_states": 260,
+                    "chemistry_states": 7020,
+                    "skipped_velocity_states": 130
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 130,
+                    "thermal_states": 260,
+                    "chemistry_states": 7020,
+                    "skipped_velocity_states": 130
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 130,
+                    "thermal_states": 260,
+                    "chemistry_states": 7020,
+                    "skipped_velocity_states": 130
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 130,
+                    "thermal_states": 260,
+                    "chemistry_states": 7020,
+                    "skipped_velocity_states": 130
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 130,
+                    "thermal_states": 260,
+                    "chemistry_states": 7020,
+                    "skipped_velocity_states": 130
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 130,
+                    "thermal_states": 260,
+                    "chemistry_states": 7020,
+                    "skipped_velocity_states": 130
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 130,
+                    "thermal_states": 260,
+                    "chemistry_states": 7020,
+                    "skipped_velocity_states": 130
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 130,
+                    "thermal_states": 260,
+                    "chemistry_states": 7020,
+                    "skipped_velocity_states": 130
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 130,
+                    "thermal_states": 260,
+                    "chemistry_states": 7020,
+                    "skipped_velocity_states": 130
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 130,
+                    "thermal_states": 260,
+                    "chemistry_states": 7020,
+                    "skipped_velocity_states": 130
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 130,
+                    "thermal_states": 260,
+                    "chemistry_states": 7020,
+                    "skipped_velocity_states": 130
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 130,
+                    "thermal_states": 260,
+                    "chemistry_states": 7020,
+                    "skipped_velocity_states": 130
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 130,
+                    "thermal_states": 260,
+                    "chemistry_states": 7020,
+                    "skipped_velocity_states": 130
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 130,
+                    "thermal_states": 260,
+                    "chemistry_states": 7020,
+                    "skipped_velocity_states": 130
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 130,
+                    "thermal_states": 260,
+                    "chemistry_states": 7020,
+                    "skipped_velocity_states": 130
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 130,
+                    "thermal_states": 260,
+                    "chemistry_states": 7020,
+                    "skipped_velocity_states": 130
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 144,
+                    "thermal_states": 288,
+                    "chemistry_states": 7776,
+                    "skipped_velocity_states": 144
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 144,
+                    "thermal_states": 288,
+                    "chemistry_states": 7776,
+                    "skipped_velocity_states": 144
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 144,
+                    "thermal_states": 288,
+                    "chemistry_states": 7776,
+                    "skipped_velocity_states": 144
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 162,
+                    "thermal_states": 324,
+                    "chemistry_states": 8748,
+                    "skipped_velocity_states": 162
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 162,
+                    "thermal_states": 324,
+                    "chemistry_states": 8748,
+                    "skipped_velocity_states": 162
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 162,
+                    "thermal_states": 324,
+                    "chemistry_states": 8748,
+                    "skipped_velocity_states": 162
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 184,
+                    "thermal_states": 368,
+                    "chemistry_states": 9936,
+                    "skipped_velocity_states": 184
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 218,
+                    "thermal_states": 436,
+                    "chemistry_states": 11772,
+                    "skipped_velocity_states": 218
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 218,
+                    "thermal_states": 436,
+                    "chemistry_states": 11772,
+                    "skipped_velocity_states": 218
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 264,
+                    "thermal_states": 528,
+                    "chemistry_states": 14256,
+                    "skipped_velocity_states": 264
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 264,
+                    "thermal_states": 528,
+                    "chemistry_states": 14256,
+                    "skipped_velocity_states": 264
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 317,
+                    "thermal_states": 634,
+                    "chemistry_states": 17118,
+                    "skipped_velocity_states": 317
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 317,
+                    "thermal_states": 634,
+                    "chemistry_states": 17118,
+                    "skipped_velocity_states": 317
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 317,
+                    "thermal_states": 634,
+                    "chemistry_states": 17118,
+                    "skipped_velocity_states": 317
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 317,
+                    "thermal_states": 634,
+                    "chemistry_states": 17118,
+                    "skipped_velocity_states": 317
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 381,
+                    "thermal_states": 762,
+                    "chemistry_states": 20574,
+                    "skipped_velocity_states": 381
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 381,
+                    "thermal_states": 762,
+                    "chemistry_states": 20574,
+                    "skipped_velocity_states": 381
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 381,
+                    "thermal_states": 762,
+                    "chemistry_states": 20574,
+                    "skipped_velocity_states": 381
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 443,
+                    "thermal_states": 886,
+                    "chemistry_states": 23922,
+                    "skipped_velocity_states": 443
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 443,
+                    "thermal_states": 886,
+                    "chemistry_states": 23922,
+                    "skipped_velocity_states": 443
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 443,
+                    "thermal_states": 886,
+                    "chemistry_states": 23922,
+                    "skipped_velocity_states": 443
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 443,
+                    "thermal_states": 886,
+                    "chemistry_states": 23922,
+                    "skipped_velocity_states": 443
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 443,
+                    "thermal_states": 886,
+                    "chemistry_states": 23922,
+                    "skipped_velocity_states": 443
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 443,
+                    "thermal_states": 886,
+                    "chemistry_states": 23922,
+                    "skipped_velocity_states": 443
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 443,
+                    "thermal_states": 886,
+                    "chemistry_states": 23922,
+                    "skipped_velocity_states": 443
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 443,
+                    "thermal_states": 886,
+                    "chemistry_states": 23922,
+                    "skipped_velocity_states": 443
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 443,
+                    "thermal_states": 886,
+                    "chemistry_states": 23922,
+                    "skipped_velocity_states": 443
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 807,
+                    "thermal_states": 1614,
+                    "chemistry_states": 43578,
+                    "skipped_velocity_states": 807
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 807,
+                    "thermal_states": 1614,
+                    "chemistry_states": 43578,
+                    "skipped_velocity_states": 807
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 807,
+                    "thermal_states": 1614,
+                    "chemistry_states": 43578,
+                    "skipped_velocity_states": 807
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 807,
+                    "thermal_states": 1614,
+                    "chemistry_states": 43578,
+                    "skipped_velocity_states": 807
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 841,
+                    "thermal_states": 1682,
+                    "chemistry_states": 45414,
+                    "skipped_velocity_states": 841
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 841,
+                    "thermal_states": 1682,
+                    "chemistry_states": 45414,
+                    "skipped_velocity_states": 841
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 841,
+                    "thermal_states": 1682,
+                    "chemistry_states": 45414,
+                    "skipped_velocity_states": 841
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 841,
+                    "thermal_states": 1682,
+                    "chemistry_states": 45414,
+                    "skipped_velocity_states": 841
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 844,
+                    "thermal_states": 1688,
+                    "chemistry_states": 45576,
+                    "skipped_velocity_states": 844
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 844,
+                    "thermal_states": 1688,
+                    "chemistry_states": 45576,
+                    "skipped_velocity_states": 844
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 846,
+                    "thermal_states": 1692,
+                    "chemistry_states": 45684,
+                    "skipped_velocity_states": 846
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 848,
+                    "thermal_states": 1696,
+                    "chemistry_states": 45792,
+                    "skipped_velocity_states": 848
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 850,
+                    "thermal_states": 1700,
+                    "chemistry_states": 45900,
+                    "skipped_velocity_states": 850
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 852,
+                    "thermal_states": 1704,
+                    "chemistry_states": 46008,
+                    "skipped_velocity_states": 852
+                  },
+                  {
+                    "kind": "dependencies",
+                    "nodes": 854,
+                    "thermal_states": 1708,
+                    "chemistry_states": 46116,
+                    "skipped_velocity_states": 854
+                  }
+                ],
+                "Finf": 0.3585920419101835,
+                "species_sum_error": 3.8899994336816235e-12,
+                "mass_flow_error": 2.0140555195537962e-12,
+                "final_weighted_norm": 7.101137262384788e-06
+              }
+            ],
+            "n": 3,
+            "profiles": {
+              "0": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              },
+              "1": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              },
+              "2": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              54.65136010000424,
+              56.67713930000173,
+              57.874835099995835
+            ],
+            "median_s": 56.67713930000173,
+            "quartiles_s": [
+              55.66424970000298,
+              57.27598719999878
+            ],
+            "reduction_percent": 9.056233345011277,
+            "paired_ratio_ci95": [
+              0.8835905162856078,
+              0.9301877716600215
+            ]
+          },
+          "transport-action-shared": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "h2_10",
+                "variant": "transport-action-shared",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 48.73076079999737,
+                "strategy_trace": [
+                  {
+                    "kind": "transport_action",
+                    "faces": 442,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 442,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 442,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 442,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 442,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 442,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 442,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 442,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 442,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 806,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 806,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 806,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 806,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 806,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 806,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 840,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 840,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 840,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 840,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 840,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 840,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 843,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 843,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 843,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 843,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 845,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 845,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 845,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 847,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 847,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 847,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 849,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 849,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 849,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 851,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 851,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 851,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 853,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 853,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 853,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 853,
+                    "shared_factorization": true
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 853,
+                    "shared_factorization": true
+                  }
+                ],
+                "Finf": 0.3585923713003498,
+                "species_sum_error": 3.8899994336816235e-12,
+                "mass_flow_error": 2.0140555195537962e-12,
+                "final_weighted_norm": 7.101137262384788e-06
+              }
+            ],
+            "n": 3,
+            "profiles": {
+              "0": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              },
+              "1": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              },
+              "2": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              60.287295100002666,
+              61.091372200004116,
+              62.15390930000285
+            ],
+            "median_s": 61.091372200004116,
+            "quartiles_s": [
+              60.68933365000339,
+              61.622640750003484
+            ],
+            "reduction_percent": 1.9731841336940947,
+            "paired_ratio_ci95": [
+              0.9489202813739388,
+              1.0261136152122454
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "limitations": [
+    "Cold flame, warmed compiler; no seed reuse.",
+    "These are within-V2 ablations, not new Cantera timings.",
+    "One repetition gives screening evidence, not a confidence interval.",
+    "The two-grid variant is a prototype, not a complete recursive FAS solver.",
+    "Final residual and weighted norm do not prove mesh/domain independence."
+  ]
+}

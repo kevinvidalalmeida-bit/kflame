@@ -1,0 +1,684 @@
+{
+  "campaigns": [
+    {
+      "directory": "resultados\\cold_strategies\\20260907_073004",
+      "raw_sha256": "003f11af87b06a8b26109c61046ad32284db5a6fdb6ed9a97b17ba598289622d",
+      "source_sha256": {
+        "validation\\benchmark_cold_strategies.py": "fcbc1c53a23ef37c49dcecb8c90a01092857f0f8c458042a0da404b050453b92",
+        "validation\\cold_strategy_kernels.py": "defaef41c2734fa44c5de2aa49d485b7856f61d378304db1917452dc476f425f",
+        "V2\\equations.py": "bdd6a38f842207c163d7eec4a2ff135eb4f0cac67c886989ecff1d3d850e4e35",
+        "V2\\solver.py": "a05d7a2178e8c059596e3d151e05466ffd012eb52440197a4c4157267196af9e",
+        "V2\\materiales\\species_backend_native.py": "0c6299ed614e68d420d1d970ea69636d2f7c4ba30cad3ee4df4e8be0e7b97da5",
+        "V2\\materiales\\kinetics_native.py": "520908e5408b0fe1828fa94be0ea629016eb5fc3428f7048695067ffc9df45e3",
+        "validation\\cold_mesh_budget.py": "9f25bb4dfe16516399da47cb2e908b57ae074c8b8bf6b048ba478cc52061c5be",
+        "validation\\cold_two_grid.py": "ff1492f35dd5634d7454dbb98810fa561482331c77c7813fffae4ce0d9dad687",
+        "V2\\analyze_soret_validation.py": "a9648d99265dfd33a884cf844cc81685e8c17697e1f48e30801efd3f751ad5f2",
+        "V2\\audit_soret_solver_trace.py": "25c24fe88d8be9276989912a54fc9175814ec2e08000f6d9bfcdc93f9c7d2b87",
+        "V2\\benchmark_soret_native.py": "bab93ded7ccd7927e91ddb113c07fcb2ef22a541712da0b09d48bd9f8293d369",
+        "V2\\config.py": "b17d7c363f5619499888aa9953d8b043d4096f39dad2b6aa3a4f4a366d062c35",
+        "V2\\plot_saved_comparison.py": "c765e343a6f2b2f0f1d390d2e17809c9fac6def32fe2c0e1d974ecf54853a1df",
+        "V2\\problem.py": "bf5bd8d6d9e71ffa8463ef8914b3edcfc69788f8cfe344ddcc406fb51b0ffaa4",
+        "V2\\refine_soret_validation.py": "ccf3b427ea7526c69d80b3f6eba0f41021369fa39b282c5531fd9cf9f5038e76",
+        "V2\\run_saved_comparison.py": "cc7747863e54a70ffc2a77add3755a749bbdbc6e08b0603a072e4fc5458de685",
+        "V2\\species_backend.py": "daeacfd193afb942ba9ed555c915074809ad62d5c6a05426fd0bd8331416e62f",
+        "V2\\state.py": "7f151533c07d5332fac60bcaeeb8d27c412743559f2dfe08ed4fcd2cc71aab00",
+        "V2\\trace_cantera_soret.py": "1f1e9932787b70bb9243bbf6fd72797ef1baba0b8aeb2c434e7dee1c252cd3fb",
+        "V2\\materiales\\collision_integrals_native.py": "168ac1d16fd1a85c0417750761f5b08650f597f8062d4f4fb7f07a1da557f959",
+        "V2\\materiales\\mechanism_data.py": "bce21a5f71d484798006ca75fc565b9784edee7e8eb1e40796c4c6b074a2f2f0",
+        "V2\\materiales\\thermo_native.py": "6afbbe05bc1404b8ca12cd122e88da2d3b72a6a30011dccfabbe0e7fbea584f0",
+        "V2\\materiales\\transport_multicomponent_kernels.py": "537844f3cf03998281638115db867fbb3df0088ef3afbe39076cca394713c5f6",
+        "V2\\materiales\\transport_multicomponent_native.py": "c09ef5e4a01199926d854e1a1c6a6fe94abd607834efb156e7619d5352f359dc",
+        "V2\\materiales\\transport_native.py": "87853760cd078be99c94678bff3117fb90fd2cadc8fb8bb4f2615ed96adbc581",
+        "validation\\cold_blas.py": "377597b34bcdeada1cdf8507759cbd4f43cf61117567320f203a169bb3f1a7c2",
+        "validation\\cold_compiled_lu.py": "3d6e74487efb91c01e6ab7099a68554ba72640509a7975b9ebbee9042a236127",
+        "validation\\cold_dependencies.py": "a05c7973a023c71d03354c95ff1ae41edc078f979d9527c6f558cadb8ffa62c8",
+        "validation\\cold_exact_residual.py": "658b3d8a57f6afabd13ddf871546c0b7ef320079f62d35c4760b3fdb00beb44a",
+        "validation\\cold_generated_chemistry.py": "5d22d9a3662270fffeed7d7161f2834f857b5c7994a2f722b55bcc8307dc47fc",
+        "validation\\cold_nonlinear_blocks.py": "7851f922a0dfaeb40b1e2dda2919d9d77cb4d6de3a3a36e42406e5a997e2e8c7",
+        "validation\\cold_simd.py": "c556317dcde7a4c92691258c2e56396c2436500e6d9068ddd596c1cf9c1890a5",
+        "validation\\cold_streamed_jacobian.py": "b605f7e4fc8be7dd48bb01359c02531f9e128ce5f583627ac4d40a35bc03d546",
+        "validation\\cold_transport_candidates.py": "1d1bdff1ebf0a5c1f3c27e66d8bc56fda521ae1f0b1e91bb2c34671a58e7f5d7",
+        "validation\\analyze_cold_strategies.py": "099271da35b8ee525f29c0348e5fc6b41c2b87a5d172f1ffc72a69331f689ff2",
+        "V2\\materiales\\collision_integrals_mm.json": "d615ab6a957338231f55307f50062572a87dc126b41c415b0a7276eb30e2c145"
+      },
+      "kernel_sha256": {
+        "baseline": "production",
+        "simd-nasa": "35b5ea0f6f8049ff05bbb569fefd12e3867ee5c7bd6039b1a39e74d5bfb87dbd"
+      },
+      "expected_repetitions": 1,
+      "cases": {
+        "ch4_1": {
+          "baseline": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "ch4_1",
+                "variant": "baseline",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 5.217986200004816,
+                "strategy_trace": [],
+                "Finf": 1748.5019918150165,
+                "species_sum_error": 1.6909695865763297e-10,
+                "mass_flow_error": 1.2355964163731997e-06,
+                "final_weighted_norm": 0.2040750665815072
+              }
+            ],
+            "n": 1,
+            "profiles": {
+              "0": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              3.962592700001551
+            ],
+            "median_s": 3.962592700001551,
+            "quartiles_s": [
+              3.962592700001551,
+              3.962592700001551
+            ],
+            "reduction_percent": 0.0
+          },
+          "mkl-blocks": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "ch4_1",
+                "variant": "mkl-blocks",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 4.611512899995432,
+                "strategy_trace": [
+                  {
+                    "kind": "mkl_blocks",
+                    "dll": "C:\\Users\\lidia\\OneDrive\\Desktop\\TFM\\resultados\\blas_env_20260907\\Library\\bin\\mkl_rt.2.dll",
+                    "scope": "block GETRF/GETRS only; other BLAS unchanged",
+                    "getrf": 7268,
+                    "getrs": 6926
+                  }
+                ],
+                "Finf": 1748.5017969247128,
+                "species_sum_error": 1.690776407770045e-10,
+                "mass_flow_error": 1.2355974647108218e-06,
+                "final_weighted_norm": 0.20407497870573504
+              }
+            ],
+            "n": 1,
+            "profiles": {
+              "0": {
+                "bitwise_equal": false,
+                "Su_relative": 2.7846613903648176e-12,
+                "E2_T": 4.735185725759459e-13,
+                "E2_qdot": 2.584393259046431e-11,
+                "E2_Y": {
+                  "H2": 7.492940654249531e-12,
+                  "H": 5.379807960965519e-12,
+                  "O": 5.914673779622149e-12,
+                  "O2": 7.51065476728543e-13,
+                  "OH": 1.825570071735391e-12,
+                  "H2O": 1.3844150849788737e-12,
+                  "HO2": 2.0945417249203792e-11,
+                  "H2O2": 5.1139702624560123e-11,
+                  "CH2": 3.690251330198674e-11,
+                  "CH3": 2.6315648721941597e-11,
+                  "CH4": 7.204446866053101e-13,
+                  "CO": 5.283273033839169e-12,
+                  "CO2": 6.487872672125747e-13,
+                  "HCO": 3.253064359273452e-11,
+                  "CH2O": 1.7508500854291602e-11,
+                  "CH3O": 2.1165297746928188e-11,
+                  "CH3OH": 2.2164515644445145e-11,
+                  "C2H2": 2.2778871479728465e-11,
+                  "C2H4": 2.1301719585456754e-11,
+                  "C2H5": 3.0934693575908363e-11,
+                  "C2H6": 2.2225691810363957e-11,
+                  "HCCO": 3.332303759659633e-11,
+                  "CH2CO": 2.1913030019594764e-11,
+                  "NO": 2.8100118834244354e-12,
+                  "N2": 2.3126934202303243e-13,
+                  "C3H8": 2.7545395640037357e-11,
+                  "CH3CHO": 2.3656132870603622e-11
+                },
+                "E2_Y_max": 5.1139702624560123e-11,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              3.92625560000306
+            ],
+            "median_s": 3.92625560000306,
+            "quartiles_s": [
+              3.92625560000306,
+              3.92625560000306
+            ],
+            "reduction_percent": 0.9170031529729727
+          },
+          "simd-nasa": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "ch4_1",
+                "variant": "simd-nasa",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 8.929193200005102,
+                "strategy_trace": [],
+                "Finf": 1748.5019918150165,
+                "species_sum_error": 1.6909695865763297e-10,
+                "mass_flow_error": 1.2355964163731997e-06,
+                "final_weighted_norm": 0.2040750665815072
+              }
+            ],
+            "n": 1,
+            "profiles": {
+              "0": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              3.8335103999997955
+            ],
+            "median_s": 3.8335103999997955,
+            "quartiles_s": [
+              3.8335103999997955,
+              3.8335103999997955
+            ],
+            "reduction_percent": 3.25752126888299
+          }
+        },
+        "h2_1": {
+          "baseline": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "h2_1",
+                "variant": "baseline",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 5.388976100002765,
+                "strategy_trace": [],
+                "Finf": 6.763742732171108,
+                "species_sum_error": 6.188383139260623e-13,
+                "mass_flow_error": 2.1501270865725724e-10,
+                "final_weighted_norm": 0.00012219229564118278
+              }
+            ],
+            "n": 1,
+            "profiles": {
+              "0": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              5.233274099999107
+            ],
+            "median_s": 5.233274099999107,
+            "quartiles_s": [
+              5.233274099999107,
+              5.233274099999107
+            ],
+            "reduction_percent": 0.0
+          },
+          "mkl-blocks": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "h2_1",
+                "variant": "mkl-blocks",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 6.104374999995343,
+                "strategy_trace": [
+                  {
+                    "kind": "mkl_blocks",
+                    "dll": "C:\\Users\\lidia\\OneDrive\\Desktop\\TFM\\resultados\\blas_env_20260907\\Library\\bin\\mkl_rt.2.dll",
+                    "scope": "block GETRF/GETRS only; other BLAS unchanged",
+                    "getrf": 5173,
+                    "getrs": 4965
+                  }
+                ],
+                "Finf": 6.763823725718804,
+                "species_sum_error": 6.836753385641714e-13,
+                "mass_flow_error": 2.150731377609125e-10,
+                "final_weighted_norm": 0.00012192901650878795
+              }
+            ],
+            "n": 1,
+            "profiles": {
+              "0": {
+                "bitwise_equal": false,
+                "Su_relative": 2.353894856810257e-12,
+                "E2_T": 7.468199593269485e-14,
+                "E2_qdot": 1.899626088013027e-11,
+                "E2_Y": {
+                  "H2": 3.4103827082561607e-13,
+                  "H": 1.4401518559763635e-12,
+                  "O": 1.3991098457256686e-12,
+                  "O2": 2.6109046039425233e-13,
+                  "OH": 1.060461448170784e-12,
+                  "H2O": 2.7123401476163876e-13,
+                  "HO2": 1.7479217850758615e-11,
+                  "H2O2": 2.3874230789827058e-11,
+                  "NO": 3.765769247535801e-10,
+                  "N2": 2.104476271579115e-13
+                },
+                "E2_Y_max": 3.765769247535801e-10,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              5.073580399999628
+            ],
+            "median_s": 5.073580399999628,
+            "quartiles_s": [
+              5.073580399999628,
+              5.073580399999628
+            ],
+            "reduction_percent": 3.0515065129018693
+          },
+          "simd-nasa": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "h2_1",
+                "variant": "simd-nasa",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 6.627042599997367,
+                "strategy_trace": [],
+                "Finf": 6.763742732171108,
+                "species_sum_error": 6.188383139260623e-13,
+                "mass_flow_error": 2.1501270865725724e-10,
+                "final_weighted_norm": 0.00012219229564118278
+              }
+            ],
+            "n": 1,
+            "profiles": {
+              "0": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              4.87741110000934
+            ],
+            "median_s": 4.87741110000934,
+            "quartiles_s": [
+              4.87741110000934,
+              4.87741110000934
+            ],
+            "reduction_percent": 6.800006901794586
+          }
+        },
+        "ch4_10": {
+          "baseline": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "ch4_10",
+                "variant": "baseline",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 26.31694520000019,
+                "strategy_trace": [],
+                "Finf": 6246.177389605016,
+                "species_sum_error": 2.2403958688244074e-09,
+                "mass_flow_error": 3.850263492395019e-09,
+                "final_weighted_norm": 0.8089622282504684
+              }
+            ],
+            "n": 1,
+            "profiles": {
+              "0": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              29.066829999996116
+            ],
+            "median_s": 29.066829999996116,
+            "quartiles_s": [
+              29.066829999996116,
+              29.066829999996116
+            ],
+            "reduction_percent": 0.0
+          },
+          "mkl-blocks": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "ch4_10",
+                "variant": "mkl-blocks",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 27.41167050000513,
+                "strategy_trace": [
+                  {
+                    "kind": "mkl_blocks",
+                    "dll": "C:\\Users\\lidia\\OneDrive\\Desktop\\TFM\\resultados\\blas_env_20260907\\Library\\bin\\mkl_rt.2.dll",
+                    "scope": "block GETRF/GETRS only; other BLAS unchanged",
+                    "getrf": 43835,
+                    "getrs": 42910
+                  }
+                ],
+                "Finf": 6246.174065126665,
+                "species_sum_error": 2.2404542665555027e-09,
+                "mass_flow_error": 3.850233008045469e-09,
+                "final_weighted_norm": 0.808962535376888
+              }
+            ],
+            "n": 1,
+            "profiles": {
+              "0": {
+                "bitwise_equal": false,
+                "Su_relative": 2.043598623657772e-11,
+                "E2_T": 9.95859799484544e-13,
+                "E2_qdot": 1.4261109823816237e-10,
+                "E2_Y": {
+                  "H2": 5.301120305880232e-10,
+                  "H": 2.560233347571101e-10,
+                  "O": 4.1124398778702903e-10,
+                  "O2": 1.7577846567880832e-11,
+                  "OH": 1.543166418099812e-10,
+                  "H2O": 1.253058597758981e-10,
+                  "HO2": 8.654283313065043e-11,
+                  "H2O2": 3.1385642742086384e-11,
+                  "CH2": 2.5020838008167486e-10,
+                  "CH3": 1.6166694859220436e-10,
+                  "CH4": 1.0161338892065698e-12,
+                  "CO": 3.545272547405069e-10,
+                  "CO2": 5.441706046725502e-11,
+                  "CH2O": 4.517917882542079e-11,
+                  "CH3OH": 7.854845364472089e-11,
+                  "C2H2": 2.9326793347498875e-10,
+                  "C2H4": 1.2543995807192736e-10,
+                  "C2H5": 1.4635068473749203e-10,
+                  "C2H6": 8.490170617596244e-11,
+                  "HCCO": 2.509120753358048e-10,
+                  "CH2CO": 1.0897855210952803e-10,
+                  "NO": 3.8050531075377914e-10,
+                  "N2": 6.976816540699592e-12,
+                  "C3H8": 7.605122437909795e-11,
+                  "CH3CHO": 1.0991056897279781e-10
+                },
+                "E2_Y_max": 5.301120305880232e-10,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              28.05027870000049
+            ],
+            "median_s": 28.05027870000049,
+            "quartiles_s": [
+              28.05027870000049,
+              28.05027870000049
+            ],
+            "reduction_percent": 3.497289866131814
+          },
+          "simd-nasa": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "ch4_10",
+                "variant": "simd-nasa",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 28.590534200004186,
+                "strategy_trace": [],
+                "Finf": 6246.177389605016,
+                "species_sum_error": 2.2403958688244074e-09,
+                "mass_flow_error": 3.850263492395019e-09,
+                "final_weighted_norm": 0.8089622282504684
+              }
+            ],
+            "n": 1,
+            "profiles": {
+              "0": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              26.747346500007552
+            ],
+            "median_s": 26.747346500007552,
+            "quartiles_s": [
+              26.747346500007552,
+              26.747346500007552
+            ],
+            "reduction_percent": 7.979829585781706
+          }
+        },
+        "h2_10": {
+          "baseline": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "h2_10",
+                "variant": "baseline",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 53.71122150000883,
+                "strategy_trace": [],
+                "Finf": 0.3585920419101835,
+                "species_sum_error": 3.8899994336816235e-12,
+                "mass_flow_error": 2.0140555195537962e-12,
+                "final_weighted_norm": 7.101137262384788e-06
+              }
+            ],
+            "n": 1,
+            "profiles": {
+              "0": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              50.208497700004955
+            ],
+            "median_s": 50.208497700004955,
+            "quartiles_s": [
+              50.208497700004955,
+              50.208497700004955
+            ],
+            "reduction_percent": 0.0
+          },
+          "mkl-blocks": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "h2_10",
+                "variant": "mkl-blocks",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 50.55458340000769,
+                "strategy_trace": [
+                  {
+                    "kind": "mkl_blocks",
+                    "dll": "C:\\Users\\lidia\\OneDrive\\Desktop\\TFM\\resultados\\blas_env_20260907\\Library\\bin\\mkl_rt.2.dll",
+                    "scope": "block GETRF/GETRS only; other BLAS unchanged",
+                    "getrf": 68601,
+                    "getrs": 65615
+                  }
+                ],
+                "Finf": 0.35860126483484517,
+                "species_sum_error": 3.446576357646336e-12,
+                "mass_flow_error": 2.0139032395358244e-12,
+                "final_weighted_norm": 8.899384474071436e-06
+              }
+            ],
+            "n": 1,
+            "profiles": {
+              "0": {
+                "bitwise_equal": false,
+                "Su_relative": 6.972200594645983e-14,
+                "E2_T": 5.779739896555047e-14,
+                "E2_qdot": 3.7478777655726455e-11,
+                "E2_Y": {
+                  "H2": 5.033644617659899e-14,
+                  "H": 2.0513469896847565e-12,
+                  "O": 2.716727966290062e-12,
+                  "O2": 8.921751827077724e-14,
+                  "OH": 2.188490032110151e-12,
+                  "H2O": 1.3388673835173316e-12,
+                  "HO2": 5.178219188363755e-12,
+                  "H2O2": 4.571347363996749e-12,
+                  "NO": 1.37643298329338e-11,
+                  "N2": 1.1599400366476455e-12
+                },
+                "E2_Y_max": 1.37643298329338e-11,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              51.88976079999702
+            ],
+            "median_s": 51.88976079999702,
+            "quartiles_s": [
+              51.88976079999702,
+              51.88976079999702
+            ],
+            "reduction_percent": -3.348562846945935
+          },
+          "simd-nasa": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "h2_10",
+                "variant": "simd-nasa",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 53.22403880000638,
+                "strategy_trace": [],
+                "Finf": 0.3585920419101835,
+                "species_sum_error": 3.8899994336816235e-12,
+                "mass_flow_error": 2.0140555195537962e-12,
+                "final_weighted_norm": 7.101137262384788e-06
+              }
+            ],
+            "n": 1,
+            "profiles": {
+              "0": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              57.792708299995866
+            ],
+            "median_s": 57.792708299995866,
+            "quartiles_s": [
+              57.792708299995866,
+              57.792708299995866
+            ],
+            "reduction_percent": -15.105432242379479
+          }
+        }
+      }
+    }
+  ],
+  "limitations": [
+    "Cold flame, warmed compiler; no seed reuse.",
+    "These are within-V2 ablations, not new Cantera timings.",
+    "One repetition gives screening evidence, not a confidence interval.",
+    "The two-grid variant is a prototype, not a complete recursive FAS solver.",
+    "Final residual and weighted norm do not prove mesh/domain independence."
+  ]
+}

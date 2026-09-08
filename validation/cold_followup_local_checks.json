@@ -1,0 +1,42 @@
+[
+  {
+    "mechanism": "h2o2.yaml",
+    "pressure_atm": 1,
+    "dependency_max_abs": 0.0,
+    "flux_max_abs": 7.99557700837974e-18,
+    "shared_flux_max_abs": 8.001527934293965e-18,
+    "flux_without_soret_max_abs": 8.012036491488135e-18,
+    "flux_mass_sum_max": 1.7618285302889447e-19,
+    "conductivity_max_abs": 0.0
+  },
+  {
+    "mechanism": "h2o2.yaml",
+    "pressure_atm": 10,
+    "dependency_max_abs": 0.0,
+    "flux_max_abs": 6.283118390316366e-18,
+    "shared_flux_max_abs": 6.2845081216001944e-18,
+    "flux_without_soret_max_abs": 6.283141808360153e-18,
+    "flux_mass_sum_max": 3.083199928005653e-19,
+    "conductivity_max_abs": 0.0
+  },
+  {
+    "mechanism": "gri30.yaml",
+    "pressure_atm": 1,
+    "dependency_max_abs": 0.0,
+    "flux_max_abs": 1.0983207571324403e-17,
+    "shared_flux_max_abs": 1.0986424524674592e-17,
+    "flux_without_soret_max_abs": 1.095899678093549e-17,
+    "flux_mass_sum_max": 2.993661435709233e-19,
+    "conductivity_max_abs": 2.7755575615628914e-17
+  },
+  {
+    "mechanism": "gri30.yaml",
+    "pressure_atm": 10,
+    "dependency_max_abs": 0.0,
+    "flux_max_abs": 1.8588980674169647e-17,
+    "shared_flux_max_abs": 1.862019037797328e-17,
+    "flux_without_soret_max_abs": 1.8668169332794647e-17,
+    "flux_mass_sum_max": 4.168348217640284e-19,
+    "conductivity_max_abs": 0.0
+  }
+]

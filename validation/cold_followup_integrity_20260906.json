@@ -1,0 +1,34 @@
+{
+  "campaigns": [
+    {
+      "directory": "resultados\\cold_strategies\\20260906_114911",
+      "measured_profiles_verified": 8,
+      "source_snapshots_verified": 29,
+      "source_snapshot_available": true
+    },
+    {
+      "directory": "resultados\\cold_strategies\\20260906_115711",
+      "measured_profiles_verified": 6,
+      "source_snapshots_verified": 30,
+      "source_snapshot_available": true
+    },
+    {
+      "directory": "resultados\\cold_strategies\\20260906_120654",
+      "measured_profiles_verified": 18,
+      "source_snapshots_verified": 30,
+      "source_snapshot_available": true
+    },
+    {
+      "directory": "resultados\\cold_strategies\\20260906_164509",
+      "measured_profiles_verified": 12,
+      "source_snapshots_verified": 30,
+      "source_snapshot_available": true
+    },
+    {
+      "directory": "resultados\\cold_strategies\\20260906_165412",
+      "measured_profiles_verified": 8,
+      "source_snapshots_verified": 31,
+      "source_snapshot_available": true
+    }
+  ]
+}

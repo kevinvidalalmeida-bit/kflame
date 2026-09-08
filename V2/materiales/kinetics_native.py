@@ -25,6 +25,90 @@ except Exception:  # pragma: no cover - optional acceleration
     njit = None
 
 
+def _negative_mass_action_factor(C, indices, orders, count):
+    """Continuation outside the positive simplex, not a physical rate model.
+
+    For elementary molecularity <= 3, retain one negative concentration
+    factor (the restoring term), but suppress two or more. General orders
+    with a negative participant are suppressed; no fractional power of a
+    negative value is evaluated. Matches Cantera 3.2 StoichManager C1/C2/C3
+    and C_AnyN conventions. Positive-state log-product arithmetic is unchanged.
+    """
+    negative_order = 0.0
+    total_order = 0.0
+    elementary = True
+    for i in range(count):
+        order = orders[i]
+        total_order += order
+        elementary = elementary and order >= 0.0 and order == math.floor(order)
+        if C[indices[i]] < 0.0 and order != 0.0:
+            negative_order += order
+    if negative_order == 0.0:
+        return 1.0
+    if elementary and total_order <= 3.0 and negative_order == 1.0:
+        return -1.0
+    return 0.0
+
+
+_negative_mass_action_factor_python = _negative_mass_action_factor
+if njit is not None:
+    _negative_mass_action_factor = njit(cache=True)(_negative_mass_action_factor)
+
+
+def _make_mass_action_plan(indices, orders, counts):
+    """Classify molecularity once; -1 retains the general-order log product."""
+    plan = np.full((len(counts), 4), -1, dtype=np.int64)
+    for r, count in enumerate(counts):
+        nu = orders[r, :count]
+        total = float(nu.sum())
+        if total <= 3 and np.all(nu >= 0) and np.all(nu == np.floor(nu)):
+            participants = np.repeat(indices[r, :count], nu.astype(np.int64))
+            plan[r, 0] = len(participants)
+            plan[r, 1:1+len(participants)] = participants
+    return plan
+
+
+def _mass_action_product(C, logC, indices, orders, count, plan, has_negative):
+    """Small integer products without reaction-wise exp/log accumulation.
+
+    Keep the original tiny-concentration floor and signed trial-state extension.
+    General orders use the unchanged log product. No fastmath is enabled.
+    """
+    degree = plan[0]
+    if degree < 0:
+        exponent = 0.0
+        for i in range(count):
+            exponent += orders[i] * logC[indices[i]]
+        product = math.exp(exponent)
+        if has_negative:
+            product *= _negative_mass_action_factor(C, indices, orders, count)
+        return product
+    product = 1.0
+    negative = 0
+    has_large = False
+    for i in range(degree):
+        value = C[plan[i+1]]
+        negative += value < 0.0
+        has_large = has_large or abs(value) > 1.0
+        product *= max(abs(value), 1.0e-300)
+    if negative > 1:
+        return 0.0
+    # Avoid losing a representable final product to intermediate overflow or
+    # underflow for extreme inputs. Ordinary flame concentrations stay on the
+    # multiplication path; the guard depends on arithmetic, not pressure.
+    if not math.isfinite(product) or (product == 0.0 and has_large):
+        exponent = 0.0
+        for i in range(count):
+            exponent += orders[i] * logC[indices[i]]
+        product = math.exp(exponent)
+    return -product if negative == 1 else product
+
+
+_mass_action_product_python = _mass_action_product
+if njit is not None:
+    _mass_action_product = njit(cache=True, inline='always')(_mass_action_product)
+
+
 if njit is not None:
     @njit(cache=True)
     def _net_production_rates_numba_core(
@@ -38,17 +122,19 @@ if njit is not None:
         n_rxn = A_hi.shape[0]
         out = np.zeros((n_sp, n_pts), dtype=np.float64)
         logC = np.empty(n_sp, dtype=np.float64)
+        all_indices = np.arange(n_sp)
 
         for m in range(n_pts):
             T = T_arr[m]
             c_factor = 101325.0 / (R_UNIV * T)
             inv_RT = 1.0 / (R_UNIV * T)
             logT = math.log(T)
+            has_negative = False
 
             for k in range(n_sp):
                 c = C[k, m]
-                if c < 0.0:
-                    c = 0.0
+                has_negative = has_negative or c < 0.0
+                c = abs(c)
                 if c < 1.0e-300:
                     c = 1.0e-300
                 logC[k] = math.log(c)
@@ -67,8 +153,6 @@ if njit is not None:
                     rf_exp += nu_r[k, r] * logC[k]
                     rr_exp += nu_p[k, r] * logC[k]
                     ck = C[k, m]
-                    if ck < 0.0:
-                        ck = 0.0
                     M += eff[r, k] * ck
 
                 if delta_g > 500.0:
@@ -85,6 +169,10 @@ if njit is not None:
                 Rr = 0.0
                 if is_reversible[r]:
                     Rr = math.exp(rr_exp) * kr
+
+                if has_negative:
+                    Rf *= _negative_mass_action_factor(C[:, m], all_indices, nu_r[:, r], n_sp)
+                    Rr *= _negative_mass_action_factor(C[:, m], all_indices, nu_p[:, r], n_sp)
 
                 if is_three_body[r]:
                     Rf *= M
@@ -149,12 +237,13 @@ if njit is not None:
             inv_RT = 1.0 / (R_UNIV * T)
             logT = math.log(T)
             c_total = 0.0
+            has_negative = False
 
             for k in range(n_sp):
                 c = C[k, m]
-                if c < 0.0:
-                    c = 0.0
                 c_total += c
+                has_negative = has_negative or c < 0.0
+                c = abs(c)
                 if c < 1.0e-300:
                     c = 1.0e-300
                 logC[k] = math.log(c)
@@ -193,13 +282,15 @@ if njit is not None:
                 if is_reversible[r]:
                     Rr = math.exp(rr_exp) * kr
 
+                if has_negative:
+                    Rf *= _negative_mass_action_factor(C[:, m], r_idx[r], r_nu[r], r_count[r])
+                    Rr *= _negative_mass_action_factor(C[:, m], p_idx[r], p_nu[r], p_count[r])
+
                 M = c_total
                 if is_three_body[r] or is_falloff[r]:
                     for ii in range(eff_count[r]):
                         k = eff_idx[r, ii]
                         ck = C[k, m]
-                        if ck < 0.0:
-                            ck = 0.0
                         M += eff_delta[r, ii] * ck
 
                 if is_three_body[r]:
@@ -395,6 +486,9 @@ class NativeKinetics:
             self._sp_eff_count[j] = len(idx)
             self._sp_eff_idx[j, :len(idx)] = idx
             self._sp_eff_delta[j, :len(idx)] = eff[j, idx] - 1.0
+
+        self._sp_r_plan = _make_mass_action_plan(self._sp_r_idx, self._sp_r_nu, self._sp_r_count)
+        self._sp_p_plan = _make_mass_action_plan(self._sp_p_idx, self._sp_p_nu, self._sp_p_count)
 
     # ------------------------------------------------------------------
     #  Grid Vectorization Helpers
@@ -610,7 +704,6 @@ class NativeKinetics:
             )
             return wdot[:, 0] if scalar else wdot
 
-        Csafe = self.xp.maximum(C, 0.0)
         is_grid = self._is_grid(T)
 
         # Forward rate constants
@@ -623,13 +716,27 @@ class NativeKinetics:
         kr = self.xp.where(rev_mask, kf / self.xp.maximum(Kc, 1e-300), 0.0)
 
         # Forward and reverse rates of progress
-        logC = self.xp.log(self.xp.maximum(Csafe, 1e-300))
+        logC = self.xp.log(self.xp.maximum(self.xp.abs(C), 1e-300))
         
         Rf = self.xp.exp(self.nu_r.T @ logC) * kf
         Rr = self.xp.where(rev_mask, self.xp.exp(self.nu_p.T @ logC) * kr, 0.0)
 
+        if self.xp.any(C < 0.0):
+            c_work = C if C.ndim == 2 else C[:, None]
+            rf_work = Rf if Rf.ndim == 2 else Rf[:, None]
+            rr_work = Rr if Rr.ndim == 2 else Rr[:, None]
+            all_indices = range(self.n_sp)
+            for m in range(c_work.shape[1]):
+                if not self.xp.any(c_work[:, m] < 0.0):
+                    continue
+                for r in range(self.nu_r.shape[1]):
+                    rf_work[r, m] *= _negative_mass_action_factor_python(
+                        c_work[:, m], all_indices, self.nu_r[:, r], self.n_sp)
+                    rr_work[r, m] *= _negative_mass_action_factor_python(
+                        c_work[:, m], all_indices, self.nu_p[:, r], self.n_sp)
+
         # Three-body enhancement
-        M = self.third_body_conc(Csafe)
+        M = self.third_body_conc(C)
 
         tb_mask = self.is_three_body[:, None] if is_grid else self.is_three_body
         Rf = self.xp.where(tb_mask, Rf * M, Rf)

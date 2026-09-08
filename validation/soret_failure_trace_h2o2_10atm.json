@@ -1,0 +1,1346 @@
+{
+  "source": "resultados\\soret_native_validation\\benchmark_20260904_200559\\summary.json",
+  "source_sha256": "b840d7ad5a24c281eb948529da648560ac34f441f9aa71e76035a3c9c0f77df2",
+  "case": {
+    "mech": "C:\\Users\\lidia\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\cantera\\data\\h2o2.yaml",
+    "fuel": "H2",
+    "oxidizer": "O2:1, N2:3.76",
+    "phi": 1.0,
+    "T_in": 300,
+    "P": 1013250.0,
+    "width": 0.03,
+    "transport_model": "multicomponent",
+    "flux_gradient_basis": "molar",
+    "soret_enabled": true,
+    "outlet_species_bc": "zero_gradient",
+    "upwind_factor": 1.0,
+    "cantera_seed_grid": true,
+    "adaptive_grid": true,
+    "cluster_strength": 8.0,
+    "cluster_sigma": 0.0,
+    "ratio": 2.5,
+    "slope": 0.04,
+    "curve": 0.08,
+    "prune": 0.003,
+    "refine_with_u": true,
+    "refine_with_T": true,
+    "refine_with_species": true,
+    "loglevel": 1,
+    "auto": true
+  },
+  "options": {
+    "u_left_guess": 1.0,
+    "steady_max_iter": 50,
+    "max_jac_age": 20,
+    "steady_max_jac_age": null,
+    "transient_max_jac_age": null,
+    "max_damp_iter": 7,
+    "damp_factor": 1.4142135623730951,
+    "tol": 1.0,
+    "jac_eps": 1e-05,
+    "jac_abs_perturb": 1e-10,
+    "jac_threshold": 0.0,
+    "jacobian_mode": "block_tridiag",
+    "precompute_jacobian_thermo": true,
+    "compiled_block_substitution": true,
+    "local_jacobian_refresh": false,
+    "local_jacobian_refresh_defect_threshold": 0.2,
+    "local_jacobian_refresh_max_fraction": 0.35,
+    "local_jacobian_refresh_min_blocks": 1,
+    "lag_multicomponent_transport": true,
+    "multicomponent_bootstrap": true,
+    "bootstrap_mesh_factor": 2.0,
+    "alpha_min": 1e-10,
+    "time_step": 1e-05,
+    "time_step_grow": 1.5,
+    "time_step_shrink": 0.5,
+    "time_step_factor": null,
+    "min_time_step": 1e-16,
+    "max_time_step": 100000000.0,
+    "transient_steps_per_cycle": 10,
+    "time_step_sequence": [
+      20
+    ],
+    "transient_max_iter": 50,
+    "max_time_step_count": 500,
+    "reset_bad_after_failures": 3,
+    "refine_grid": true,
+    "max_refine_passes": 12,
+    "require_grid_convergence": true,
+    "refine_ratio": 2.5,
+    "refine_slope": 0.04,
+    "refine_curve": 0.08,
+    "refine_prune": 0.003,
+    "refine_grid_min": 1e-10,
+    "refine_max_points": 1600,
+    "refine_Finf_limit": 10000.0,
+    "final_Finf_limit": 10000.0,
+    "accept_residual_converged": false,
+    "accept_initial_residual_converged": false,
+    "acceptance_criterion": "cantera",
+    "weighted_step_norm_limit": null,
+    "residual_guard_inf": 10000.0,
+    "domain_auto_expand": true,
+    "max_domain_expansions": 12,
+    "domain_expand_factor": 2.0,
+    "domain_edge_slope_tol": 0.02,
+    "domain_edge_strict_mode": true,
+    "domain_check_after_refine_only": false,
+    "auto_bootstrap_grids": false,
+    "bootstrap_grid_points": [
+      12,
+      24,
+      48
+    ],
+    "bootstrap_max_grid_points": 1000,
+    "restart_insert_anchor": false,
+    "max_total_time_s": 35.0,
+    "verbose": false,
+    "profile": true,
+    "trace_solver": true
+  },
+  "command": [
+    "V2/benchmark_soret_native.py",
+    "--bootstrap",
+    "--bootstrap-mesh-factor",
+    "2",
+    "--lag",
+    "--pressure-atm",
+    "10",
+    "--max-seconds",
+    "35",
+    "--trace",
+    "--native-only",
+    "--mechanism",
+    "h2o2.yaml"
+  ],
+  "source_sha256_by_module": {
+    "analyze_soret_validation.py": "a9648d99265dfd33a884cf844cc81685e8c17697e1f48e30801efd3f751ad5f2",
+    "benchmark_soret_native.py": "bab93ded7ccd7927e91ddb113c07fcb2ef22a541712da0b09d48bd9f8293d369",
+    "config.py": "b17d7c363f5619499888aa9953d8b043d4096f39dad2b6aa3a4f4a366d062c35",
+    "equations.py": "161a1155f2bd0b80095aeda941d01285aedce9c7a2e15e8f1bd0fe334ad7ae3f",
+    "plot_saved_comparison.py": "c765e343a6f2b2f0f1d390d2e17809c9fac6def32fe2c0e1d974ecf54853a1df",
+    "problem.py": "2286b16eb96673fa2cb781d9e15a64c387c33dd65cd8eccc657e0f6de13a3761",
+    "run_saved_comparison.py": "28ae8b00224431685b637fdf04eed8431fc93d342f311cd7132b237251719cf7",
+    "solver.py": "dae29f0ba2b8de19f823eb06ef02317c52b330a59b2449b190088f661b96d6e1",
+    "species_backend.py": "daeacfd193afb942ba9ed555c915074809ad62d5c6a05426fd0bd8331416e62f",
+    "state.py": "7f151533c07d5332fac60bcaeeb8d27c412743559f2dfe08ed4fcd2cc71aab00",
+    "materiales\\collision_integrals_native.py": "168ac1d16fd1a85c0417750761f5b08650f597f8062d4f4fb7f07a1da557f959",
+    "materiales\\kinetics_native.py": "da3f634f09ff9864c20c173a058c3aa37484bacf612f6a457fbcb70d7c9a05e7",
+    "materiales\\mechanism_data.py": "bce21a5f71d484798006ca75fc565b9784edee7e8eb1e40796c4c6b074a2f2f0",
+    "materiales\\species_backend_native.py": "b11bf239f21d098a446c8ff312ffed3fb8ec972ba62d837ebea123c7af1b7d0f",
+    "materiales\\thermo_native.py": "6afbbe05bc1404b8ca12cd122e88da2d3b72a6a30011dccfabbe0e7fbea584f0",
+    "materiales\\transport_multicomponent_kernels.py": "537844f3cf03998281638115db867fbb3df0088ef3afbe39076cca394713c5f6",
+    "materiales\\transport_multicomponent_native.py": "c09ef5e4a01199926d854e1a1c6a6fe94abd607834efb156e7619d5352f359dc",
+    "materiales\\transport_native.py": "87853760cd078be99c94678bff3117fb90fd2cadc8fb8bb4f2615ed96adbc581",
+    "materiales\\collision_integrals_mm.json": "d615ab6a957338231f55307f50062572a87dc126b41c415b0a7276eb30e2c145"
+  },
+  "records": [
+    {
+      "solver": "native",
+      "repetition": 0,
+      "accepted": false,
+      "time_s": 20.543192400000407,
+      "Su": 0.019221028598738026,
+      "Finf": null,
+      "phases": [
+        {
+          "label": "Stage A: energia ON",
+          "n_points": 9,
+          "width": 0.03,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 500,
+          "rejected_pseudo_steps": 137,
+          "schemes": {
+            "PTC-SER": 506,
+            "BE-fallback": 131
+          },
+          "newton_statuses": {
+            "step": 526,
+            "bound_fail": 31,
+            "ok": 119,
+            "no_damp": 174
+          },
+          "last_event": {
+            "cycle": 24,
+            "phase": "transient_abort",
+            "reason": "max_time_step_count",
+            "nsteps_total": 500,
+            "nsteps_max": 500
+          },
+          "rescues": []
+        },
+        {
+          "label": "Stage B: energia OFF",
+          "n_points": 9,
+          "width": 0.03,
+          "energy": false,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 80,
+          "rejected_pseudo_steps": 33,
+          "schemes": {
+            "PTC-SER": 86,
+            "BE-fallback": 27
+          },
+          "newton_statuses": {
+            "step": 96,
+            "bound_fail": 33,
+            "ok": 16,
+            "no_damp": 25
+          },
+          "last_event": {
+            "cycle": 4,
+            "phase": "steady",
+            "ok": true,
+            "steps": 4,
+            "last_status": "ok",
+            "weighted_step_norm": 0.7141476444734632,
+            "newton_Finf": 0.23050387526657676,
+            "state": {
+              "u0": 0.30000000000002075,
+              "Tmin": 300.01319500756296,
+              "Tmax": 2447.563865988494,
+              "Tb": 2447.563865988494,
+              "Ymin": -1.9033734469271656e-08,
+              "sumY_error": 2.220446049250313e-16
+            }
+          },
+          "rescues": []
+        },
+        {
+          "label": "Stage C: energia RE-ON",
+          "n_points": 9,
+          "width": 0.03,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 500,
+          "rejected_pseudo_steps": 159,
+          "schemes": {
+            "PTC-SER": 500,
+            "BE-fallback": 159
+          },
+          "newton_statuses": {
+            "step": 795,
+            "bound_fail": 32,
+            "no_damp": 222,
+            "ok": 159
+          },
+          "last_event": {
+            "cycle": 24,
+            "phase": "transient_abort",
+            "reason": "max_time_step_count",
+            "nsteps_total": 500,
+            "nsteps_max": 500
+          },
+          "rescues": []
+        },
+        {
+          "label": "Stage A: energia ON",
+          "n_points": 9,
+          "width": 0.03,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 500,
+          "rejected_pseudo_steps": 102,
+          "schemes": {
+            "PTC-SER": 500,
+            "BE-fallback": 102
+          },
+          "newton_statuses": {
+            "step": 652,
+            "no_damp": 168,
+            "bound_fail": 44,
+            "ok": 134
+          },
+          "last_event": {
+            "cycle": 24,
+            "phase": "transient_abort",
+            "reason": "max_time_step_count",
+            "nsteps_total": 500,
+            "nsteps_max": 500
+          },
+          "rescues": []
+        },
+        {
+          "label": "Stage B: energia OFF",
+          "n_points": 9,
+          "width": 0.03,
+          "energy": false,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 20,
+          "rejected_pseudo_steps": 5,
+          "schemes": {
+            "PTC-SER": 20,
+            "BE-fallback": 5
+          },
+          "newton_statuses": {
+            "step": 53,
+            "bound_fail": 2,
+            "no_damp": 5,
+            "ok": 6
+          },
+          "last_event": {
+            "cycle": 1,
+            "phase": "steady",
+            "ok": true,
+            "steps": 11,
+            "last_status": "ok",
+            "weighted_step_norm": 0.013323466072325063,
+            "newton_Finf": 97.44925754363965,
+            "state": {
+              "u0": 0.2999999999999763,
+              "Tmin": 300.0,
+              "Tmax": 2395.4915621640384,
+              "Tb": 2392.799086664671,
+              "Ymin": -6.239191371012371e-55,
+              "sumY_error": 9.325873406851315e-15
+            }
+          },
+          "rescues": []
+        },
+        {
+          "label": "Stage C: energia RE-ON",
+          "n_points": 9,
+          "width": 0.03,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 0,
+          "rejected_pseudo_steps": 0,
+          "schemes": {},
+          "newton_statuses": {
+            "step": 28,
+            "no_damp": 1,
+            "ok": 1
+          },
+          "last_event": {
+            "cycle": 0,
+            "phase": "steady",
+            "ok": true,
+            "steps": 30,
+            "last_status": "ok",
+            "weighted_step_norm": 0.44386921811720687,
+            "newton_Finf": 125.44520932598313,
+            "state": {
+              "u0": 0.01743837015179422,
+              "Tmin": 300.0,
+              "Tmax": 2194.965742938791,
+              "Tb": 2194.965742938791,
+              "Ymin": 7.585130754740027e-65,
+              "sumY_error": 4.463096558993129e-14
+            }
+          },
+          "rescues": []
+        },
+        {
+          "label": "Stage A: energia ON",
+          "n_points": 14,
+          "width": 0.06,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 500,
+          "rejected_pseudo_steps": 150,
+          "schemes": {
+            "PTC-SER": 505,
+            "BE-fallback": 145
+          },
+          "newton_statuses": {
+            "step": 674,
+            "bound_fail": 13,
+            "no_damp": 232,
+            "ok": 185
+          },
+          "last_event": {
+            "cycle": 24,
+            "phase": "transient_abort",
+            "reason": "max_time_step_count",
+            "nsteps_total": 500,
+            "nsteps_max": 500
+          },
+          "rescues": []
+        },
+        {
+          "label": "Stage B: energia OFF",
+          "n_points": 14,
+          "width": 0.06,
+          "energy": false,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 40,
+          "rejected_pseudo_steps": 6,
+          "schemes": {
+            "PTC-SER": 40,
+            "BE-fallback": 6
+          },
+          "newton_statuses": {
+            "no_damp": 10,
+            "step": 76,
+            "bound_fail": 4,
+            "ok": 7
+          },
+          "last_event": {
+            "cycle": 2,
+            "phase": "steady",
+            "ok": true,
+            "steps": 17,
+            "last_status": "ok",
+            "weighted_step_norm": 0.8949396031209012,
+            "newton_Finf": 4.4110014099178,
+            "state": {
+              "u0": 0.299999999999999,
+              "Tmin": 300.0,
+              "Tmax": 2194.965742938791,
+              "Tb": 2194.965742938791,
+              "Ymin": -4.555112783921245e-10,
+              "sumY_error": 5.639044786676095e-12
+            }
+          },
+          "rescues": []
+        },
+        {
+          "label": "Stage C: energia RE-ON",
+          "n_points": 14,
+          "width": 0.06,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 500,
+          "rejected_pseudo_steps": 75,
+          "schemes": {
+            "PTC-SER": 503,
+            "BE-fallback": 72
+          },
+          "newton_statuses": {
+            "step": 861,
+            "bound_fail": 5,
+            "no_damp": 196,
+            "ok": 66
+          },
+          "last_event": {
+            "cycle": 24,
+            "phase": "transient_abort",
+            "reason": "max_time_step_count",
+            "nsteps_total": 500,
+            "nsteps_max": 500
+          },
+          "rescues": []
+        },
+        {
+          "label": "Stage A: energia ON",
+          "n_points": 14,
+          "width": 0.06,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 500,
+          "rejected_pseudo_steps": 113,
+          "schemes": {
+            "PTC-SER": 500,
+            "BE-fallback": 113
+          },
+          "newton_statuses": {
+            "step": 511,
+            "no_damp": 204,
+            "ok": 236,
+            "bound_fail": 1
+          },
+          "last_event": {
+            "cycle": 24,
+            "phase": "transient_abort",
+            "reason": "max_time_step_count",
+            "nsteps_total": 500,
+            "nsteps_max": 500
+          },
+          "rescues": []
+        },
+        {
+          "label": "Stage B: energia OFF",
+          "n_points": 14,
+          "width": 0.06,
+          "energy": false,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 20,
+          "rejected_pseudo_steps": 7,
+          "schemes": {
+            "PTC-SER": 20,
+            "BE-fallback": 7
+          },
+          "newton_statuses": {
+            "no_damp": 8,
+            "step": 47,
+            "ok": 8
+          },
+          "last_event": {
+            "cycle": 1,
+            "phase": "steady",
+            "ok": true,
+            "steps": 9,
+            "last_status": "ok",
+            "weighted_step_norm": 0.7091431229019491,
+            "newton_Finf": 31.197925097782477,
+            "state": {
+              "u0": 0.3,
+              "Tmin": 300.0,
+              "Tmax": 2439.473453829888,
+              "Tb": 2317.9558987271084,
+              "Ymin": -1.6184595646013417e-77,
+              "sumY_error": 1.2434497875801753e-14
+            }
+          },
+          "rescues": []
+        },
+        {
+          "label": "Stage C: energia RE-ON",
+          "n_points": 14,
+          "width": 0.06,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 0,
+          "rejected_pseudo_steps": 0,
+          "schemes": {},
+          "newton_statuses": {
+            "step": 39,
+            "no_damp": 1,
+            "ok": 1
+          },
+          "last_event": {
+            "cycle": 0,
+            "phase": "steady",
+            "ok": true,
+            "steps": 41,
+            "last_status": "ok",
+            "weighted_step_norm": 0.7416351725269571,
+            "newton_Finf": 390.38422360367946,
+            "state": {
+              "u0": 0.01922102857580812,
+              "Tmin": 300.0,
+              "Tmax": 2345.097608907299,
+              "Tb": 2345.097608907299,
+              "Ymin": 1.3201668092214914e-98,
+              "sumY_error": 6.217248937900877e-14
+            }
+          },
+          "rescues": []
+        },
+        {
+          "label": "Refine Stage: energia ON",
+          "n_points": 14,
+          "width": 0.06,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 0,
+          "rejected_pseudo_steps": 0,
+          "schemes": {},
+          "newton_statuses": {
+            "ok": 1
+          },
+          "last_event": {
+            "cycle": 0,
+            "phase": "steady",
+            "ok": true,
+            "steps": 1,
+            "last_status": "ok",
+            "weighted_step_norm": 0.0026132061496901724,
+            "newton_Finf": 180.65125344914836,
+            "state": {
+              "u0": 0.019221028618248377,
+              "Tmin": 300.0,
+              "Tmax": 2345.062319022298,
+              "Tb": 2345.062165288601,
+              "Ymin": 1.2942734244802624e-104,
+              "sumY_error": 5.773159728050814e-15
+            }
+          },
+          "rescues": []
+        },
+        {
+          "label": "Post-refine pass 0",
+          "n_points": 19,
+          "width": 0.06,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 500,
+          "rejected_pseudo_steps": 97,
+          "schemes": {
+            "PTC-SER": 503,
+            "BE-fallback": 94
+          },
+          "newton_statuses": {
+            "step": 860,
+            "bound_fail": 10,
+            "no_damp": 177,
+            "ok": 88
+          },
+          "last_event": {
+            "cycle": 24,
+            "phase": "transient_abort",
+            "reason": "max_time_step_count",
+            "nsteps_total": 500,
+            "nsteps_max": 500
+          },
+          "rescues": []
+        },
+        {
+          "label": "Stage A: energia ON",
+          "n_points": 14,
+          "width": 0.06,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 0,
+          "rejected_pseudo_steps": 0,
+          "schemes": {},
+          "newton_statuses": {
+            "ok": 1
+          },
+          "last_event": {
+            "cycle": 0,
+            "phase": "steady",
+            "ok": true,
+            "steps": 1,
+            "last_status": "ok",
+            "weighted_step_norm": 1.5784017426775894e-05,
+            "newton_Finf": 0.13479835449541613,
+            "state": {
+              "u0": 0.019221028599206682,
+              "Tmin": 300.0,
+              "Tmax": 2345.0623214836414,
+              "Tb": 2345.0623214836414,
+              "Ymin": -1.393415550905148e-98,
+              "sumY_error": 2.220446049250313e-16
+            }
+          },
+          "rescues": []
+        },
+        {
+          "label": "Refine Stage: energia ON",
+          "n_points": 14,
+          "width": 0.06,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 0,
+          "rejected_pseudo_steps": 0,
+          "schemes": {},
+          "newton_statuses": {
+            "ok": 1
+          },
+          "last_event": {
+            "cycle": 0,
+            "phase": "steady",
+            "ok": true,
+            "steps": 1,
+            "last_status": "ok",
+            "weighted_step_norm": 1.0094408248978639e-07,
+            "newton_Finf": 9.929640170015967e-05,
+            "state": {
+              "u0": 0.01922102859877099,
+              "Tmin": 300.0,
+              "Tmax": 2345.062320516487,
+              "Tb": 2345.062320511079,
+              "Ymin": -6.243051046027942e-108,
+              "sumY_error": 2.220446049250313e-16
+            }
+          },
+          "rescues": []
+        },
+        {
+          "label": "Post-refine pass 0",
+          "n_points": 19,
+          "width": 0.06,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 500,
+          "rejected_pseudo_steps": 93,
+          "schemes": {
+            "PTC-SER": 503,
+            "BE-fallback": 90
+          },
+          "newton_statuses": {
+            "step": 894,
+            "bound_fail": 10,
+            "no_damp": 179,
+            "ok": 84
+          },
+          "last_event": {
+            "cycle": 24,
+            "phase": "transient_abort",
+            "reason": "max_time_step_count",
+            "nsteps_total": 500,
+            "nsteps_max": 500
+          },
+          "rescues": []
+        },
+        {
+          "label": "Stage A: energia ON",
+          "n_points": 14,
+          "width": 0.06,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 0,
+          "rejected_pseudo_steps": 0,
+          "schemes": {},
+          "newton_statuses": {
+            "ok": 1
+          },
+          "last_event": {
+            "cycle": 0,
+            "phase": "steady",
+            "ok": true,
+            "steps": 1,
+            "last_status": "ok",
+            "weighted_step_norm": 7.631791970704956e-10,
+            "newton_Finf": 7.540492276227944e-07,
+            "state": {
+              "u0": 0.01922102859873934,
+              "Tmin": 300.0,
+              "Tmax": 2345.0623205171687,
+              "Tb": 2345.0623205171687,
+              "Ymin": 0.0,
+              "sumY_error": 0.0
+            }
+          },
+          "rescues": []
+        },
+        {
+          "label": "Refine Stage: energia ON",
+          "n_points": 14,
+          "width": 0.06,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 0,
+          "rejected_pseudo_steps": 0,
+          "schemes": {},
+          "newton_statuses": {
+            "ok": 1
+          },
+          "last_event": {
+            "cycle": 0,
+            "phase": "steady",
+            "ok": true,
+            "steps": 1,
+            "last_status": "ok",
+            "weighted_step_norm": 5.912865173674332e-11,
+            "newton_Finf": 2.4034302748817777e-07,
+            "state": {
+              "u0": 0.01922102859873778,
+              "Tmin": 300.0,
+              "Tmax": 2345.062320517131,
+              "Tb": 2345.062320517131,
+              "Ymin": 0.0,
+              "sumY_error": 0.0
+            }
+          },
+          "rescues": []
+        },
+        {
+          "label": "Post-refine pass 0",
+          "n_points": 19,
+          "width": 0.06,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 500,
+          "rejected_pseudo_steps": 95,
+          "schemes": {
+            "PTC-SER": 503,
+            "BE-fallback": 92
+          },
+          "newton_statuses": {
+            "step": 900,
+            "bound_fail": 10,
+            "no_damp": 180,
+            "ok": 86
+          },
+          "last_event": {
+            "cycle": 24,
+            "phase": "transient_abort",
+            "reason": "max_time_step_count",
+            "nsteps_total": 500,
+            "nsteps_max": 500
+          },
+          "rescues": []
+        },
+        {
+          "label": "Stage A: energia ON",
+          "n_points": 14,
+          "width": 0.06,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 0,
+          "rejected_pseudo_steps": 0,
+          "schemes": {},
+          "newton_statuses": {
+            "ok": 1
+          },
+          "last_event": {
+            "cycle": 0,
+            "phase": "steady",
+            "ok": true,
+            "steps": 1,
+            "last_status": "ok",
+            "weighted_step_norm": 1.918771218692144e-11,
+            "newton_Finf": 2.1244553103452902e-07,
+            "state": {
+              "u0": 0.01922102859873773,
+              "Tmin": 300.0,
+              "Tmax": 2345.0623205171314,
+              "Tb": 2345.0623205171314,
+              "Ymin": 0.0,
+              "sumY_error": 0.0
+            }
+          },
+          "rescues": []
+        },
+        {
+          "label": "Refine Stage: energia ON",
+          "n_points": 14,
+          "width": 0.06,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 0,
+          "rejected_pseudo_steps": 0,
+          "schemes": {},
+          "newton_statuses": {
+            "ok": 1
+          },
+          "last_event": {
+            "cycle": 0,
+            "phase": "steady",
+            "ok": true,
+            "steps": 1,
+            "last_status": "ok",
+            "weighted_step_norm": 4.42600969014815e-11,
+            "newton_Finf": 1.0966994972644336e-07,
+            "state": {
+              "u0": 0.019221028598737727,
+              "Tmin": 300.0,
+              "Tmax": 2345.062320517131,
+              "Tb": 2345.062320517131,
+              "Ymin": 0.0,
+              "sumY_error": 1.1102230246251565e-16
+            }
+          },
+          "rescues": []
+        },
+        {
+          "label": "Post-refine pass 0",
+          "n_points": 19,
+          "width": 0.06,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 500,
+          "rejected_pseudo_steps": 102,
+          "schemes": {
+            "PTC-SER": 503,
+            "BE-fallback": 99
+          },
+          "newton_statuses": {
+            "step": 896,
+            "bound_fail": 10,
+            "no_damp": 193,
+            "ok": 93
+          },
+          "last_event": {
+            "cycle": 24,
+            "phase": "transient_abort",
+            "reason": "max_time_step_count",
+            "nsteps_total": 500,
+            "nsteps_max": 500
+          },
+          "rescues": []
+        },
+        {
+          "label": "Stage A: energia ON",
+          "n_points": 14,
+          "width": 0.06,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 0,
+          "rejected_pseudo_steps": 0,
+          "schemes": {},
+          "newton_statuses": {
+            "ok": 1
+          },
+          "last_event": {
+            "cycle": 0,
+            "phase": "steady",
+            "ok": true,
+            "steps": 1,
+            "last_status": "ok",
+            "weighted_step_norm": 3.751102946973272e-11,
+            "newton_Finf": 1.2655193593206e-07,
+            "state": {
+              "u0": 0.01922102859873772,
+              "Tmin": 300.0,
+              "Tmax": 2345.0623205171314,
+              "Tb": 2345.0623205171314,
+              "Ymin": 0.0,
+              "sumY_error": 2.220446049250313e-16
+            }
+          },
+          "rescues": []
+        },
+        {
+          "label": "Refine Stage: energia ON",
+          "n_points": 14,
+          "width": 0.06,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 0,
+          "rejected_pseudo_steps": 0,
+          "schemes": {},
+          "newton_statuses": {
+            "ok": 1
+          },
+          "last_event": {
+            "cycle": 0,
+            "phase": "steady",
+            "ok": true,
+            "steps": 1,
+            "last_status": "ok",
+            "weighted_step_norm": 4.670704105090806e-11,
+            "newton_Finf": 1.5810980622135302e-07,
+            "state": {
+              "u0": 0.019221028598737727,
+              "Tmin": 300.0,
+              "Tmax": 2345.062320517131,
+              "Tb": 2345.062320517131,
+              "Ymin": 0.0,
+              "sumY_error": 2.220446049250313e-16
+            }
+          },
+          "rescues": []
+        },
+        {
+          "label": "Post-refine pass 0",
+          "n_points": 19,
+          "width": 0.06,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 500,
+          "rejected_pseudo_steps": 100,
+          "schemes": {
+            "PTC-SER": 503,
+            "BE-fallback": 97
+          },
+          "newton_statuses": {
+            "step": 822,
+            "bound_fail": 10,
+            "no_damp": 176,
+            "ok": 92
+          },
+          "last_event": {
+            "cycle": 24,
+            "phase": "transient_abort",
+            "reason": "max_time_step_count",
+            "nsteps_total": 500,
+            "nsteps_max": 500
+          },
+          "rescues": []
+        },
+        {
+          "label": "Stage A: energia ON",
+          "n_points": 14,
+          "width": 0.06,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 0,
+          "rejected_pseudo_steps": 0,
+          "schemes": {},
+          "newton_statuses": {
+            "ok": 1
+          },
+          "last_event": {
+            "cycle": 0,
+            "phase": "steady",
+            "ok": true,
+            "steps": 1,
+            "last_status": "ok",
+            "weighted_step_norm": 2.9127634667268924e-11,
+            "newton_Finf": 1.5425493172982991e-07,
+            "state": {
+              "u0": 0.019221028598737713,
+              "Tmin": 300.0,
+              "Tmax": 2345.0623205171305,
+              "Tb": 2345.0623205171305,
+              "Ymin": 0.0,
+              "sumY_error": 0.0
+            }
+          },
+          "rescues": []
+        },
+        {
+          "label": "Refine Stage: energia ON",
+          "n_points": 14,
+          "width": 0.06,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 0,
+          "rejected_pseudo_steps": 0,
+          "schemes": {},
+          "newton_statuses": {
+            "ok": 1
+          },
+          "last_event": {
+            "cycle": 0,
+            "phase": "steady",
+            "ok": true,
+            "steps": 1,
+            "last_status": "ok",
+            "weighted_step_norm": 4.0269173167480804e-11,
+            "newton_Finf": 6.566462665017048e-08,
+            "state": {
+              "u0": 0.019221028598737727,
+              "Tmin": 300.0,
+              "Tmax": 2345.0623205171314,
+              "Tb": 2345.0623205171314,
+              "Ymin": 0.0,
+              "sumY_error": 2.220446049250313e-16
+            }
+          },
+          "rescues": []
+        },
+        {
+          "label": "Post-refine pass 0",
+          "n_points": 19,
+          "width": 0.06,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 500,
+          "rejected_pseudo_steps": 93,
+          "schemes": {
+            "PTC-SER": 503,
+            "BE-fallback": 90
+          },
+          "newton_statuses": {
+            "step": 904,
+            "bound_fail": 10,
+            "no_damp": 180,
+            "ok": 84
+          },
+          "last_event": {
+            "cycle": 24,
+            "phase": "transient_abort",
+            "reason": "max_time_step_count",
+            "nsteps_total": 500,
+            "nsteps_max": 500
+          },
+          "rescues": []
+        },
+        {
+          "label": "Stage A: energia ON",
+          "n_points": 14,
+          "width": 0.06,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 0,
+          "rejected_pseudo_steps": 0,
+          "schemes": {},
+          "newton_statuses": {
+            "ok": 1
+          },
+          "last_event": {
+            "cycle": 0,
+            "phase": "steady",
+            "ok": true,
+            "steps": 1,
+            "last_status": "ok",
+            "weighted_step_norm": 1.6277390166086358e-11,
+            "newton_Finf": 1.1769636539392898e-07,
+            "state": {
+              "u0": 0.019221028598737724,
+              "Tmin": 300.0,
+              "Tmax": 2345.062320517131,
+              "Tb": 2345.062320517131,
+              "Ymin": 0.0,
+              "sumY_error": 1.1102230246251565e-16
+            }
+          },
+          "rescues": []
+        },
+        {
+          "label": "Refine Stage: energia ON",
+          "n_points": 14,
+          "width": 0.06,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 0,
+          "rejected_pseudo_steps": 0,
+          "schemes": {},
+          "newton_statuses": {
+            "ok": 1
+          },
+          "last_event": {
+            "cycle": 0,
+            "phase": "steady",
+            "ok": true,
+            "steps": 1,
+            "last_status": "ok",
+            "weighted_step_norm": 1.2430772796564198e-11,
+            "newton_Finf": 5.864052998945956e-08,
+            "state": {
+              "u0": 0.01922102859873773,
+              "Tmin": 300.0,
+              "Tmax": 2345.062320517131,
+              "Tb": 2345.062320517131,
+              "Ymin": 0.0,
+              "sumY_error": 0.0
+            }
+          },
+          "rescues": []
+        },
+        {
+          "label": "Post-refine pass 0",
+          "n_points": 19,
+          "width": 0.06,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 500,
+          "rejected_pseudo_steps": 93,
+          "schemes": {
+            "PTC-SER": 503,
+            "BE-fallback": 90
+          },
+          "newton_statuses": {
+            "step": 949,
+            "bound_fail": 11,
+            "no_damp": 187,
+            "ok": 84
+          },
+          "last_event": {
+            "cycle": 24,
+            "phase": "transient_abort",
+            "reason": "max_time_step_count",
+            "nsteps_total": 500,
+            "nsteps_max": 500
+          },
+          "rescues": []
+        },
+        {
+          "label": "Stage A: energia ON",
+          "n_points": 14,
+          "width": 0.06,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 0,
+          "rejected_pseudo_steps": 0,
+          "schemes": {},
+          "newton_statuses": {
+            "ok": 1
+          },
+          "last_event": {
+            "cycle": 0,
+            "phase": "steady",
+            "ok": true,
+            "steps": 1,
+            "last_status": "ok",
+            "weighted_step_norm": 2.970845561290333e-11,
+            "newton_Finf": 5.6813446508774804e-08,
+            "state": {
+              "u0": 0.019221028598737724,
+              "Tmin": 300.0,
+              "Tmax": 2345.062320517131,
+              "Tb": 2345.062320517131,
+              "Ymin": 0.0,
+              "sumY_error": 1.1102230246251565e-16
+            }
+          },
+          "rescues": []
+        },
+        {
+          "label": "Refine Stage: energia ON",
+          "n_points": 14,
+          "width": 0.06,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 0,
+          "rejected_pseudo_steps": 0,
+          "schemes": {},
+          "newton_statuses": {
+            "ok": 1
+          },
+          "last_event": {
+            "cycle": 0,
+            "phase": "steady",
+            "ok": true,
+            "steps": 1,
+            "last_status": "ok",
+            "weighted_step_norm": 6.829558933528355e-11,
+            "newton_Finf": 1.839390798599443e-07,
+            "state": {
+              "u0": 0.019221028598737727,
+              "Tmin": 300.0,
+              "Tmax": 2345.0623205171314,
+              "Tb": 2345.0623205171314,
+              "Ymin": 0.0,
+              "sumY_error": 0.0
+            }
+          },
+          "rescues": []
+        },
+        {
+          "label": "Post-refine pass 0",
+          "n_points": 19,
+          "width": 0.06,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 500,
+          "rejected_pseudo_steps": 92,
+          "schemes": {
+            "PTC-SER": 503,
+            "BE-fallback": 89
+          },
+          "newton_statuses": {
+            "step": 901,
+            "bound_fail": 11,
+            "no_damp": 181,
+            "ok": 83
+          },
+          "last_event": {
+            "cycle": 24,
+            "phase": "transient_abort",
+            "reason": "max_time_step_count",
+            "nsteps_total": 500,
+            "nsteps_max": 500
+          },
+          "rescues": []
+        },
+        {
+          "label": "Stage A: energia ON",
+          "n_points": 14,
+          "width": 0.06,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 0,
+          "rejected_pseudo_steps": 0,
+          "schemes": {},
+          "newton_statuses": {
+            "ok": 1
+          },
+          "last_event": {
+            "cycle": 0,
+            "phase": "steady",
+            "ok": true,
+            "steps": 1,
+            "last_status": "ok",
+            "weighted_step_norm": 6.23067254783825e-11,
+            "newton_Finf": 1.5887366633424265e-07,
+            "state": {
+              "u0": 0.019221028598737998,
+              "Tmin": 300.0,
+              "Tmax": 2345.0623205171314,
+              "Tb": 2345.0623205171314,
+              "Ymin": 0.0,
+              "sumY_error": 2.220446049250313e-16
+            }
+          },
+          "rescues": []
+        },
+        {
+          "label": "Refine Stage: energia ON",
+          "n_points": 14,
+          "width": 0.06,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 0,
+          "rejected_pseudo_steps": 0,
+          "schemes": {},
+          "newton_statuses": {
+            "ok": 1
+          },
+          "last_event": {
+            "cycle": 0,
+            "phase": "steady",
+            "ok": true,
+            "steps": 1,
+            "last_status": "ok",
+            "weighted_step_norm": 1.1911330771849892e-10,
+            "newton_Finf": 7.165791172811046e-08,
+            "state": {
+              "u0": 0.019221028598738026,
+              "Tmin": 300.0,
+              "Tmax": 2345.062320517131,
+              "Tb": 2345.062320517131,
+              "Ymin": 0.0,
+              "sumY_error": 1.1102230246251565e-16
+            }
+          },
+          "rescues": []
+        },
+        {
+          "label": "Post-refine pass 0",
+          "n_points": 19,
+          "width": 0.06,
+          "energy": true,
+          "transport": "mixture-averaged",
+          "soret": false,
+          "successful_pseudo_steps": 500,
+          "rejected_pseudo_steps": 133,
+          "schemes": {
+            "PTC-SER": 503,
+            "BE-fallback": 130
+          },
+          "newton_statuses": {
+            "step": 854,
+            "bound_fail": 10,
+            "no_damp": 221,
+            "ok": 123
+          },
+          "last_event": {
+            "cycle": 24,
+            "phase": "transient_abort",
+            "reason": "max_time_step_count",
+            "nsteps_total": 500,
+            "nsteps_max": 500
+          },
+          "rescues": []
+        }
+      ],
+      "stage_times": [
+        {
+          "transport": "mixture-averaged",
+          "total_s": 20.52798040000198,
+          "target_corrector_s": null
+        },
+        {
+          "transport": null,
+          "total_s": 20.54314880000311,
+          "target_corrector_s": null
+        }
+      ]
+    }
+  ],
+  "warning": "Tracing adds overhead. These are diagnostic observations, not paired timing statistics. Pseudo-step success is not steady convergence; numerical acceptance is not an independent mesh study."
+}

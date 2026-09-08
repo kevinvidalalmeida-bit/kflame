@@ -1,0 +1,568 @@
+{
+  "description": "Audited native Soret results and post-correction regression checks. Timings are solve-only, no persisted profiles; JIT disk cache retained. Single pairs do not support statistical speedup claims.",
+  "tests_passed": 41,
+  "campaigns": [
+    {
+      "directory": "resultados/soret_native_validation/benchmark_20260904_180651",
+      "case": {
+        "mech": "C:\\Users\\lidia\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\cantera\\data\\gri30.yaml",
+        "fuel": "H2",
+        "oxidizer": "O2:1, N2:3.76",
+        "phi": 1,
+        "T_in": 300,
+        "P": 101325,
+        "width": 0.03,
+        "transport_model": "multicomponent",
+        "flux_gradient_basis": "molar",
+        "soret_enabled": true,
+        "outlet_species_bc": "zero_gradient",
+        "upwind_factor": 1,
+        "cantera_seed_grid": true,
+        "adaptive_grid": true,
+        "cluster_strength": 8,
+        "cluster_sigma": 0,
+        "ratio": 2.5,
+        "slope": 0.04,
+        "curve": 0.08,
+        "prune": 0.003,
+        "refine_with_u": true,
+        "refine_with_T": true,
+        "refine_with_species": true,
+        "loglevel": 1,
+        "auto": true
+      },
+      "runs": [
+        {
+          "solver": "native",
+          "repetition": 0,
+          "accepted": true,
+          "time_s": 8.382636499998625,
+          "Su": 2.1065603543109432,
+          "n_points": 207,
+          "width": 0.03,
+          "Finf": 6.723293771259046,
+          "refinement_terminal_reasons": [
+            "grid_converged",
+            "grid_converged"
+          ],
+          "restored_events": 0
+        },
+        {
+          "solver": "cantera",
+          "repetition": 0,
+          "accepted": true,
+          "time_s": 10.089099899996654,
+          "Su": 2.1063347436773245,
+          "n_points": 203,
+          "width": 0.03,
+          "Finf": null,
+          "refinement_terminal_reasons": [],
+          "restored_events": 0
+        },
+        {
+          "solver": "cantera",
+          "repetition": 1,
+          "accepted": true,
+          "time_s": 10.167651199997636,
+          "Su": 2.1063347436773245,
+          "n_points": 203,
+          "width": 0.03,
+          "Finf": null,
+          "refinement_terminal_reasons": [],
+          "restored_events": 0
+        },
+        {
+          "solver": "native",
+          "repetition": 1,
+          "accepted": true,
+          "time_s": 7.69096590000845,
+          "Su": 2.1065603543109432,
+          "n_points": 207,
+          "width": 0.03,
+          "Finf": 6.723293771259046,
+          "refinement_terminal_reasons": [
+            "grid_converged",
+            "grid_converged"
+          ],
+          "restored_events": 0
+        },
+        {
+          "solver": "native",
+          "repetition": 2,
+          "accepted": true,
+          "time_s": 7.738805799992406,
+          "Su": 2.1065603543109432,
+          "n_points": 207,
+          "width": 0.03,
+          "Finf": 6.723293771259046,
+          "refinement_terminal_reasons": [
+            "grid_converged",
+            "grid_converged"
+          ],
+          "restored_events": 0
+        },
+        {
+          "solver": "cantera",
+          "repetition": 2,
+          "accepted": true,
+          "time_s": 10.368879899993772,
+          "Su": 2.1063347436773245,
+          "n_points": 203,
+          "width": 0.03,
+          "Finf": null,
+          "refinement_terminal_reasons": [],
+          "restored_events": 0
+        },
+        {
+          "solver": "cantera",
+          "repetition": 3,
+          "accepted": true,
+          "time_s": 10.722240899995086,
+          "Su": 2.1063347436773245,
+          "n_points": 203,
+          "width": 0.03,
+          "Finf": null,
+          "refinement_terminal_reasons": [],
+          "restored_events": 0
+        },
+        {
+          "solver": "native",
+          "repetition": 3,
+          "accepted": true,
+          "time_s": 10.187233000004198,
+          "Su": 2.1065603543109432,
+          "n_points": 207,
+          "width": 0.03,
+          "Finf": 6.723293771259046,
+          "refinement_terminal_reasons": [
+            "grid_converged",
+            "grid_converged"
+          ],
+          "restored_events": 0
+        },
+        {
+          "solver": "native",
+          "repetition": 4,
+          "accepted": true,
+          "time_s": 10.246704700010014,
+          "Su": 2.1065603543109432,
+          "n_points": 207,
+          "width": 0.03,
+          "Finf": 6.723293771259046,
+          "refinement_terminal_reasons": [
+            "grid_converged",
+            "grid_converged"
+          ],
+          "restored_events": 0
+        },
+        {
+          "solver": "cantera",
+          "repetition": 4,
+          "accepted": true,
+          "time_s": 10.808035699999891,
+          "Su": 2.1063347436773245,
+          "n_points": 203,
+          "width": 0.03,
+          "Finf": null,
+          "refinement_terminal_reasons": [],
+          "restored_events": 0
+        },
+        {
+          "solver": "cantera",
+          "repetition": 5,
+          "accepted": true,
+          "time_s": 10.491992399998708,
+          "Su": 2.1063347436773245,
+          "n_points": 203,
+          "width": 0.03,
+          "Finf": null,
+          "refinement_terminal_reasons": [],
+          "restored_events": 0
+        },
+        {
+          "solver": "native",
+          "repetition": 5,
+          "accepted": true,
+          "time_s": 8.019184299992048,
+          "Su": 2.1065603543109432,
+          "n_points": 207,
+          "width": 0.03,
+          "Finf": 6.723293771259046,
+          "refinement_terminal_reasons": [
+            "grid_converged",
+            "grid_converged"
+          ],
+          "restored_events": 0
+        },
+        {
+          "solver": "native",
+          "repetition": 6,
+          "accepted": true,
+          "time_s": 8.153533000004245,
+          "Su": 2.1065603543109432,
+          "n_points": 207,
+          "width": 0.03,
+          "Finf": 6.723293771259046,
+          "refinement_terminal_reasons": [
+            "grid_converged",
+            "grid_converged"
+          ],
+          "restored_events": 0
+        },
+        {
+          "solver": "cantera",
+          "repetition": 6,
+          "accepted": true,
+          "time_s": 11.821598399998038,
+          "Su": 2.1063347436773245,
+          "n_points": 203,
+          "width": 0.03,
+          "Finf": null,
+          "refinement_terminal_reasons": [],
+          "restored_events": 0
+        }
+      ]
+    },
+    {
+      "directory": "resultados/soret_native_validation/benchmark_20260904_182234",
+      "case": {
+        "mech": "C:\\Users\\lidia\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\cantera\\data\\gri30.yaml",
+        "fuel": "H2",
+        "oxidizer": "O2:1, N2:3.76",
+        "phi": 1,
+        "T_in": 300,
+        "P": 101325,
+        "width": 0.06,
+        "transport_model": "multicomponent",
+        "flux_gradient_basis": "molar",
+        "soret_enabled": true,
+        "outlet_species_bc": "zero_gradient",
+        "upwind_factor": 1,
+        "cantera_seed_grid": true,
+        "adaptive_grid": true,
+        "cluster_strength": 8,
+        "cluster_sigma": 0,
+        "ratio": 2.5,
+        "slope": 0.04,
+        "curve": 0.08,
+        "prune": 0.003,
+        "refine_with_u": true,
+        "refine_with_T": true,
+        "refine_with_species": true,
+        "loglevel": 1,
+        "auto": true
+      },
+      "runs": [
+        {
+          "solver": "native",
+          "repetition": 0,
+          "accepted": true,
+          "time_s": 29.725100399999064,
+          "Su": 2.1065566014036103,
+          "n_points": 218,
+          "width": 0.12,
+          "Finf": 91.58363583955445,
+          "refinement_terminal_reasons": [
+            "grid_converged",
+            "grid_converged"
+          ],
+          "restored_events": 0
+        },
+        {
+          "solver": "cantera",
+          "repetition": 0,
+          "accepted": true,
+          "time_s": 14.586926600008155,
+          "Su": 2.1063344778700746,
+          "n_points": 213,
+          "width": 0.06,
+          "Finf": null,
+          "refinement_terminal_reasons": [],
+          "restored_events": 0
+        }
+      ]
+    },
+    {
+      "directory": "resultados/soret_native_validation/benchmark_20260904_182321",
+      "case": {
+        "mech": "C:\\Users\\lidia\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\cantera\\data\\gri30.yaml",
+        "fuel": "H2",
+        "oxidizer": "O2:1, N2:3.76",
+        "phi": 1,
+        "T_in": 300,
+        "P": 101325,
+        "width": 0.03,
+        "transport_model": "multicomponent",
+        "flux_gradient_basis": "molar",
+        "soret_enabled": true,
+        "outlet_species_bc": "zero_gradient",
+        "upwind_factor": 1,
+        "cantera_seed_grid": true,
+        "adaptive_grid": true,
+        "cluster_strength": 8,
+        "cluster_sigma": 0,
+        "ratio": 2.5,
+        "slope": 0.02,
+        "curve": 0.04,
+        "prune": 0.003,
+        "refine_with_u": true,
+        "refine_with_T": true,
+        "refine_with_species": true,
+        "loglevel": 1,
+        "auto": true
+      },
+      "runs": [
+        {
+          "solver": "native",
+          "repetition": 0,
+          "accepted": true,
+          "time_s": 14.289289700012887,
+          "Su": 2.1092182871942526,
+          "n_points": 390,
+          "width": 0.03,
+          "Finf": 1371.6475111276798,
+          "refinement_terminal_reasons": [
+            "grid_converged",
+            "grid_converged"
+          ],
+          "restored_events": 0
+        },
+        {
+          "solver": "cantera",
+          "repetition": 0,
+          "accepted": true,
+          "time_s": 20.645141800006968,
+          "Su": 2.109958772488786,
+          "n_points": 386,
+          "width": 0.03,
+          "Finf": null,
+          "refinement_terminal_reasons": [],
+          "restored_events": 0
+        }
+      ]
+    },
+    {
+      "directory": "resultados/soret_native_validation/benchmark_20260904_195104",
+      "case": {
+        "mech": "C:\\Users\\lidia\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\cantera\\data\\gri30.yaml",
+        "fuel": "H2",
+        "oxidizer": "O2:1, N2:3.76",
+        "phi": 1,
+        "T_in": 300,
+        "P": 101325,
+        "width": 0.03,
+        "transport_model": "multicomponent",
+        "flux_gradient_basis": "molar",
+        "soret_enabled": true,
+        "outlet_species_bc": "zero_gradient",
+        "upwind_factor": 1,
+        "cantera_seed_grid": true,
+        "adaptive_grid": true,
+        "cluster_strength": 8,
+        "cluster_sigma": 0,
+        "ratio": 2.5,
+        "slope": 0.04,
+        "curve": 0.08,
+        "prune": 0.003,
+        "refine_with_u": true,
+        "refine_with_T": true,
+        "refine_with_species": true,
+        "loglevel": 1,
+        "auto": true
+      },
+      "runs": [
+        {
+          "solver": "native",
+          "repetition": 0,
+          "accepted": true,
+          "time_s": 10.02069350000238,
+          "Su": 2.1065603543109432,
+          "n_points": 207,
+          "width": 0.03,
+          "Finf": 6.723293771259046,
+          "refinement_terminal_reasons": [
+            "grid_converged",
+            "grid_converged"
+          ],
+          "restored_events": 0
+        },
+        {
+          "solver": "cantera",
+          "repetition": 0,
+          "accepted": true,
+          "time_s": 10.393717899991316,
+          "Su": 2.1063347436773245,
+          "n_points": 203,
+          "width": 0.03,
+          "Finf": null,
+          "refinement_terminal_reasons": [],
+          "restored_events": 0
+        },
+        {
+          "solver": "cantera",
+          "repetition": 1,
+          "accepted": true,
+          "time_s": 11.302232899994124,
+          "Su": 2.1063347436773245,
+          "n_points": 203,
+          "width": 0.03,
+          "Finf": null,
+          "refinement_terminal_reasons": [],
+          "restored_events": 0
+        },
+        {
+          "solver": "native",
+          "repetition": 1,
+          "accepted": true,
+          "time_s": 9.340390799989109,
+          "Su": 2.1065603543109432,
+          "n_points": 207,
+          "width": 0.03,
+          "Finf": 6.723293771259046,
+          "refinement_terminal_reasons": [
+            "grid_converged",
+            "grid_converged"
+          ],
+          "restored_events": 0
+        },
+        {
+          "solver": "native",
+          "repetition": 2,
+          "accepted": true,
+          "time_s": 7.52851119999832,
+          "Su": 2.1065603543109432,
+          "n_points": 207,
+          "width": 0.03,
+          "Finf": 6.723293771259046,
+          "refinement_terminal_reasons": [
+            "grid_converged",
+            "grid_converged"
+          ],
+          "restored_events": 0
+        },
+        {
+          "solver": "cantera",
+          "repetition": 2,
+          "accepted": true,
+          "time_s": 9.93836569999985,
+          "Su": 2.1063347436773245,
+          "n_points": 203,
+          "width": 0.03,
+          "Finf": null,
+          "refinement_terminal_reasons": [],
+          "restored_events": 0
+        }
+      ]
+    },
+    {
+      "directory": "resultados/soret_native_validation/benchmark_20260904_195205",
+      "case": {
+        "mech": "C:\\Users\\lidia\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\cantera\\data\\gri30.yaml",
+        "fuel": "CH4",
+        "oxidizer": "O2:1, N2:3.76",
+        "phi": 1,
+        "T_in": 300,
+        "P": 101325,
+        "width": 0.03,
+        "transport_model": "mixture-averaged",
+        "flux_gradient_basis": "molar",
+        "soret_enabled": false,
+        "outlet_species_bc": "zero_gradient",
+        "upwind_factor": 1,
+        "cantera_seed_grid": true,
+        "adaptive_grid": true,
+        "cluster_strength": 8,
+        "cluster_sigma": 0,
+        "ratio": 2.5,
+        "slope": 0.04,
+        "curve": 0.08,
+        "prune": 0.003,
+        "refine_with_u": true,
+        "refine_with_T": true,
+        "refine_with_species": true,
+        "loglevel": 1,
+        "auto": true
+      },
+      "runs": [
+        {
+          "solver": "native",
+          "repetition": 0,
+          "accepted": true,
+          "time_s": 8.913377200005925,
+          "Su": 0.37883773586488345,
+          "n_points": 261,
+          "width": 0.06,
+          "Finf": 1748.501788847867,
+          "refinement_terminal_reasons": [
+            "grid_converged"
+          ],
+          "restored_events": 0
+        },
+        {
+          "solver": "cantera",
+          "repetition": 0,
+          "accepted": true,
+          "time_s": 21.036724800011143,
+          "Su": 0.3788136782847252,
+          "n_points": 275,
+          "width": 0.06,
+          "Finf": null,
+          "refinement_terminal_reasons": [],
+          "restored_events": 0
+        },
+        {
+          "solver": "cantera",
+          "repetition": 1,
+          "accepted": true,
+          "time_s": 20.23273620000691,
+          "Su": 0.3788136782847252,
+          "n_points": 275,
+          "width": 0.06,
+          "Finf": null,
+          "refinement_terminal_reasons": [],
+          "restored_events": 0
+        },
+        {
+          "solver": "native",
+          "repetition": 1,
+          "accepted": true,
+          "time_s": 9.009023299993714,
+          "Su": 0.37883773586488345,
+          "n_points": 261,
+          "width": 0.06,
+          "Finf": 1748.501788847867,
+          "refinement_terminal_reasons": [
+            "grid_converged"
+          ],
+          "restored_events": 0
+        },
+        {
+          "solver": "native",
+          "repetition": 2,
+          "accepted": true,
+          "time_s": 8.862016099999892,
+          "Su": 0.37883773586488345,
+          "n_points": 261,
+          "width": 0.06,
+          "Finf": 1748.501788847867,
+          "refinement_terminal_reasons": [
+            "grid_converged"
+          ],
+          "restored_events": 0
+        },
+        {
+          "solver": "cantera",
+          "repetition": 2,
+          "accepted": true,
+          "time_s": 19.327681399998255,
+          "Su": 0.3788136782847252,
+          "n_points": 275,
+          "width": 0.06,
+          "Finf": null,
+          "refinement_terminal_reasons": [],
+          "restored_events": 0
+        }
+      ]
+    }
+  ]
+}

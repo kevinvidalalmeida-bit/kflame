@@ -1,0 +1,528 @@
+{
+  "campaigns": [
+    {
+      "directory": "resultados\\cold_strategies\\20260907_074338",
+      "raw_sha256": "9265b1e2e516e494b4b08ec4497d160f9cf817b5a35acf6be3cd03b6efe984ce",
+      "source_sha256": {
+        "validation\\benchmark_cold_strategies.py": "612f931910f074c6397493a15d44eb9631de18fe1e939b17defcf85c7abd8d7f",
+        "validation\\cold_strategy_kernels.py": "defaef41c2734fa44c5de2aa49d485b7856f61d378304db1917452dc476f425f",
+        "V2\\equations.py": "bdd6a38f842207c163d7eec4a2ff135eb4f0cac67c886989ecff1d3d850e4e35",
+        "V2\\solver.py": "a05d7a2178e8c059596e3d151e05466ffd012eb52440197a4c4157267196af9e",
+        "V2\\materiales\\species_backend_native.py": "0c6299ed614e68d420d1d970ea69636d2f7c4ba30cad3ee4df4e8be0e7b97da5",
+        "V2\\materiales\\kinetics_native.py": "520908e5408b0fe1828fa94be0ea629016eb5fc3428f7048695067ffc9df45e3",
+        "validation\\cold_mesh_budget.py": "9f25bb4dfe16516399da47cb2e908b57ae074c8b8bf6b048ba478cc52061c5be",
+        "validation\\cold_two_grid.py": "ff1492f35dd5634d7454dbb98810fa561482331c77c7813fffae4ce0d9dad687",
+        "V2\\analyze_soret_validation.py": "a9648d99265dfd33a884cf844cc81685e8c17697e1f48e30801efd3f751ad5f2",
+        "V2\\audit_soret_solver_trace.py": "25c24fe88d8be9276989912a54fc9175814ec2e08000f6d9bfcdc93f9c7d2b87",
+        "V2\\benchmark_soret_native.py": "bab93ded7ccd7927e91ddb113c07fcb2ef22a541712da0b09d48bd9f8293d369",
+        "V2\\config.py": "b17d7c363f5619499888aa9953d8b043d4096f39dad2b6aa3a4f4a366d062c35",
+        "V2\\plot_saved_comparison.py": "c765e343a6f2b2f0f1d390d2e17809c9fac6def32fe2c0e1d974ecf54853a1df",
+        "V2\\problem.py": "bf5bd8d6d9e71ffa8463ef8914b3edcfc69788f8cfe344ddcc406fb51b0ffaa4",
+        "V2\\refine_soret_validation.py": "ccf3b427ea7526c69d80b3f6eba0f41021369fa39b282c5531fd9cf9f5038e76",
+        "V2\\run_saved_comparison.py": "cc7747863e54a70ffc2a77add3755a749bbdbc6e08b0603a072e4fc5458de685",
+        "V2\\species_backend.py": "daeacfd193afb942ba9ed555c915074809ad62d5c6a05426fd0bd8331416e62f",
+        "V2\\state.py": "7f151533c07d5332fac60bcaeeb8d27c412743559f2dfe08ed4fcd2cc71aab00",
+        "V2\\trace_cantera_soret.py": "1f1e9932787b70bb9243bbf6fd72797ef1baba0b8aeb2c434e7dee1c252cd3fb",
+        "V2\\materiales\\collision_integrals_native.py": "168ac1d16fd1a85c0417750761f5b08650f597f8062d4f4fb7f07a1da557f959",
+        "V2\\materiales\\mechanism_data.py": "bce21a5f71d484798006ca75fc565b9784edee7e8eb1e40796c4c6b074a2f2f0",
+        "V2\\materiales\\thermo_native.py": "6afbbe05bc1404b8ca12cd122e88da2d3b72a6a30011dccfabbe0e7fbea584f0",
+        "V2\\materiales\\transport_multicomponent_kernels.py": "537844f3cf03998281638115db867fbb3df0088ef3afbe39076cca394713c5f6",
+        "V2\\materiales\\transport_multicomponent_native.py": "c09ef5e4a01199926d854e1a1c6a6fe94abd607834efb156e7619d5352f359dc",
+        "V2\\materiales\\transport_native.py": "87853760cd078be99c94678bff3117fb90fd2cadc8fb8bb4f2615ed96adbc581",
+        "validation\\cold_blas.py": "7a15525c72f33201fa9e6ff7358f5383e6252df64334f3bf1ab268817fe379c1",
+        "validation\\cold_compiled_lu.py": "3d6e74487efb91c01e6ab7099a68554ba72640509a7975b9ebbee9042a236127",
+        "validation\\cold_dependencies.py": "a05c7973a023c71d03354c95ff1ae41edc078f979d9527c6f558cadb8ffa62c8",
+        "validation\\cold_exact_residual.py": "658b3d8a57f6afabd13ddf871546c0b7ef320079f62d35c4760b3fdb00beb44a",
+        "validation\\cold_generated_chemistry.py": "5d22d9a3662270fffeed7d7161f2834f857b5c7994a2f722b55bcc8307dc47fc",
+        "validation\\cold_nonlinear_blocks.py": "7851f922a0dfaeb40b1e2dda2919d9d77cb4d6de3a3a36e42406e5a997e2e8c7",
+        "validation\\cold_simd.py": "7a01da8a9dd07fc82d1746a657a169c7d7d3df18cb1fb33839104486f2a6de33",
+        "validation\\cold_spatial.py": "baf97f9d28cc0a79b563bfe680aa3bf95d6721b458431a6e050bd758d3ddf352",
+        "validation\\cold_streamed_jacobian.py": "b605f7e4fc8be7dd48bb01359c02531f9e128ce5f583627ac4d40a35bc03d546",
+        "validation\\cold_transport_candidates.py": "1d1bdff1ebf0a5c1f3c27e66d8bc56fda521ae1f0b1e91bb2c34671a58e7f5d7",
+        "validation\\analyze_cold_strategies.py": "20196cdf0d4796981ca2640f572794a4199e6cd8878965b70889732b42ce680d",
+        "V2\\materiales\\collision_integrals_mm.json": "d615ab6a957338231f55307f50062572a87dc126b41c415b0a7276eb30e2c145"
+      },
+      "kernel_sha256": {
+        "baseline": "production"
+      },
+      "expected_repetitions": 1,
+      "cases": {
+        "ch4_1": {
+          "baseline": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "ch4_1",
+                "variant": "baseline",
+                "accepted": true,
+                "profile_sha256": "f6ec643cf57b71d7b6065069521da639cc4f27624c3d07eaf72dc9b50bc9dda1",
+                "internal_accepted": true,
+                "time_s": 4.715439299994614,
+                "strategy_trace": [],
+                "Finf": 1748.5019918150165,
+                "species_sum_error": 1.6909695865763297e-10,
+                "mass_flow_error": 1.2355964163731997e-06,
+                "final_weighted_norm": 0.2040750665815072
+              }
+            ],
+            "n": 1,
+            "profiles": {
+              "0": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              4.434358500002418
+            ],
+            "median_s": 4.434358500002418,
+            "quartiles_s": [
+              4.434358500002418,
+              4.434358500002418
+            ],
+            "reduction_percent": 0.0
+          },
+          "limited-spatial": {
+            "complete": false,
+            "all_accepted": false,
+            "strict_final_metrics": false,
+            "warmup": [
+              {
+                "case": "ch4_1",
+                "variant": "limited-spatial",
+                "accepted": false,
+                "profile_sha256": "944675aa80bc481f9df8c90ac892db6b39fa5c63c5dcb484142458102d3d3f55",
+                "internal_accepted": false,
+                "time_s": 60.15828760000295,
+                "strategy_trace": [
+                  {
+                    "kind": "limited_spatial",
+                    "assembly_calls": 11967,
+                    "refinement_calls": 0,
+                    "extra_marks": 0,
+                    "assembly_errors": [],
+                    "jacobian": "original upwind quasi-Newton",
+                    "indicator": null
+                  }
+                ],
+                "Finf": 22.467767228160074,
+                "species_sum_error": 3.2465141686088828e-12,
+                "mass_flow_error": 4.818370402320673e-10,
+                "final_weighted_norm": null
+              }
+            ],
+            "n": 0,
+            "profiles": {},
+            "accuracy_passed": false,
+            "execution_verified": false,
+            "candidate_errors": [],
+            "interpretation": "Different spatial operator. Errors against baseline are diagnostic only; equal-accuracy speedup requires an independently refined reference. Embedded reconstruction monitor is not a certified error estimator."
+          },
+          "limited-spatial-adapt": {
+            "complete": false,
+            "all_accepted": false,
+            "strict_final_metrics": false,
+            "warmup": [
+              {
+                "case": "ch4_1",
+                "variant": "limited-spatial-adapt",
+                "accepted": false,
+                "profile_sha256": "90c019bdb24b390b6e4906bc9466637de040ae90d9cd3638cb62cee93a63643f",
+                "internal_accepted": false,
+                "time_s": 60.034939599994686,
+                "strategy_trace": [
+                  {
+                    "kind": "limited_spatial",
+                    "assembly_calls": 10431,
+                    "refinement_calls": 7,
+                    "extra_marks": 3,
+                    "assembly_errors": [],
+                    "jacobian": "original upwind quasi-Newton",
+                    "indicator": "linear/quadratic face discrepancy"
+                  }
+                ],
+                "Finf": 29.504543065465082,
+                "species_sum_error": 3.532063530542473e-12,
+                "mass_flow_error": 7.778601638053911e-10,
+                "final_weighted_norm": null
+              }
+            ],
+            "n": 0,
+            "profiles": {},
+            "accuracy_passed": false,
+            "execution_verified": false,
+            "candidate_errors": [],
+            "interpretation": "Different spatial operator. Errors against baseline are diagnostic only; equal-accuracy speedup requires an independently refined reference. Embedded reconstruction monitor is not a certified error estimator."
+          }
+        },
+        "h2_1": {
+          "baseline": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "h2_1",
+                "variant": "baseline",
+                "accepted": true,
+                "profile_sha256": "4c3369381541c1a8ade1b2472fe1fdea89ad04b5a5061a9af27f9c6891951b63",
+                "internal_accepted": true,
+                "time_s": 6.172287800000049,
+                "strategy_trace": [],
+                "Finf": 6.763742732171108,
+                "species_sum_error": 6.188383139260623e-13,
+                "mass_flow_error": 2.1501270865725724e-10,
+                "final_weighted_norm": 0.00012219229564118278
+              }
+            ],
+            "n": 1,
+            "profiles": {
+              "0": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              5.873031700000865
+            ],
+            "median_s": 5.873031700000865,
+            "quartiles_s": [
+              5.873031700000865,
+              5.873031700000865
+            ],
+            "reduction_percent": 0.0
+          },
+          "limited-spatial": {
+            "complete": false,
+            "all_accepted": false,
+            "strict_final_metrics": false,
+            "warmup": [
+              {
+                "case": "h2_1",
+                "variant": "limited-spatial",
+                "accepted": false,
+                "profile_sha256": "367a629108629b952a912ec15bb664b1ae3297df13a4698fc1ef73b334baa646",
+                "internal_accepted": false,
+                "time_s": 60.06777890000376,
+                "strategy_trace": [
+                  {
+                    "kind": "limited_spatial",
+                    "assembly_calls": 13015,
+                    "refinement_calls": 0,
+                    "extra_marks": 0,
+                    "assembly_errors": [],
+                    "jacobian": "original upwind quasi-Newton",
+                    "indicator": null
+                  }
+                ],
+                "Finf": null,
+                "species_sum_error": 6.651346140529313e-13,
+                "mass_flow_error": 3.897303329758312e-10,
+                "final_weighted_norm": null
+              }
+            ],
+            "n": 0,
+            "profiles": {},
+            "accuracy_passed": false,
+            "execution_verified": false,
+            "candidate_errors": [],
+            "interpretation": "Different spatial operator. Errors against baseline are diagnostic only; equal-accuracy speedup requires an independently refined reference. Embedded reconstruction monitor is not a certified error estimator."
+          },
+          "limited-spatial-adapt": {
+            "complete": false,
+            "all_accepted": false,
+            "strict_final_metrics": false,
+            "warmup": [
+              {
+                "case": "h2_1",
+                "variant": "limited-spatial-adapt",
+                "accepted": false,
+                "profile_sha256": "7b175b7cdefcdd911404d3eeeae9ee894a1ad9c915d782a5047ed44ad61b5e63",
+                "internal_accepted": false,
+                "time_s": 60.06282780000765,
+                "strategy_trace": [
+                  {
+                    "kind": "limited_spatial",
+                    "assembly_calls": 10518,
+                    "refinement_calls": 8,
+                    "extra_marks": 4,
+                    "assembly_errors": [],
+                    "jacobian": "original upwind quasi-Newton",
+                    "indicator": "linear/quadratic face discrepancy"
+                  }
+                ],
+                "Finf": null,
+                "species_sum_error": 0.0,
+                "mass_flow_error": 7.879104692232039e-09,
+                "final_weighted_norm": null
+              }
+            ],
+            "n": 0,
+            "profiles": {},
+            "accuracy_passed": false,
+            "execution_verified": false,
+            "candidate_errors": [],
+            "interpretation": "Different spatial operator. Errors against baseline are diagnostic only; equal-accuracy speedup requires an independently refined reference. Embedded reconstruction monitor is not a certified error estimator."
+          }
+        },
+        "ch4_10": {
+          "baseline": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "ch4_10",
+                "variant": "baseline",
+                "accepted": true,
+                "profile_sha256": "99e9a434bc1667d872ea30835dd3b344cd40f0aeab2a7bf895413c657e23e9d7",
+                "internal_accepted": true,
+                "time_s": 28.741211000000476,
+                "strategy_trace": [],
+                "Finf": 6246.177389605016,
+                "species_sum_error": 2.2403958688244074e-09,
+                "mass_flow_error": 3.850263492395019e-09,
+                "final_weighted_norm": 0.8089622282504684
+              }
+            ],
+            "n": 1,
+            "profiles": {
+              "0": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              26.512441900005797
+            ],
+            "median_s": 26.512441900005797,
+            "quartiles_s": [
+              26.512441900005797,
+              26.512441900005797
+            ],
+            "reduction_percent": 0.0
+          },
+          "limited-spatial": {
+            "complete": false,
+            "all_accepted": false,
+            "strict_final_metrics": false,
+            "warmup": [
+              {
+                "case": "ch4_10",
+                "variant": "limited-spatial",
+                "accepted": false,
+                "profile_sha256": "c88f51f9a513a9ad550398ba34bdfa6f937344baa4744fc725dcefc2a72b3076",
+                "internal_accepted": false,
+                "time_s": 60.054167400012375,
+                "strategy_trace": [
+                  {
+                    "kind": "limited_spatial",
+                    "assembly_calls": 12426,
+                    "refinement_calls": 0,
+                    "extra_marks": 0,
+                    "assembly_errors": [],
+                    "jacobian": "original upwind quasi-Newton",
+                    "indicator": null
+                  }
+                ],
+                "Finf": 0.3560091139621774,
+                "species_sum_error": 2.6867397195928788e-14,
+                "mass_flow_error": 3.7286573277132446e-12,
+                "final_weighted_norm": null
+              }
+            ],
+            "n": 0,
+            "profiles": {},
+            "accuracy_passed": false,
+            "execution_verified": false,
+            "candidate_errors": [],
+            "interpretation": "Different spatial operator. Errors against baseline are diagnostic only; equal-accuracy speedup requires an independently refined reference. Embedded reconstruction monitor is not a certified error estimator."
+          },
+          "limited-spatial-adapt": {
+            "complete": false,
+            "all_accepted": false,
+            "strict_final_metrics": false,
+            "warmup": [
+              {
+                "case": "ch4_10",
+                "variant": "limited-spatial-adapt",
+                "accepted": false,
+                "profile_sha256": "c88f51f9a513a9ad550398ba34bdfa6f937344baa4744fc725dcefc2a72b3076",
+                "internal_accepted": false,
+                "time_s": 60.08346930000698,
+                "strategy_trace": [
+                  {
+                    "kind": "limited_spatial",
+                    "assembly_calls": 11773,
+                    "refinement_calls": 6,
+                    "extra_marks": 0,
+                    "assembly_errors": [],
+                    "jacobian": "original upwind quasi-Newton",
+                    "indicator": "linear/quadratic face discrepancy"
+                  }
+                ],
+                "Finf": 0.3560091139621774,
+                "species_sum_error": 2.6867397195928788e-14,
+                "mass_flow_error": 3.7286573277132446e-12,
+                "final_weighted_norm": null
+              }
+            ],
+            "n": 0,
+            "profiles": {},
+            "accuracy_passed": false,
+            "execution_verified": false,
+            "candidate_errors": [],
+            "interpretation": "Different spatial operator. Errors against baseline are diagnostic only; equal-accuracy speedup requires an independently refined reference. Embedded reconstruction monitor is not a certified error estimator."
+          }
+        },
+        "h2_10": {
+          "baseline": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "h2_10",
+                "variant": "baseline",
+                "accepted": true,
+                "profile_sha256": "aa8702c2dc1d656fb50d19780b127495994b3a2936734a1b7e6509aac75d0411",
+                "internal_accepted": true,
+                "time_s": 53.91005810000934,
+                "strategy_trace": [],
+                "Finf": 0.3585920419101835,
+                "species_sum_error": 3.8899994336816235e-12,
+                "mass_flow_error": 2.0140555195537962e-12,
+                "final_weighted_norm": 7.101137262384788e-06
+              }
+            ],
+            "n": 1,
+            "profiles": {
+              "0": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              50.46026169999095
+            ],
+            "median_s": 50.46026169999095,
+            "quartiles_s": [
+              50.46026169999095,
+              50.46026169999095
+            ],
+            "reduction_percent": 0.0
+          },
+          "limited-spatial": {
+            "complete": false,
+            "all_accepted": false,
+            "strict_final_metrics": false,
+            "warmup": [
+              {
+                "case": "h2_10",
+                "variant": "limited-spatial",
+                "accepted": false,
+                "profile_sha256": "63fe86d2e97b5aa011554b17970e1dfbf425697efe32f7f13aa1879cd7b99b52",
+                "internal_accepted": false,
+                "time_s": 60.002563500005635,
+                "strategy_trace": [
+                  {
+                    "kind": "limited_spatial",
+                    "assembly_calls": 60612,
+                    "refinement_calls": 0,
+                    "extra_marks": 0,
+                    "assembly_errors": [],
+                    "jacobian": "original upwind quasi-Newton",
+                    "indicator": null
+                  }
+                ],
+                "Finf": null,
+                "species_sum_error": 1.368682944757893e-12,
+                "mass_flow_error": 6.217273155072988e-06,
+                "final_weighted_norm": null
+              }
+            ],
+            "n": 0,
+            "profiles": {},
+            "accuracy_passed": false,
+            "execution_verified": false,
+            "candidate_errors": [],
+            "interpretation": "Different spatial operator. Errors against baseline are diagnostic only; equal-accuracy speedup requires an independently refined reference. Embedded reconstruction monitor is not a certified error estimator."
+          },
+          "limited-spatial-adapt": {
+            "complete": false,
+            "all_accepted": false,
+            "strict_final_metrics": false,
+            "warmup": [
+              {
+                "case": "h2_10",
+                "variant": "limited-spatial-adapt",
+                "accepted": false,
+                "profile_sha256": "f5aa1cd9ed16515dafcee599ce93fab29509bfdcec27be82aa47020b1764969a",
+                "internal_accepted": false,
+                "time_s": 60.017164999997476,
+                "strategy_trace": [
+                  {
+                    "kind": "limited_spatial",
+                    "assembly_calls": 65038,
+                    "refinement_calls": 1,
+                    "extra_marks": 0,
+                    "assembly_errors": [],
+                    "jacobian": "original upwind quasi-Newton",
+                    "indicator": "linear/quadratic face discrepancy"
+                  }
+                ],
+                "Finf": null,
+                "species_sum_error": 1.2236878177418475e-12,
+                "mass_flow_error": 1.0632885740892473e-07,
+                "final_weighted_norm": null
+              }
+            ],
+            "n": 0,
+            "profiles": {},
+            "accuracy_passed": false,
+            "execution_verified": false,
+            "candidate_errors": [],
+            "interpretation": "Different spatial operator. Errors against baseline are diagnostic only; equal-accuracy speedup requires an independently refined reference. Embedded reconstruction monitor is not a certified error estimator."
+          }
+        }
+      }
+    }
+  ],
+  "limitations": [
+    "Cold flame, warmed compiler; no seed reuse.",
+    "These are within-V2 ablations, not new Cantera timings.",
+    "One repetition gives screening evidence, not a confidence interval.",
+    "The two-grid variant is a prototype, not a complete recursive FAS solver.",
+    "Final residual and weighted norm do not prove mesh/domain independence."
+  ]
+}

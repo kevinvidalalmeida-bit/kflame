@@ -1,0 +1,718 @@
+{
+  "campaigns": [
+    {
+      "directory": "resultados\\cold_strategies\\20260906_115711",
+      "raw_sha256": "68c18a5b93e401b80b8a1d336d76881b1163692a7026cde8373c3f69f1588f9d",
+      "source_sha256": {
+        "validation\\benchmark_cold_strategies.py": "c7e339c3637124bcce13707b2d4c000718c528f3636d87b01ffc0a257cb426c3",
+        "validation\\cold_strategy_kernels.py": "defaef41c2734fa44c5de2aa49d485b7856f61d378304db1917452dc476f425f",
+        "V2\\equations.py": "bdd6a38f842207c163d7eec4a2ff135eb4f0cac67c886989ecff1d3d850e4e35",
+        "V2\\solver.py": "a05d7a2178e8c059596e3d151e05466ffd012eb52440197a4c4157267196af9e",
+        "V2\\materiales\\species_backend_native.py": "0c6299ed614e68d420d1d970ea69636d2f7c4ba30cad3ee4df4e8be0e7b97da5",
+        "V2\\materiales\\kinetics_native.py": "520908e5408b0fe1828fa94be0ea629016eb5fc3428f7048695067ffc9df45e3",
+        "validation\\cold_mesh_budget.py": "9f25bb4dfe16516399da47cb2e908b57ae074c8b8bf6b048ba478cc52061c5be",
+        "validation\\cold_two_grid.py": "ff1492f35dd5634d7454dbb98810fa561482331c77c7813fffae4ce0d9dad687",
+        "V2\\analyze_soret_validation.py": "a9648d99265dfd33a884cf844cc81685e8c17697e1f48e30801efd3f751ad5f2",
+        "V2\\audit_soret_solver_trace.py": "25c24fe88d8be9276989912a54fc9175814ec2e08000f6d9bfcdc93f9c7d2b87",
+        "V2\\benchmark_soret_native.py": "bab93ded7ccd7927e91ddb113c07fcb2ef22a541712da0b09d48bd9f8293d369",
+        "V2\\config.py": "b17d7c363f5619499888aa9953d8b043d4096f39dad2b6aa3a4f4a366d062c35",
+        "V2\\plot_saved_comparison.py": "c765e343a6f2b2f0f1d390d2e17809c9fac6def32fe2c0e1d974ecf54853a1df",
+        "V2\\problem.py": "bf5bd8d6d9e71ffa8463ef8914b3edcfc69788f8cfe344ddcc406fb51b0ffaa4",
+        "V2\\refine_soret_validation.py": "ccf3b427ea7526c69d80b3f6eba0f41021369fa39b282c5531fd9cf9f5038e76",
+        "V2\\run_saved_comparison.py": "cc7747863e54a70ffc2a77add3755a749bbdbc6e08b0603a072e4fc5458de685",
+        "V2\\species_backend.py": "daeacfd193afb942ba9ed555c915074809ad62d5c6a05426fd0bd8331416e62f",
+        "V2\\state.py": "7f151533c07d5332fac60bcaeeb8d27c412743559f2dfe08ed4fcd2cc71aab00",
+        "V2\\trace_cantera_soret.py": "1f1e9932787b70bb9243bbf6fd72797ef1baba0b8aeb2c434e7dee1c252cd3fb",
+        "V2\\materiales\\collision_integrals_native.py": "168ac1d16fd1a85c0417750761f5b08650f597f8062d4f4fb7f07a1da557f959",
+        "V2\\materiales\\mechanism_data.py": "bce21a5f71d484798006ca75fc565b9784edee7e8eb1e40796c4c6b074a2f2f0",
+        "V2\\materiales\\thermo_native.py": "6afbbe05bc1404b8ca12cd122e88da2d3b72a6a30011dccfabbe0e7fbea584f0",
+        "V2\\materiales\\transport_multicomponent_kernels.py": "537844f3cf03998281638115db867fbb3df0088ef3afbe39076cca394713c5f6",
+        "V2\\materiales\\transport_multicomponent_native.py": "c09ef5e4a01199926d854e1a1c6a6fe94abd607834efb156e7619d5352f359dc",
+        "V2\\materiales\\transport_native.py": "87853760cd078be99c94678bff3117fb90fd2cadc8fb8bb4f2615ed96adbc581",
+        "validation\\cold_dependencies.py": "a05c7973a023c71d03354c95ff1ae41edc078f979d9527c6f558cadb8ffa62c8",
+        "validation\\cold_streamed_jacobian.py": "b605f7e4fc8be7dd48bb01359c02531f9e128ce5f583627ac4d40a35bc03d546",
+        "validation\\cold_transport_candidates.py": "fcac1651d5313e77b230b4c9e535fbcb41607d143c067e6f042668490f1e2cbf",
+        "validation\\analyze_cold_strategies.py": "89cde1be1740fc8a4ddbbb305166e3530e1e1087b7522777b623314d31805dc8",
+        "V2\\materiales\\collision_integrals_mm.json": "d615ab6a957338231f55307f50062572a87dc126b41c415b0a7276eb30e2c145"
+      },
+      "kernel_sha256": {
+        "baseline": "production",
+        "thermal": "672f52298ee3fec12ecdffa2201c0833d446056499e989fd476abb6b2435f56d",
+        "powers": "cad6ee9c9f4e8176875415302c10d4b7660072dca116209e2ce573128f4bee0a",
+        "serial": "002852c7d2f1d951139654bc3c2f4465f7d3607707b384319fbac5feaf71a68b"
+      },
+      "expected_repetitions": 1,
+      "cases": {
+        "h2_1": {
+          "baseline": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "h2_1",
+                "variant": "baseline",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 6.815191900001082,
+                "strategy_trace": [],
+                "Finf": 6.763742732171108,
+                "species_sum_error": 6.188383139260623e-13,
+                "mass_flow_error": 2.1501270865725724e-10,
+                "final_weighted_norm": 0.00012219229564118278
+              }
+            ],
+            "n": 1,
+            "profiles": {
+              "0": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              6.443344200000865
+            ],
+            "median_s": 6.443344200000865,
+            "quartiles_s": [
+              6.443344200000865,
+              6.443344200000865
+            ],
+            "reduction_percent": 0.0
+          },
+          "transport-action": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "h2_1",
+                "variant": "transport-action",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 44.65133980000246,
+                "strategy_trace": [
+                  {
+                    "kind": "transport_action",
+                    "faces": 107
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 107
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 107
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 107
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 107
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 107
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 107
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 197
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 197
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 197
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 197
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 197
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 200
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 200
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 200
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 202
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 202
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 202
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 204
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 204
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 204
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 206
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 206
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 206
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 206
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 206
+                  }
+                ],
+                "Finf": 6.7637374883509676,
+                "species_sum_error": 6.188383139260623e-13,
+                "mass_flow_error": 2.1501270865725724e-10,
+                "final_weighted_norm": 0.00012219229564118278
+              }
+            ],
+            "n": 1,
+            "profiles": {
+              "0": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              6.456766499999503
+            ],
+            "median_s": 6.456766499999503,
+            "quartiles_s": [
+              6.456766499999503,
+              6.456766499999503
+            ],
+            "reduction_percent": -0.20831263365748143
+          },
+          "transport-homotopy": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "h2_1",
+                "variant": "transport-homotopy",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 8.856414300003962,
+                "strategy_trace": [
+                  {
+                    "kind": "homotopy_jacobian",
+                    "alpha": 0.5,
+                    "nodes": 108
+                  },
+                  {
+                    "kind": "homotopy_jacobian",
+                    "alpha": 0.5,
+                    "nodes": 108
+                  },
+                  {
+                    "kind": "homotopy_jacobian",
+                    "alpha": 0.5,
+                    "nodes": 196
+                  },
+                  {
+                    "kind": "homotopy_jacobian",
+                    "alpha": 0.5,
+                    "nodes": 198
+                  },
+                  {
+                    "kind": "homotopy_jacobian",
+                    "alpha": 0.5,
+                    "nodes": 200
+                  },
+                  {
+                    "kind": "homotopy_jacobian",
+                    "alpha": 0.5,
+                    "nodes": 202
+                  },
+                  {
+                    "kind": "homotopy_jacobian",
+                    "alpha": 0.5,
+                    "nodes": 204
+                  },
+                  {
+                    "kind": "homotopy_stage",
+                    "alpha": 0.5,
+                    "accepted": true,
+                    "time_s": 4.426125300000422,
+                    "nodes": 204,
+                    "Finf": 7.174516428058823
+                  }
+                ],
+                "Finf": 283.626230600557,
+                "species_sum_error": 2.84682277751358e-11,
+                "mass_flow_error": 3.933344837113924e-10,
+                "final_weighted_norm": 0.0024323567339729285
+              }
+            ],
+            "n": 1,
+            "profiles": {
+              "0": {
+                "bitwise_equal": false,
+                "Su_relative": 0.0030031418856723002,
+                "E2_T": 0.0006441491006383539,
+                "E2_qdot": 0.004705509731277007,
+                "E2_Y": {
+                  "H2": 0.002243097233811963,
+                  "H": 0.015063157432224791,
+                  "O": 0.0019274692357332365,
+                  "O2": 0.0026140809736858806,
+                  "OH": 0.0009783798693269311,
+                  "H2O": 0.0019415097427636636,
+                  "HO2": 0.0031957624763858743,
+                  "H2O2": 0.004024498245166118,
+                  "NO": 0.002835398073991683,
+                  "N2": 7.205216950349951e-05
+                },
+                "E2_Y_max": 0.015063157432224791,
+                "passed": false
+              }
+            },
+            "accuracy_passed": false,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              8.83258499999647
+            ],
+            "median_s": 8.83258499999647,
+            "quartiles_s": [
+              8.83258499999647,
+              8.83258499999647
+            ],
+            "reduction_percent": -37.08075691494619
+          }
+        },
+        "h2_10": {
+          "baseline": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "h2_10",
+                "variant": "baseline",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 51.83771510000224,
+                "strategy_trace": [],
+                "Finf": 0.3585920419101835,
+                "species_sum_error": 3.8899994336816235e-12,
+                "mass_flow_error": 2.0140555195537962e-12,
+                "final_weighted_norm": 7.101137262384788e-06
+              }
+            ],
+            "n": 1,
+            "profiles": {
+              "0": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              55.197959700002684
+            ],
+            "median_s": 55.197959700002684,
+            "quartiles_s": [
+              55.197959700002684,
+              55.197959700002684
+            ],
+            "reduction_percent": 0.0
+          },
+          "transport-action": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "h2_10",
+                "variant": "transport-action",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 51.95532999999705,
+                "strategy_trace": [
+                  {
+                    "kind": "transport_action",
+                    "faces": 442
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 442
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 442
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 442
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 442
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 442
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 442
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 442
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 442
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 806
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 806
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 806
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 806
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 806
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 806
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 840
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 840
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 840
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 840
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 840
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 840
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 843
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 843
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 843
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 843
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 845
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 845
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 845
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 847
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 847
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 847
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 849
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 849
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 849
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 851
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 851
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 851
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 853
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 853
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 853
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 853
+                  },
+                  {
+                    "kind": "transport_action",
+                    "faces": 853
+                  }
+                ],
+                "Finf": 0.3585924012449104,
+                "species_sum_error": 3.8899994336816235e-12,
+                "mass_flow_error": 2.0140555195537962e-12,
+                "final_weighted_norm": 7.101137262384788e-06
+              }
+            ],
+            "n": 1,
+            "profiles": {
+              "0": {
+                "bitwise_equal": true,
+                "Su_relative": 0.0,
+                "E2_T": 0.0,
+                "E2_qdot": 0.0,
+                "E2_Y_max": 0.0,
+                "passed": true
+              }
+            },
+            "accuracy_passed": true,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              52.368807399994694
+            ],
+            "median_s": 52.368807399994694,
+            "quartiles_s": [
+              52.368807399994694,
+              52.368807399994694
+            ],
+            "reduction_percent": 5.1254653530388605
+          },
+          "transport-homotopy": {
+            "complete": true,
+            "all_accepted": true,
+            "strict_final_metrics": true,
+            "warmup": [
+              {
+                "case": "h2_10",
+                "variant": "transport-homotopy",
+                "accepted": true,
+                "internal_accepted": true,
+                "time_s": 66.7393110999983,
+                "strategy_trace": [
+                  {
+                    "kind": "homotopy_jacobian",
+                    "alpha": 0.5,
+                    "nodes": 443
+                  },
+                  {
+                    "kind": "homotopy_jacobian",
+                    "alpha": 0.5,
+                    "nodes": 443
+                  },
+                  {
+                    "kind": "homotopy_jacobian",
+                    "alpha": 0.5,
+                    "nodes": 806
+                  },
+                  {
+                    "kind": "homotopy_jacobian",
+                    "alpha": 0.5,
+                    "nodes": 822
+                  },
+                  {
+                    "kind": "homotopy_jacobian",
+                    "alpha": 0.5,
+                    "nodes": 822
+                  },
+                  {
+                    "kind": "homotopy_jacobian",
+                    "alpha": 0.5,
+                    "nodes": 824
+                  },
+                  {
+                    "kind": "homotopy_jacobian",
+                    "alpha": 0.5,
+                    "nodes": 826
+                  },
+                  {
+                    "kind": "homotopy_jacobian",
+                    "alpha": 0.5,
+                    "nodes": 828
+                  },
+                  {
+                    "kind": "homotopy_jacobian",
+                    "alpha": 0.5,
+                    "nodes": 830
+                  },
+                  {
+                    "kind": "homotopy_jacobian",
+                    "alpha": 0.5,
+                    "nodes": 832
+                  },
+                  {
+                    "kind": "homotopy_jacobian",
+                    "alpha": 0.5,
+                    "nodes": 834
+                  },
+                  {
+                    "kind": "homotopy_stage",
+                    "alpha": 0.5,
+                    "accepted": true,
+                    "time_s": 26.37503320000542,
+                    "nodes": 834,
+                    "Finf": 1.1765451156534255
+                  }
+                ],
+                "Finf": 1540.0775135802091,
+                "species_sum_error": 1.769495661108067e-11,
+                "mass_flow_error": 2.2100642983582713e-11,
+                "final_weighted_norm": 0.010136428372318675
+              }
+            ],
+            "n": 1,
+            "profiles": {
+              "0": {
+                "bitwise_equal": false,
+                "Su_relative": 0.0022779464246431846,
+                "E2_T": 0.0002916194306459892,
+                "E2_qdot": 0.00326686607922134,
+                "E2_Y": {
+                  "H2": 0.0005189707437225307,
+                  "H": 0.010570390820668657,
+                  "O": 0.007843316513087869,
+                  "O2": 0.0007590481702777184,
+                  "OH": 0.003565775434812528,
+                  "H2O": 0.0006101908874499556,
+                  "HO2": 0.001833125462298282,
+                  "H2O2": 0.0016198755647869971,
+                  "NO": 0.006279513395140219,
+                  "N2": 2.0282185583954542e-05
+                },
+                "E2_Y_max": 0.010570390820668657,
+                "passed": false
+              }
+            },
+            "accuracy_passed": false,
+            "execution_verified": true,
+            "candidate_errors": [],
+            "raw_s": [
+              68.16026250000141
+            ],
+            "median_s": 68.16026250000141,
+            "quartiles_s": [
+              68.16026250000141,
+              68.16026250000141
+            ],
+            "reduction_percent": -23.48330059742787
+          }
+        }
+      }
+    }
+  ],
+  "limitations": [
+    "Cold flame, warmed compiler; no seed reuse.",
+    "These are within-V2 ablations, not new Cantera timings.",
+    "One repetition gives screening evidence, not a confidence interval.",
+    "The two-grid variant is a prototype, not a complete recursive FAS solver.",
+    "Final residual and weighted norm do not prove mesh/domain independence."
+  ]
+}

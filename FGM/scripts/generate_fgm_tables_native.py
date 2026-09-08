@@ -91,6 +91,7 @@ from problem import FreeFlameProblem
 from state import interpolate_state, pack_state, unpack_state
 from mechanism_data import load_mechanism
 from species_backend_native import NativeSpeciesBackend
+from species_backend import SpeciesBackend
 
 
 def configure_numba_kinetics_threads(count: int) -> int:
@@ -547,6 +548,11 @@ def seed_cache_key(args: argparse.Namespace, resolved_mech: str) -> str:
         "transport_model": str(args.transport_model),
         "flux_gradient_basis": str(args.flux_gradient_basis),
         "soret_enabled": bool(args.soret_enabled),
+        "transport_backend": str(getattr(args, "transport_backend", "native")),
+        "lag_multicomponent_transport": bool(getattr(args, "lag_multicomponent_transport", False)),
+        "multicomponent_bootstrap": bool(getattr(args, "multicomponent_bootstrap", False)),
+        "bootstrap_mesh_factor": float(getattr(args, "bootstrap_mesh_factor", 2.0)),
+        "nonlinear_pipeline": "newton-ptc-ser-be-signed-kinetics-small-products-v2",
         "outlet_species_bc": str(args.outlet_species_bc),
         "upwind_factor": float(args.upwind_factor),
         "T_in": float(args.T_in),
@@ -639,6 +645,9 @@ def make_solve_options(args: argparse.Namespace) -> SolveOptions:
     opts.precompute_jacobian_thermo = bool(args.precompute_jacobian_thermo)
     opts.compiled_block_substitution = bool(args.compiled_block_substitution)
     opts.local_jacobian_refresh = bool(args.local_jacobian_refresh)
+    opts.lag_multicomponent_transport = bool(args.lag_multicomponent_transport)
+    opts.multicomponent_bootstrap = bool(args.multicomponent_bootstrap)
+    opts.bootstrap_mesh_factor = float(args.bootstrap_mesh_factor)
     opts.local_jacobian_refresh_defect_threshold = float(
         args.local_jacobian_refresh_defect_threshold
     )
@@ -670,6 +679,7 @@ def solve_flame_native(
     continuation_trust_ratio: float | None = None,
 ) -> tuple[FlameRecord, dict[str, np.ndarray], dict[str, Any]]:
     gas = ct.Solution(args.mech)
+    gas.transport_model = str(args.transport_model)
     gas.TP = float(args.T_in), float(args.P)
     gas.set_equivalence_ratio(float(phi), args.fuel, args.oxidizer)
     Z = float(gas.mixture_fraction(args.fuel, args.oxidizer, basis="mass"))
@@ -717,7 +727,13 @@ def solve_flame_native(
             flame_case, n_points=max(2, int(args.initial_grid_points))
         )
         problem.assume_finite_y = True
-        problem.backend_factory = lambda prob: NativeSpeciesBackend(prob, mech_data=mech_data)
+        if str(args.transport_backend).strip().lower() == "cantera-reference":
+            # Exact multicomponent/Soret face closure used only to verify the
+            # V2 discretisation. It intentionally remains separate from the
+            # native performance route.
+            problem.backend_factory = lambda prob: SpeciesBackend(prob)
+        else:
+            problem.backend_factory = lambda prob: NativeSpeciesBackend(prob, mech_data=mech_data)
 
         # Keep cold-start Jacobian aging conservative.  A converged profile
         # is much closer to the next phi state, where a longer reuse window
@@ -1150,13 +1166,34 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--fuel",             type=str,   default="CH4")
     p.add_argument("--oxidizer",         type=str,   default="O2:1.0, N2:3.76")
     p.add_argument("--transport-model",  type=str,   default="mixture-averaged")
+    p.add_argument(
+        "--transport-backend",
+        choices=("native", "cantera-reference"),
+        default="native",
+        help=(
+            "native usa los kernels V2 (incluido multicomponente/Soret nativo); "
+            "cantera-reference conserva una ruta independiente de verificacion."
+        ),
+    )
     p.add_argument("--flux-gradient-basis", type=str, default="molar")
     p.add_argument("--soret-enabled",    action="store_true")
+    p.add_argument("--multicomponent-bootstrap", action="store_true",
+                   help="Arranque nativo promediado por mezcla, seguido del corrector multicomponente/Soret.")
+    p.add_argument("--bootstrap-mesh-factor", type=float, default=2.0,
+                   help="Factor de slope/curve solo para la etapa preliminar; la etapa final conserva los criterios solicitados.")
+    p.add_argument(
+        "--lag-multicomponent-transport",
+        action="store_true",
+        help=(
+            "Reutiliza la clausura de transporte multicomponente/Soret entre "
+            "reconstrucciones de Jacobiano; la certificacion final siempre "
+            "reevalua las caras con transporte exacto."
+        ),
+    )
     p.add_argument("--outlet-species-bc", type=str, default="zero_gradient",
                    choices=("zero_gradient", "cantera_flux"),
                    help="Salida de especies: zero_gradient reproduce Outlet de Cantera FreeFlame; cantera_flux usa la condicion cruda de Flow1D.")
-    p.add_argument("--upwind-factor", type=float, default=1.0,
-                   help="Peso convectivo: 1.0=upwind puro, 0.0=central; experimental para ensayar esquemas tipo Lapointe.")
+    p.set_defaults(upwind_factor=1.0)
     p.add_argument("--T-in",             type=float, default=300.0)
     p.add_argument("--P",                type=float, default=101325.0)
     p.add_argument("--width",            type=float, default=0.03)
@@ -1393,8 +1430,10 @@ def main() -> None:
     args = build_argparser().parse_args()
     if bool(args.disable_continuation):
         args.continuation_mode = "cold"
-    if not 0.0 <= float(args.upwind_factor) <= 1.0:
-        raise SystemExit("--upwind-factor debe estar entre 0.0 y 1.0")
+    transport_key = str(args.transport_model).strip().lower().replace("_", "-")
+    is_multicomponent = transport_key in ("multicomponent", "multi-component", "multi")
+    if bool(args.soret_enabled) and not is_multicomponent:
+        raise SystemExit("--soret-enabled requiere --transport-model multicomponent")
     if int(args.continuation_seed_mesh_points) < 0:
         raise SystemExit("--continuation-seed-mesh-points debe ser mayor o igual a cero")
     if float(args.local_jacobian_refresh_defect_threshold) < 0.0:
@@ -1935,8 +1974,8 @@ def main() -> None:
 
     meta = {
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "solver_backend": "v2_native",
-        "reference_workflow": V2_REFERENCE_WORKFLOW,
+        "solver_backend": "v2_native" if args.transport_backend == "native" else "v2_cantera_transport_reference",
+        "reference_workflow": V2_REFERENCE_WORKFLOW if args.transport_backend == "native" else "v2_with_cantera_transport_reference",
         "reference_solver": V2_REFERENCE_SOLVER,
         "external_flamelet_table_tool_used": EXTERNAL_FLAMELET_TABLE_TOOL_USED,
         "external_flamelet_table_tool": EXTERNAL_FLAMELET_TABLE_TOOL,

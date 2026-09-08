@@ -16,7 +16,8 @@ import numpy as np
 from mechanism_data import MechanismData, load_mechanism, R_UNIV
 from thermo_native import NativeThermo
 from transport_native import NativeTransport
-from kinetics_native import NativeKinetics
+from transport_multicomponent_native import NativeMulticomponentTransport
+from kinetics_native import NativeKinetics, _mass_action_product
 
 try:
     from numba import njit, prange
@@ -25,56 +26,13 @@ except Exception:  # pragma: no cover - optional acceleration
     prange = range
 
 if njit is not None:
-    @njit(cache=True)
-    def _eval_thermo_sparse_numba_core(
-        T_arr, Y, P, nasa_lo, nasa_hi, nasa_tmid, invW,
-        rho_out, cp_out, hk_out,
-    ):
-        """NASA thermo and ideal-gas density, without reaction kinetics."""
-        n_sp = Y.shape[0]
-        n_pts = Y.shape[1]
-
-        for m in range(n_pts):
-            T = T_arr[m]
-            inv_wmix = 0.0
-            for k in range(n_sp):
-                inv_wmix += Y[k, m] * invW[k]
-            if inv_wmix < 1.0e-300:
-                inv_wmix = 1.0e-300
-
-            rho = P / (R_UNIV * T * inv_wmix)
-            rho_out[m] = rho
-
-            cp_mix = 0.0
-            for k in range(n_sp):
-                c = nasa_hi[k] if T > nasa_tmid[k] else nasa_lo[k]
-                cp_R = (
-                    c[0]
-                    + T * (c[1] + T * (c[2] + T * (c[3] + T * c[4])))
-                )
-                h_RT = (
-                    c[0]
-                    + T * (
-                        c[1] / 2.0
-                        + T * (
-                            c[2] / 3.0
-                            + T * (c[3] / 4.0 + T * c[4] / 5.0)
-                        )
-                    )
-                    + c[5] / T
-                )
-                hk_out[k, m] = h_RT * R_UNIV * T
-                cp_mix += Y[k, m] * cp_R * R_UNIV * invW[k]
-
-            cp_out[m] = cp_mix
-
     @njit(cache=True, parallel=True)
     def _eval_thermo_kinetics_sparse_numba_core(
         T_arr, Y, P, nasa_lo, nasa_hi, nasa_tmid, W, invW,
         A_hi, b_hi, Ea_hi, A_lo, b_lo, Ea_lo,
         is_three_body, is_falloff, is_reversible, has_troe,
         troe_A, troe_T3, troe_T1, troe_T2,
-        r_idx, r_nu, r_count, p_idx, p_nu, p_count,
+        r_idx, r_nu, r_count, p_idx, p_nu, p_count, r_plan, p_plan,
         net_idx, net_nu, net_count, eff_idx, eff_delta, eff_count,
         delta_nu, rho_out, cp_out, omega_out, hk_out,
     ):
@@ -86,6 +44,7 @@ if njit is not None:
             # Per-node work arrays are intentionally local: this kernel is
             # embarrassingly parallel over grid/perturbation points.
             logC = np.empty(n_sp, dtype=np.float64)
+            concentrations = np.empty(n_sp, dtype=np.float64)
             g_RT = np.empty(n_sp, dtype=np.float64)
             T = T_arr[m]
             inv_RT = 1.0 / (R_UNIV * T)
@@ -101,6 +60,7 @@ if njit is not None:
             logT = math.log(T)
             cp_mix = 0.0
             c_total = 0.0
+            has_negative = False
             for k in range(n_sp):
                 c = nasa_hi[k] if T > nasa_tmid[k] else nasa_lo[k]
                 cp_R = (
@@ -134,9 +94,10 @@ if njit is not None:
                 cp_mix += Y[k, m] * cp_R * R_UNIV * invW[k]
 
                 conc = rho * Y[k, m] * invW[k]
-                if conc < 0.0:
-                    conc = 0.0
+                concentrations[k] = conc
                 c_total += conc
+                has_negative = has_negative or conc < 0.0
+                conc = abs(conc)
                 if conc < 1.0e-300:
                     conc = 1.0e-300
                 logC[k] = math.log(conc)
@@ -149,17 +110,6 @@ if njit is not None:
                 # T**b * exp(-Ea / RT) as one exponential. ``logT`` is already
                 # required by the NASA polynomials above for this grid point.
                 kf = A_hi[r] * math.exp(b_hi[r] * logT - Ea_hi[r] * inv_RT)
-
-                rf_exp = 0.0
-                for ii in range(r_count[r]):
-                    k = r_idx[r, ii]
-                    rf_exp += r_nu[r, ii] * logC[k]
-
-                rr_exp = 0.0
-                if is_reversible[r]:
-                    for ii in range(p_count[r]):
-                        k = p_idx[r, ii]
-                        rr_exp += p_nu[r, ii] * logC[k]
 
                 delta_g = 0.0
                 for ii in range(net_count[r]):
@@ -176,18 +126,20 @@ if njit is not None:
                 if is_reversible[r]:
                     kr = kf / max(Kc, 1.0e-300)
 
-                Rf = math.exp(rf_exp) * kf
+                # Specialized products retain the log fallback for extreme
+                # intermediate overflow/underflow and for noninteger orders.
+                Rf = _mass_action_product(concentrations, logC, r_idx[r], r_nu[r],
+                                          r_count[r], r_plan[r], has_negative) * kf
                 Rr = 0.0
                 if is_reversible[r]:
-                    Rr = math.exp(rr_exp) * kr
+                    Rr = _mass_action_product(concentrations, logC, p_idx[r], p_nu[r],
+                                              p_count[r], p_plan[r], has_negative) * kr
 
                 M = c_total
                 if is_three_body[r] or is_falloff[r]:
                     for ii in range(eff_count[r]):
                         k = eff_idx[r, ii]
                         ck = rho * Y[k, m] * invW[k]
-                        if ck < 0.0:
-                            ck = 0.0
                         M += eff_delta[r, ii] * ck
 
                 if is_three_body[r]:
@@ -230,7 +182,6 @@ if njit is not None:
                     k = net_idx[r, ii]
                     omega_out[k, m] += net_nu[r, ii] * q * W[k]
 else:
-    _eval_thermo_sparse_numba_core = None
     _eval_thermo_kinetics_sparse_numba_core = None
 
 
@@ -251,6 +202,29 @@ class NativeSpeciesBackend:
     def __init__(self, problem, mech_data: MechanismData | None = None):
         self.problem = problem
         self.backend_kind = "native"
+        transport_model = str(
+            getattr(problem, "transport_model", getattr(problem.case, "transport_model", "mixture-averaged"))
+        ).strip().lower().replace("_", "-")
+        soret_enabled = bool(
+            getattr(problem, "soret_enabled", getattr(problem.case, "soret_enabled", False))
+        )
+        self.uses_multicomponent_flux = transport_model in (
+            "multicomponent", "multi", "multicomponent-transport",
+        )
+        if transport_model not in (
+            "mixture-averaged", "mixtureaveraged", "mix", "multicomponent",
+            "multi", "multicomponent-transport",
+        ):
+            raise ValueError(f"Modelo de transporte no reconocido: {transport_model!r}")
+        if soret_enabled and not self.uses_multicomponent_flux:
+            raise ValueError(
+                "La extensión Soret nativa validada de V2 requiere transporte multicomponente; "
+                "el cierre Soret mixture-averaged es un modelo distinto aún no implementado."
+            )
+        if self.uses_multicomponent_flux and str(getattr(
+            problem, "flux_gradient_basis", getattr(problem.case, "flux_gradient_basis", "molar")
+        )).lower() != "molar":
+            raise ValueError("Multicomponent transport requires molar gradients.")
         P = problem.P
         self.xp = np
 
@@ -264,6 +238,13 @@ class NativeSpeciesBackend:
 
         self.thermo    = NativeThermo(mech_data, xp=self.xp)
         self.transport = NativeTransport(mech_data, xp=self.xp)
+        self.multicomponent_transport = None
+        if self.uses_multicomponent_flux:
+            self.multicomponent_transport = NativeMulticomponentTransport(
+                mech_data,
+                mechanism_path=problem.case.mech,
+                base_transport=self.transport,
+            )
         self.kinetics  = NativeKinetics(mech_data, xp=self.xp)
         if getattr(self.kinetics, "_numba_available", False):
             self.kinetics._use_numba = bool(getattr(problem, "use_numba_kinetics", False))
@@ -287,6 +268,7 @@ class NativeSpeciesBackend:
             getattr(problem, "flux_gradient_basis",
                     getattr(problem.case, "flux_gradient_basis", "molar"))
         ).strip().lower()
+        self.soret_enabled = soret_enabled
 
     # ------------------------------------------------------------------
     #  Internal helpers
@@ -440,6 +422,8 @@ class NativeSpeciesBackend:
                 self.kinetics._sp_p_idx,
                 self.kinetics._sp_p_nu,
                 self.kinetics._sp_p_count,
+                self.kinetics._sp_r_plan,
+                self.kinetics._sp_p_plan,
                 self.kinetics._sp_net_idx,
                 self.kinetics._sp_net_nu,
                 self.kinetics._sp_net_count,
@@ -460,45 +444,6 @@ class NativeSpeciesBackend:
         self._copy_to_out(omega_out, omega_mass)
         return self._to_host(rho), self._to_host(cp)
 
-    def eval_grid_thermo_only_into(self, T: np.ndarray, Y: np.ndarray,
-                                   hk_out: np.ndarray):
-        """Evaluate density, mixture heat capacity and species enthalpies.
-
-        This is used by the local finite-difference Jacobian once the chemical
-        source derivative is supplied analytically.  It deliberately omits
-        kinetics, which otherwise dominates the cost of one Jacobian build.
-        """
-        if _eval_thermo_sparse_numba_core is not None:
-            T_work = np.asarray(T, dtype=np.float64).reshape(-1)
-            Y_work = np.ascontiguousarray(self._safe_Y(Y), dtype=np.float64)
-            if Y_work.ndim == 1:
-                Y_work = np.ascontiguousarray(Y_work[:, None], dtype=np.float64)
-            if Y_work.shape[1] != T_work.size:
-                raise ValueError("T and Y sizes do not match for thermodynamic evaluation.")
-
-            rho = np.empty(T_work.size, dtype=np.float64)
-            cp = np.empty(T_work.size, dtype=np.float64)
-            _eval_thermo_sparse_numba_core(
-                T_work,
-                Y_work,
-                self._P_float,
-                self._nb_nasa_lo,
-                self._nb_nasa_hi,
-                self._nb_nasa_tmid,
-                self.invW,
-                rho,
-                cp,
-                hk_out,
-            )
-            return rho, cp
-
-        T_dev = self.xp.asarray(T, dtype=float)
-        Y_safe = self._safe_Y(Y)
-        rho = self.thermo.density(T_dev, self.problem.P, Y_safe)
-        cp, hk_vals, _g_rt = self.thermo.cp_mass_hk_g_RT(T_dev, Y_safe)
-        self._copy_to_out(hk_out, hk_vals)
-        return self._to_host(rho), self._to_host(cp)
-
     def eval_faces(self, T_face: np.ndarray, Y_face: np.ndarray):
         """
         Evaluate full transport properties at all faces simultaneously.
@@ -507,6 +452,26 @@ class NativeSpeciesBackend:
         """
         rho, Dm, lam, Wmix = self.eval_faces_native(T_face, Y_face)
         return self._to_host(rho), self._to_host(Dm), self._to_host(lam), self._to_host(Wmix)
+
+    def eval_multicomponent_face_transport(self, T_face: np.ndarray,
+                                            Y_face: np.ndarray):
+        """Return native multicomponent/Soret data for the current faces.
+
+        Cantera is not invoked from this method. The immutable
+        collision-integral tables were read once while the backend was built;
+        all face-system assembly and linear algebra below this API are V2's.
+        """
+        if not self.uses_multicomponent_flux or self.multicomponent_transport is None:
+            return None
+        T_face = np.asarray(T_face, dtype=float)
+        Y_face = np.asarray(self._safe_Y(Y_face), dtype=float)
+        cp_r = np.asarray(self.thermo.cp_R(T_face), dtype=float)
+        rho, lam, wmix, multi, dthermal = self.multicomponent_transport.eval_faces(
+            T_face, self._P_float, Y_face, cp_r
+        )
+        if not self.soret_enabled:
+            dthermal.fill(0.0)
+        return rho, lam, wmix, multi, dthermal
 
     def eval_faces_native(self, T_face: np.ndarray, Y_face: np.ndarray):
         """

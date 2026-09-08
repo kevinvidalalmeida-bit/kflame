@@ -31,6 +31,12 @@ no_esencial/outputs/
 comparison_runs/
 V2/comparison_runs/
 FGM/resultados/
+# Regenerable Soret profiles; compact audit evidence is kept in validation/.
+/resultados/soret_native_validation/
+/resultados/soret_fgm_smoke/
+/resultados/kernel_ablation/
+/resultados/cold_strategies/
+/resultados/blas_env_20260907/
 local_tests/
 local_experiments/
 profiling/

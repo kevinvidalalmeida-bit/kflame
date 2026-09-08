@@ -113,6 +113,8 @@ class MechanismData:
     # pressure, reference
     pressure: float = ONE_ATM
     ref_pressure: float = ONE_ATM
+    min_temperature: float = 300.0
+    max_temperature: float = 3000.0
 
 # ═══════════════════════════════════════════════════════════════════════════
 #  Unit conversions used by gri30.yaml
@@ -285,6 +287,8 @@ def load_mechanism(filepath: str | Path) -> MechanismData:
     nasa_low  = np.zeros((n_sp, 7))
     nasa_high = np.zeros((n_sp, 7))
     nasa_Tmid = np.zeros(n_sp)
+    temperature_minima = np.zeros(n_sp)
+    temperature_maxima = np.zeros(n_sp)
 
     geometry      = np.zeros(n_sp)
     well_depth    = np.zeros(n_sp)
@@ -303,6 +307,8 @@ def load_mechanism(filepath: str | Path) -> MechanismData:
         thermo = sp["thermo"]
         assert thermo["model"] == "NASA7", f"Only NASA7 supported, got {thermo['model']}"
         tranges = thermo["temperature-ranges"]
+        temperature_minima[i] = tranges[0]
+        temperature_maxima[i] = tranges[-1]
         nasa_Tmid[i] = tranges[1]
         coefs = thermo["data"]
         nasa_low[i, :] = coefs[0]
@@ -433,6 +439,8 @@ def load_mechanism(filepath: str | Path) -> MechanismData:
         nu_reactants=nu_r,
         nu_products=nu_p,
         nu_net=nu_net,
+        min_temperature=float(np.max(temperature_minima)),
+        max_temperature=float(np.min(temperature_maxima)),
     )
     _MECHANISM_CACHE[cache_key] = copy.deepcopy(mech)
     return mech

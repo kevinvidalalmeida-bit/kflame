@@ -263,9 +263,18 @@ class NativeTransport:
             if diff_data is not None:
                 try:
                     diff_arr = np.asarray(diff_data, dtype=float)
-                    if diff_arr.shape[0] >= n and diff_arr.shape[1] >= n and diff_arr.shape[2] >= 5:
-                        diff_cpu[:, :, :] = diff_arr[:n, :n, :5]
-                        has_diff[:, :] = True
+                    # The archive stores its own species order. A reduced or
+                    # reordered mechanism must map by name, not take [:n,:n].
+                    for i, name_i in enumerate(self.mech.species_names):
+                        index_i = species_data.get(name_i, {}).get("index")
+                        for j, name_j in enumerate(self.mech.species_names):
+                            index_j = species_data.get(name_j, {}).get("index")
+                            if (index_i is not None and index_j is not None
+                                    and 0 <= index_i < diff_arr.shape[0]
+                                    and 0 <= index_j < diff_arr.shape[1]
+                                    and diff_arr.shape[2] >= 5):
+                                diff_cpu[i, j] = diff_arr[index_i, index_j, :5]
+                                has_diff[i, j] = True
                 except (TypeError, ValueError, IndexError):
                     has_diff[:, :] = False
 

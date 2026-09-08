@@ -1,6 +1,28 @@
 # Hoja de ruta para artículo y cierre de robustez
 
-## Estado de implementación: predictor--corrector adaptativo
+## Actualización Soret: química consistente durante Newton (2026-09-05)
+
+Se corrigió el recorte de concentraciones negativas admisibles durante la
+iteración. La corrección es nativa, mantiene las tasas de estados físicos
+positivos y está cubierta por fuentes/derivadas de dos mecanismos en cuatro
+rutas de evaluación. La revisión tiene 49 pruebas automáticas satisfactorias.
+La evidencia inicial recupera el arranque H2/GRI30 a 10 atm con PTC-SER normal
+y reduce los tiempos de los controles a 1 atm, sin relajar la aceptación.
+
+Esta corrección no es un nuevo modelo de Soret: elimina una incoherencia
+entre la globalización no lineal y la extensión numérica de la química.
+Debe documentarse como verificación de implementación, sin atribuirle
+originalidad teórica. Las repeticiones y el estudio de error espacial se
+registran por revisión, sin mezclar con los siete pares anteriores.
+Véase `validation/SORET_SIGNED_KINETICS_DIAGNOSIS.md`.
+
+Para el artículo siguen pendientes: ampliar independencia de malla/dominio,
+incertidumbre experimental, rango paramétrico FGM/Soret y ablaciones causales.
+Los coeficientes, flujos y química ya se evalúan nativamente; la construcción
+del problema todavía usa Cantera para mezcla/equilibrio inicial. Por tanto no
+se afirma que toda la aplicación sea independiente de Cantera.
+
+## Estado de implementación: predictor--corrector y refresco local certificado
 
 La versión actual incorpora una continuación exterior en
 \(\lambda=\log\phi\), separada del corrector interno Newton--PTC--BE. El
@@ -16,6 +38,25 @@ puente, además de una traza JSON con el defecto del predictor, decisiones de
 paso, malla, dominio, tiempos y aceptación. Esta implementación es una
 capacidad experimental; no debe presentarse como una mejora medida hasta
 completar la ablación predefinida abajo.
+
+El corrector de continuación incorpora además un rescate distinto del
+controlador exterior: si una prueba de amortiguamiento no contrae, mide el
+defecto de linealización \(F(x+\alpha s)-F(x)-\alpha Js\) por bloque espacial.
+Solo reevalúa el vecindario afectado si su extensión es como máximo el 35\% de
+la malla; después factoriza el sistema actualizado completo y exige el mismo
+test de contracción y certificado. No modifica el predictor ni el paso en
+\(\log\phi\), y una linealización parcialmente renovada nunca se exporta como
+tangente exacta al siguiente flamelet.
+
+Esta segunda política ya tiene evidencia controlada: siete pares alternados en
+CH4/aire, GRI-Mech 3.0, 300 K y 10 atm para
+\(\phi=1.00\rightarrow1.02\rightarrow1.04\) produjeron una mediana de
+\(2.023\times\) en las transiciones, con IC bootstrap pareado 95\%
+\([1.943,2.056]\), sin pérdida de certificación. Los máximos frente al baseline
+fueron \(\Delta S_u=1.36\times10^{-8}\), \(E_2(T)=2.10\times10^{-9}\),
+\(E_2(Y)=3.94\times10^{-8}\) y \(E_2(\dot q)=6.23\times10^{-8}\). A 1 atm
+no se activó. Es una mejora demostrada del corrector de continuación, no una
+afirmación de superioridad global ni una comparación fría frente a Cantera.
 
 La corrida nativa escribe también continuation_schedule.json. El generador de
 referencia puede recibir este archivo para repetir exactamente la misma secuencia
@@ -50,6 +91,41 @@ La evidencia versionada está en `evidence/tfm_20260903/`. Los perfiles y tablas
 NPZ completos permanecen fuera de Git por tamaño, pero deben conservarse con sus
 metadatos y hashes durante la preparación del artículo.
 
+## Revisión de preparación editorial: qué está listo y qué falta
+
+### Ya defendible dentro del alcance actual
+
+- Formulación, certificado de aceptación y verificación espacial/dominio para
+  CH4--aire a 1 atm; la tesis ya informa la convergencia hacia una referencia
+  ultra, conservación y perfiles alineados frente a Cantera.
+- Dos ablaciones causales separadas: región de confianza fija y sustitución
+  fusionada por bloques; el refresco local certificado añade una tercera
+  ablación específica del corrector.
+- Una conclusión honesta sobre FGM: la tabla de cinco filas conserva masa pero
+  no tiene resolución paramétrica suficiente, pues el error leave-one-out de
+  \(\dot q\) llega a 27.9\%.
+
+### Bloqueadores antes de enviar
+
+1. **Estadística temporal:** aún faltan, en un paquete versionado y citado, los
+   siete pares alternados V2--Cantera para los casos principales, con tiempos
+   individuales, IQR e intervalo bootstrap. Una única corrida de barrido no es
+   resultado de revista.
+2. **Generalidad P1:** documentar toda la matriz de \(T_{\rm in}\), presión,
+   \(\phi\) y al menos un combustible/mecanismo adicional. Los resultados a
+   alta presión deben aparecer también cuando V2 no gane: el refresco local
+   mejora transiciones, pero no prueba una ventaja fría a 10 atm.
+3. **Tabla FGM P2:** insertar filas hasta superar una tolerancia fijada antes
+   de mirar los resultados, y validarla con flamelets de retención. La actual
+   no es todavía una tabla apta para reclamar uso CFD.
+4. **Trazabilidad de publicación:** depositar entradas, scripts de campaña,
+   perfiles, trazas, entorno y hashes en un archivo estable con DOI; el artículo
+   debe citar ese material suplementario y no rutas o listados del repositorio.
+5. **Posicionamiento y validación física:** dejar explícito que Cantera es una
+   referencia numérica. Para afirmar precisión del modelo físico hacen falta
+   datos experimentales o una sección de limitaciones que restrinja el artículo
+   a verificación numérica.
+
 ## Resultados mínimos antes de enviar un artículo
 
 ### Prioridad P0: sostener las afirmaciones actuales
@@ -81,6 +157,57 @@ metadatos y hashes durante la preparación del artículo.
   puentes de paso fijo y predictor--corrector adaptativo. La instrumentación
   opcional de perfil registra contadores internos fuera de la medición temporal
   principal.
+- Para transiciones locales aceptadas, repetir además la ablación del refresco
+  por defecto de linealización con y sin la política. Reportar activaciones,
+  fracción de bloques, razones temporales pareadas y casos donde permanece
+  inactivo; no extrapolar el resultado actual de 10 atm a toda la matriz.
+
+### Extensión Soret nativa: implementada y con validación inicial
+
+El transporte multicomponente/Soret ya se prepara y evalúa sin importar Cantera.
+Los ajustes de viscosidad, difusión binaria y A*, B*, C* se calculan desde los
+parámetros moleculares y las tablas universales Monchick--Mason incluidas con su
+licencia. El cierre implementa el sistema Dixon--Lewis y conserva el término
+`-D^T grad(log T)`. La inicialización global del problema todavía usa Cantera
+para mezcla/equilibrio; no se declara independencia completa de esa infraestructura.
+
+Optimización implementada y probada:
+- eliminación exacta mediante complemento de Schur: sistema térmico K en vez de 3K;
+- reutilización del bloque de difusión ordinaria en esa eliminación;
+- actualización racional exacta de fracciones molares en las columnas del Jacobiano,
+  reduciendo el producto de transporte por perturbación de O(K²) a O(K);
+- ensamblado compilado y paralelismo sobre caras con BLAS de un hilo;
+- arranque nativo promediado por mezcla en una malla preliminar, seguido de
+  corrección multicomponente/Soret con los criterios finales originales;
+- reutilización opcional de coeficientes entre Jacobianos, con transporte completo
+  reevaluado antes de aceptar. No basta con aceptar el problema congelado.
+
+La ruta de referencia sigue disponible para auditoría. Las 42 pruebas pasan,
+incluidas construcción/evaluación con importaciones y llamadas a Cantera bloqueadas,
+comparación Schur--sistema completo, coeficientes en estados reactivos a 1/10 atm,
+y columnas del Jacobiano compiladas frente a evaluación escalar y Python.
+
+Evidencia medida el 2026-09-04 (siete pares alternados, H2/aire, GRI30, 300 K,
+1 atm; sin semillas persistentes): mediana V2 8.1535 s, Cantera 10.4920 s.
+Reducción 22.29%; IC bootstrap pareado del cociente V2/Cantera [0.7463, 0.9501].
+Todas las corridas fueron aceptadas, con 207/203 nodos y 0.03 m respectivamente.
+Diferencia de Su 0.01071%; E2(T) 0.03850%, E2(qdot) 0.08465%, máximo E2
+entre especies activas 0.54055%. El residual exacto V2 fue 6.7233, cierre
+de composición 1.01e-12 y variación relativa de flujo másico 2.15e-10.
+Los E2 usan perfiles alineados e integración espacial. El postprocesado de calor
+usa Cantera sobre ambos perfiles y no forma parte del tiempo de resolución.
+
+Datos: `resultados/soret_native_validation/benchmark_20260904_180651/`.
+La primera corrida se conserva; esta campaña usa cachés JIT ya preparadas por las
+pruebas y no mide la instalación ni una compilación inicial sin caché.
+El tiempo V2 incluye la etapa preliminar y el corrector final; la preparación
+externa se registra aparte. Estos resultados no demuestran superioridad para
+otros mecanismos, presiones o toda la cadena FGM.
+
+Pendiente antes de cerrar el artículo: independencia adicional de malla/dominio,
+balances elementales discretos, mecanismos alternativos, ablaciones temporales
+pareadas de cada optimización y validación FGM. Ver
+`SORET_NATIVE_VALIDATION.md` para comandos y limitaciones.
 
 ### Prioridad P2: convertir la demostración FGM en tabla validada
 

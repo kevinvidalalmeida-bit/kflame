@@ -1,0 +1,377 @@
+{
+  "description": "Initial native Soret validation, H2/air. Seven alternating pairs, no persisted flame seeds; JIT cache already prepared. Not a pressure/mechanism-wide performance claim.",
+  "campaign_directory": "resultados/soret_native_validation/benchmark_20260904_180651",
+  "source_revision": "Uncommitted development worktree; final publication revision remains to be frozen.",
+  "case": {
+    "mech": "C:\\Users\\lidia\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\cantera\\data\\gri30.yaml",
+    "fuel": "H2",
+    "oxidizer": "O2:1, N2:3.76",
+    "phi": 1,
+    "T_in": 300,
+    "P": 101325,
+    "width": 0.03,
+    "transport_model": "multicomponent",
+    "flux_gradient_basis": "molar",
+    "soret_enabled": true,
+    "outlet_species_bc": "zero_gradient",
+    "upwind_factor": 1,
+    "cantera_seed_grid": true,
+    "adaptive_grid": true,
+    "cluster_strength": 8,
+    "cluster_sigma": 0,
+    "ratio": 2.5,
+    "slope": 0.04,
+    "curve": 0.08,
+    "prune": 0.003,
+    "refine_with_u": true,
+    "refine_with_T": true,
+    "refine_with_species": true,
+    "loglevel": 1,
+    "auto": true
+  },
+  "options": {
+    "u_left_guess": 1,
+    "steady_max_iter": 50,
+    "max_jac_age": 20,
+    "steady_max_jac_age": null,
+    "transient_max_jac_age": null,
+    "max_damp_iter": 7,
+    "damp_factor": 1.4142135623730951,
+    "tol": 1,
+    "jac_eps": 0.00001,
+    "jac_abs_perturb": 1e-10,
+    "jac_threshold": 0,
+    "jacobian_mode": "block_tridiag",
+    "precompute_jacobian_thermo": true,
+    "compiled_block_substitution": true,
+    "local_jacobian_refresh": false,
+    "local_jacobian_refresh_defect_threshold": 0.2,
+    "local_jacobian_refresh_max_fraction": 0.35,
+    "local_jacobian_refresh_min_blocks": 1,
+    "lag_multicomponent_transport": true,
+    "multicomponent_bootstrap": false,
+    "bootstrap_mesh_factor": 2,
+    "alpha_min": 1e-10,
+    "time_step": 0.00001,
+    "time_step_grow": 1.5,
+    "time_step_shrink": 0.5,
+    "time_step_factor": null,
+    "min_time_step": 1e-16,
+    "max_time_step": 100000000,
+    "transient_steps_per_cycle": 10,
+    "time_step_sequence": [
+      20
+    ],
+    "transient_max_iter": 50,
+    "max_time_step_count": 500,
+    "reset_bad_after_failures": 3,
+    "refine_grid": true,
+    "max_refine_passes": 12,
+    "require_grid_convergence": true,
+    "refine_ratio": 2.5,
+    "refine_slope": 0.04,
+    "refine_curve": 0.08,
+    "refine_prune": 0.003,
+    "refine_grid_min": 1e-10,
+    "refine_max_points": 1600,
+    "refine_Finf_limit": 10000,
+    "final_Finf_limit": 10000,
+    "accept_residual_converged": false,
+    "accept_initial_residual_converged": false,
+    "acceptance_criterion": "cantera",
+    "weighted_step_norm_limit": null,
+    "residual_guard_inf": 10000,
+    "domain_auto_expand": true,
+    "max_domain_expansions": 12,
+    "domain_expand_factor": 2,
+    "domain_edge_slope_tol": 0.02,
+    "domain_edge_strict_mode": true,
+    "domain_check_after_refine_only": false,
+    "auto_bootstrap_grids": false,
+    "bootstrap_grid_points": [
+      12,
+      24,
+      48
+    ],
+    "bootstrap_max_grid_points": 1000,
+    "restart_insert_anchor": false,
+    "max_total_time_s": 180,
+    "verbose": false,
+    "profile": true
+  },
+  "actual_native_options": {
+    "multicomponent_bootstrap": true,
+    "bootstrap_mesh_factor": 2,
+    "lag_multicomponent_transport": true
+  },
+  "runs": [
+    {
+      "time_s": 8.382636499998625,
+      "setup_time_s": 0.5724695000099018,
+      "end_to_end_s": 8.955154600000242,
+      "accepted": true,
+      "bootstrap": true,
+      "Su": 2.1065603543109432,
+      "n_points": 207,
+      "width": 0.03,
+      "species_sum_error": 1.0089706847793423e-12,
+      "mass_flow_error": 2.1482856755850837e-10,
+      "Finf": 6.723293771259046,
+      "solver": "native",
+      "repetition": 0
+    },
+    {
+      "time_s": 10.089099899996654,
+      "Su": 2.1063347436773245,
+      "width": 0.03,
+      "n_points": 203,
+      "accepted": true,
+      "solver": "cantera",
+      "repetition": 0
+    },
+    {
+      "time_s": 10.167651199997636,
+      "Su": 2.1063347436773245,
+      "width": 0.03,
+      "n_points": 203,
+      "accepted": true,
+      "solver": "cantera",
+      "repetition": 1
+    },
+    {
+      "time_s": 7.69096590000845,
+      "setup_time_s": 0.3601736999989953,
+      "end_to_end_s": 8.051189299992984,
+      "accepted": true,
+      "bootstrap": true,
+      "Su": 2.1065603543109432,
+      "n_points": 207,
+      "width": 0.03,
+      "species_sum_error": 1.0089706847793423e-12,
+      "mass_flow_error": 2.1482856755850837e-10,
+      "Finf": 6.723293771259046,
+      "solver": "native",
+      "repetition": 1
+    },
+    {
+      "time_s": 7.738805799992406,
+      "setup_time_s": 0.33224540000082925,
+      "end_to_end_s": 8.071091000005254,
+      "accepted": true,
+      "bootstrap": true,
+      "Su": 2.1065603543109432,
+      "n_points": 207,
+      "width": 0.03,
+      "species_sum_error": 1.0089706847793423e-12,
+      "mass_flow_error": 2.1482856755850837e-10,
+      "Finf": 6.723293771259046,
+      "solver": "native",
+      "repetition": 2
+    },
+    {
+      "time_s": 10.368879899993772,
+      "Su": 2.1063347436773245,
+      "width": 0.03,
+      "n_points": 203,
+      "accepted": true,
+      "solver": "cantera",
+      "repetition": 2
+    },
+    {
+      "time_s": 10.722240899995086,
+      "Su": 2.1063347436773245,
+      "width": 0.03,
+      "n_points": 203,
+      "accepted": true,
+      "solver": "cantera",
+      "repetition": 3
+    },
+    {
+      "time_s": 10.187233000004198,
+      "setup_time_s": 0.41887259999930393,
+      "end_to_end_s": 10.606156099995133,
+      "accepted": true,
+      "bootstrap": true,
+      "Su": 2.1065603543109432,
+      "n_points": 207,
+      "width": 0.03,
+      "species_sum_error": 1.0089706847793423e-12,
+      "mass_flow_error": 2.1482856755850837e-10,
+      "Finf": 6.723293771259046,
+      "solver": "native",
+      "repetition": 3
+    },
+    {
+      "time_s": 10.246704700010014,
+      "setup_time_s": 0.3828718000004301,
+      "end_to_end_s": 10.629631200004951,
+      "accepted": true,
+      "bootstrap": true,
+      "Su": 2.1065603543109432,
+      "n_points": 207,
+      "width": 0.03,
+      "species_sum_error": 1.0089706847793423e-12,
+      "mass_flow_error": 2.1482856755850837e-10,
+      "Finf": 6.723293771259046,
+      "solver": "native",
+      "repetition": 4
+    },
+    {
+      "time_s": 10.808035699999891,
+      "Su": 2.1063347436773245,
+      "width": 0.03,
+      "n_points": 203,
+      "accepted": true,
+      "solver": "cantera",
+      "repetition": 4
+    },
+    {
+      "time_s": 10.491992399998708,
+      "Su": 2.1063347436773245,
+      "width": 0.03,
+      "n_points": 203,
+      "accepted": true,
+      "solver": "cantera",
+      "repetition": 5
+    },
+    {
+      "time_s": 8.019184299992048,
+      "setup_time_s": 0.3466839000029722,
+      "end_to_end_s": 8.36593100000755,
+      "accepted": true,
+      "bootstrap": true,
+      "Su": 2.1065603543109432,
+      "n_points": 207,
+      "width": 0.03,
+      "species_sum_error": 1.0089706847793423e-12,
+      "mass_flow_error": 2.1482856755850837e-10,
+      "Finf": 6.723293771259046,
+      "solver": "native",
+      "repetition": 5
+    },
+    {
+      "time_s": 8.153533000004245,
+      "setup_time_s": 0.34371469999314286,
+      "end_to_end_s": 8.497308799996972,
+      "accepted": true,
+      "bootstrap": true,
+      "Su": 2.1065603543109432,
+      "n_points": 207,
+      "width": 0.03,
+      "species_sum_error": 1.0089706847793423e-12,
+      "mass_flow_error": 2.1482856755850837e-10,
+      "Finf": 6.723293771259046,
+      "solver": "native",
+      "repetition": 6
+    },
+    {
+      "time_s": 11.821598399998038,
+      "Su": 2.1063347436773245,
+      "width": 0.03,
+      "n_points": 203,
+      "accepted": true,
+      "solver": "cantera",
+      "repetition": 6
+    }
+  ],
+  "validation": {
+    "timing": {
+      "n_pairs": 7,
+      "all_pairs_accepted": true,
+      "native_median_s": 8.153533000004245,
+      "cantera_median_s": 10.491992399998708,
+      "native_iqr_s": [
+        7.878995049992227,
+        9.284934750001412
+      ],
+      "cantera_iqr_s": [
+        10.268265549995704,
+        10.765138299997489
+      ],
+      "paired_ratio_ci95": [
+        0.7463492561040325,
+        0.9501029770753302
+      ],
+      "reduction_percent": 22.28803940035975,
+      "first_pair_included": true
+    },
+    "alignment": {
+      "native": {
+        "offset_m": 0.010342453987178634,
+        "thermal_thickness_m": 0.00032234773384597206,
+        "heat_release_peak": 15326854475.443577,
+        "heat_release_peak_aligned_m": 0.0000359625522230126,
+        "burned_temperature": 2372.5180602218766,
+        "relative_edge_gradients": [
+          8.841103778790336e-18,
+          0
+        ]
+      },
+      "cantera": {
+        "offset_m": 0.01049964019075685,
+        "thermal_thickness_m": 0.00032249215905496567,
+        "heat_release_peak": 15320780643.40246,
+        "heat_release_peak_aligned_m": 0.00003551605924314964,
+        "burned_temperature": 2371.8838109286603,
+        "relative_edge_gradients": [
+          7.486985200164798e-14,
+          0
+        ]
+      }
+    },
+    "aligned_profile_errors": {
+      "T": {
+        "E2": 0.0003850060712496556,
+        "max_absolute": 1.8938981252872509
+      },
+      "qdot": {
+        "E2": 0.0008465136642062113,
+        "max_absolute": 14610335.146479607
+      },
+      "H2": {
+        "E2": 0.0002823755303319677,
+        "max_absolute": 0.00003918260147128816
+      },
+      "H": {
+        "E2": 0.002482724247289801,
+        "max_absolute": 0.000002108985400103001
+      },
+      "O": {
+        "E2": 0.002709348553066216,
+        "max_absolute": 0.00001400935261673935
+      },
+      "O2": {
+        "E2": 0.000284538546690782,
+        "max_absolute": 0.00015381295406512174
+      },
+      "OH": {
+        "E2": 0.00144528410967493,
+        "max_absolute": 0.00002019060808852724
+      },
+      "H2O": {
+        "E2": 0.00019591155582276092,
+        "max_absolute": 0.00014623919646714056
+      },
+      "HO2": {
+        "E2": 0.001598360326279558,
+        "max_absolute": 0.000002095807427301627
+      },
+      "H2O2": {
+        "E2": 0.005405420270691032,
+        "max_absolute": 0.0000011320746736232575
+      },
+      "NO": {
+        "E2": 0.004103877172654095,
+        "max_absolute": 0.0000013507668273497525
+      },
+      "N2": {
+        "E2": 0.000017834369737069495,
+        "max_absolute": 0.00002807884330113808
+      }
+    },
+    "heat_release_diagnostic": "Cantera postprocessing of both saved compositions; excluded from solve times",
+    "speed_relative_difference": 0.00010711053136058801,
+    "active_species_threshold": 0.00001,
+    "limitations": "Adaptive acceptance and local edge gradients are not an independent mesh/domain study."
+  }
+}

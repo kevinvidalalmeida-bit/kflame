@@ -4,6 +4,15 @@ Este documento conserva los resultados negativos para no reintroducir rutas
 que ya se midieron. Las referencias de tiempo corresponden a GRI-Mech 3.0,
 CH4/aire, 300 K, 1 atm y transporte mixture-averaged.
 
+**Selección actual tras la limpieza solicitada:** los candidatos de las dos
+últimas rondas de arranque frío quedan archivados, también los inconcluyentes
+(`dependencies` y `compiled-lu`). Las menciones históricas a futuras
+confirmaciones no los mantienen activos. El benchmark usa solo `baseline`
+por defecto; otras variantes requieren `--reproduce-archived`. Se conservan
+fuentes y mediciones como evidencia. Véase `validation/NEXT_IMPROVEMENTS.md`.
+Las condiciones distintas del caso histórico anterior (H2, Soret, 10 atm)
+se indican expresamente en cada campaña.
+
 ## No reincorporar
 
 | Variante | Evidencia | Decisión |
@@ -167,6 +176,26 @@ nodos tambien empeoro el arranque. Se conserva 8 como default para no cambiar
 la trayectoria validada. No se agrega ninguna semilla de Cantera al cache V2,
 porque eso ocultaria el coste real del arranque y no seria una comparacion
 honesta de los solvers.
+
+## Diagnósticos de arranque Soret (2026-09-04)
+
+Se probó sustituir la semilla tanh por una rampa con mesetas exactamente
+constantes, usando H2/aire, h2o2.yaml, 10 atm, multicomponente/Soret y arranque
+intermedio nativo. No resolvió el fallo: 34.53 s, salida rechazada y dominio
+15.36 m; el diagnóstico tanh previo también fue rechazado (33.81 s, 30.72 m).
+El código de la rampa se retiró. Datos: `benchmark_20260904_194655` y
+`benchmark_20260904_182840`, bajo `resultados/soret_native_validation`.
+
+Se comprobó además que el valor efectivo de la velocidad inicial ya era
+1 m/s, aunque la función auxiliar declara 0.3 m/s por defecto. El ensayo
+`benchmark_20260904_182626` repitió esa configuración; no constituye una
+estrategia distinta ni una mejora. La velocidad se determina finalmente como
+autovalor, no se prescribe en la llama con energía resuelta.
+
+La revisión posterior corrigió dos problemas de control: comprobar el dominio
+con temperatura prescrita y tratar la restauración de una malla anterior como
+convergencia de refinamiento. Estas correcciones no rebajan el certificado ni
+se justifican como aceleraciones sin comparación adicional.
 
 ## Optimizacion del arranque frio V2 (2026-08-10)
 
@@ -354,3 +383,96 @@ mismos valores de `phi` y criterios de refinamiento, tomo 93.9 s end-to-end;
 la suma exclusiva de solves fue 35.38 s para V2 y 93.23 s para Cantera (V2
 2.64x mas rapido). Cada solver conservo su propia malla adaptativa; la
 diferencia maxima de `Su` fue 0.75 % y ocurrio en el extremo `phi=1.4`.
+
+## 2026-09-05: diagnóstico Soret y química en estados de Newton
+
+No se promueven las copias aisladas de política de Cantera: BE completo
+(108,98 s), BE con bloques de 10 pasos (timeout 120 s), pesos fijos del
+amortiguamiento (78,35 s frente a 70,39 s con rescate conservador) y cambio
+temprano PTC/BE (regresión en CH4 a 1 atm). Los modos diagnósticos permanecen
+desactivados por defecto para reproducir el experimento; no son optimizaciones
+productivas ni se borran sus resultados negativos.
+
+Se identificó una corrección distinta de esos ensayos: dejar de recortar a
+cero toda concentración negativa admisible durante Newton. El tratamiento
+nativo conserva el término restaurador elemental de una sola concentración
+negativa, evita productos espurios de varias negativas y conserva la suma
+con signo para el tercer cuerpo. La química de estados positivos no cambia.
+Las cuatro rutas de cinética pasan las pruebas locales de fuentes y derivadas.
+PTC-SER normal vuelve a resolver H2/GRI30 a 10 atm; no se necesita el rescate
+conservador para ese ensayo corregido. La precisión espacial y los tiempos
+pareados se estudian por separado. Evidencia y fuentes:
+`validation/SORET_SIGNED_KINETICS_DIAGNOSIS.md`.
+
+## Limpieza posterior del flujo principal (2026-09-05)
+
+Por solicitud del autor se eliminaron del código del solver PTC-auto,
+PTC-rescue, BE exclusivo, pesos congelados de Newton y la mezcla centrada/upwind.
+También se retiraron sus opciones de las interfaces de comparación/FGM y se
+actualizó el diagnóstico de refinamiento para usar la ruta principal.
+El BE interno tras rechazo PTC, la LU directa, el refresco local certificado
+de FGM y Soret nativo permanecen. Las configuraciones antiguas de variantes
+eliminadas ya no se ejecutan con esta revisión; las trazas y métricas históricas
+se conservan. Esto sustituye la indicación anterior de mantener esos modos
+diagnósticos desactivados dentro del solver.
+
+Se suprimieron asignaciones repetidas de buffers auxiliares de las
+perturbaciones, sin alterar ecuaciones ni tolerancias. La revisión detallada
+y las siguientes hipótesis de rendimiento se mantienen en `V2/PIPELINE.md`.
+
+## Bloques LU directamente en orden Fortran (2026-09-05)
+
+Se probó crear el bloque de Schur en memoria Fortran antes de la actualización
+por bloques. Los factores fueron idénticos, pero el microbenchmark alternado
+de nueve repeticiones dio 0.02603/0.02833 s para 261 bloques y
+0.08743/0.09527 s para 854 bloques (orden C anterior/Fortran candidato).
+Se retiró ese cambio: evitar una copia de LAPACK no compensa necesariamente
+el coste de actualizar la matriz con otra disposición de memoria.
+
+Una prueba diferente conserva el orden C y llama a GETRF/GETRS directamente,
+sin envoltorios repetidos de alto nivel. No es reutilización inexacta de LU ni
+un cambio del pivotado; sus resultados se registran por separado.
+
+## Cribado de estrategias de arranque frío (2026-09-06)
+
+Pruebas aisladas de la ruta productiva; no se añaden interruptores
+experimentales a V2. Evidencia: `validation/cold_strategy_audit_20260906.json`.
+
+| Variante | Evidencia y alcance | Decisión actual |
+|---|---|---|
+| Perturbaciones por lotes de unos 2 MiB | Siete parejas a 1 atm: intervalos de razón temporal incluyen uno en CH4 y H2/Soret. Cribado a 10 atm: empeora CH4, mejora H2 en una sola pareja. | No adoptar como mejora general; conservar auditoría de memoria/tiempo. |
+| Potencias compartidas de Kc | Exactitud bit a bit en los casos medidos; sin ganancia concluyente en siete parejas a 1 atm y sin ganancia en la pareja medida de cada caso a 10 atm. | No incorporar la versión ensayada. |
+| Química totalmente secuencial | Más lenta en las dos llamas a 1 atm. Calibración de GRI30, de 1 a 256 estados, selecciona umbral serial cero. | Mantener el paralelismo actual; no atribuir ruido temporal al despachador idéntico. |
+| Presupuesto no lineal por discrepancia de interpolación | Conserva la certificación final y los errores de perfiles del cribado a 1/10 atm. No hay ahorro consistente; no es un estimador demostrado del error de discretización. | No incorporar sin evidencia adicional. |
+| Corrección FAS de dos mallas | Correcciones gruesas efectivamente ejecutadas, sin excepciones; precisión aceptable, pero mayor tiempo medido en los cuatro casos. H2/Soret a 10 atm: 48.64 frente a 66.81 s en una pareja. | Retirar de la candidatura inmediata a producción. No generalizar el resultado a todo multigrid no lineal. |
+
+La reutilización térmica del Jacobiano NO se incluye en estos descartes:
+tiene intervalos favorables en siete parejas a 1 atm, pero la confirmación
+a 10 atm fue inconcluyente en ambos casos; no se activa globalmente.
+El ensamblado directo `streamed` tampoco demostró ahorro general en el cribado
+de los cuatro casos, conservando perfiles idénticos.
+Todos estos tiempos son comparaciones internas de V2, no nuevas
+comparaciones con Cantera. Los prototipos y datos quedan como material de
+auditoría, fuera del código productivo.
+
+## Segunda ronda de arranque frío (2026-09-06)
+
+Evidencia detallada en `validation/COLD_FOLLOWUP_20260906.md`. No se cambian
+guardas, tolerancias ni producción para obtener estos resultados.
+
+- **Homotopía de transporte 0 -> 0.5 -> 1:** el prototipo conserva el
+  corrector final del modelo objetivo, pero añade coste y no supera el
+  filtro comparativo de velocidad (0.3003% y 0.2278% en H2/Soret a 1/10 atm,
+  frente al límite 0.1%). Se descarta esta implementación, no toda homotopía.
+- **Acción directa de difusión y resolución compartida:** flujo local
+  verificado sin inversa explícita. Tres parejas con la resolución compartida
+  no demuestran mejora general: H2 1 atm empeora; el intervalo a 10 atm
+  incluye ausencia de mejora. No se incorpora a producción.
+- **Dependencias exactas del Jacobiano:** no se descarta matemáticamente.
+  Tres parejas muestran ahorro en CH4/1 atm y H2/Soret/10 atm, pero no lo
+  confirman en los otros dos casos. Sigue fuera de producción; no se crean
+  reglas por presión para seleccionar únicamente resultados favorables.
+
+La compilación del recorrido completo de LU se prueba aparte: no es la
+disposición Fortran descartada ni reutilización de factores envejecidos.
+Se contabilizará también su compilación por proceso antes de adoptarla.

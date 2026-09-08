@@ -1,0 +1,1844 @@
+{
+  "subject": "Native Soret: signed trial-state kinetics correction",
+  "limitations": [
+    "Cold means no saved flame profiles; disk JIT cache is retained.",
+    "Each solver adapts its own mesh. Equal thresholds do not imply equal error.",
+    "Agreement between solvers is not experimental validation or mesh independence.",
+    "Timing comparisons across revisions without interleaving are diagnostic only."
+  ],
+  "campaigns": [
+    {
+      "directory": "resultados\\soret_native_validation\\benchmark_20260905_091634",
+      "summary_sha256": "d763d5101017752b8533c120d85a9d86701f01621bcb3c5409501b5e782544af",
+      "case": {
+        "mech": "C:\\Users\\lidia\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\cantera\\data\\gri30.yaml",
+        "fuel": "H2",
+        "oxidizer": "O2:1, N2:3.76",
+        "phi": 1.0,
+        "T_in": 300,
+        "P": 101325.0,
+        "width": 0.03,
+        "transport_model": "multicomponent",
+        "flux_gradient_basis": "molar",
+        "soret_enabled": true,
+        "outlet_species_bc": "zero_gradient",
+        "upwind_factor": 1.0,
+        "cantera_seed_grid": true,
+        "adaptive_grid": true,
+        "cluster_strength": 8.0,
+        "cluster_sigma": 0.0,
+        "ratio": 2.5,
+        "slope": 0.04,
+        "curve": 0.08,
+        "prune": 0.003,
+        "refine_with_u": true,
+        "refine_with_T": true,
+        "refine_with_species": true,
+        "loglevel": 1,
+        "auto": true
+      },
+      "options": {
+        "u_left_guess": 1.0,
+        "steady_max_iter": 50,
+        "max_jac_age": 20,
+        "steady_max_jac_age": null,
+        "transient_max_jac_age": null,
+        "max_damp_iter": 7,
+        "damp_factor": 1.4142135623730951,
+        "tol": 1.0,
+        "jac_eps": 1e-05,
+        "jac_abs_perturb": 1e-10,
+        "jac_threshold": 0.0,
+        "jacobian_mode": "block_tridiag",
+        "precompute_jacobian_thermo": true,
+        "compiled_block_substitution": true,
+        "newton_fixed_weights": false,
+        "local_jacobian_refresh": false,
+        "local_jacobian_refresh_defect_threshold": 0.2,
+        "local_jacobian_refresh_max_fraction": 0.35,
+        "local_jacobian_refresh_min_blocks": 1,
+        "lag_multicomponent_transport": true,
+        "multicomponent_bootstrap": true,
+        "bootstrap_mesh_factor": 2.0,
+        "alpha_min": 1e-10,
+        "time_step": 1e-05,
+        "time_step_grow": 1.5,
+        "time_step_shrink": 0.5,
+        "time_step_factor": null,
+        "min_time_step": 1e-16,
+        "max_time_step": 100000000.0,
+        "transient_steps_per_cycle": 10,
+        "time_step_sequence": [
+          20
+        ],
+        "transient_scheme": "ptc-ser",
+        "transient_max_iter": 50,
+        "max_time_step_count": 500,
+        "reset_bad_after_failures": 3,
+        "refine_grid": true,
+        "max_refine_passes": 12,
+        "require_grid_convergence": true,
+        "refine_ratio": 2.5,
+        "refine_slope": 0.04,
+        "refine_curve": 0.08,
+        "refine_prune": 0.003,
+        "refine_grid_min": 1e-10,
+        "refine_max_points": 1600,
+        "refine_Finf_limit": 10000.0,
+        "final_Finf_limit": 10000.0,
+        "accept_residual_converged": false,
+        "accept_initial_residual_converged": false,
+        "acceptance_criterion": "cantera",
+        "weighted_step_norm_limit": null,
+        "residual_guard_inf": 10000.0,
+        "domain_auto_expand": true,
+        "max_domain_expansions": 12,
+        "domain_expand_factor": 2.0,
+        "domain_edge_slope_tol": 0.02,
+        "domain_edge_strict_mode": true,
+        "domain_check_after_refine_only": false,
+        "auto_bootstrap_grids": false,
+        "bootstrap_grid_points": [
+          12,
+          24,
+          48
+        ],
+        "bootstrap_max_grid_points": 1000,
+        "restart_insert_anchor": false,
+        "max_total_time_s": 120.0,
+        "verbose": false,
+        "profile": true,
+        "trace_solver": false
+      },
+      "command": [
+        "V2/benchmark_soret_native.py",
+        "--bootstrap",
+        "--bootstrap-mesh-factor",
+        "2",
+        "--lag",
+        "--repeat",
+        "3",
+        "--max-seconds",
+        "120"
+      ],
+      "source_sha256": {
+        "analyze_soret_validation.py": "a9648d99265dfd33a884cf844cc81685e8c17697e1f48e30801efd3f751ad5f2",
+        "audit_soret_solver_trace.py": "25c24fe88d8be9276989912a54fc9175814ec2e08000f6d9bfcdc93f9c7d2b87",
+        "benchmark_soret_native.py": "adaa1775cb33909316d9a41f3bbd64d52ce625ddd9fe84897d3f7b5e1d688d7e",
+        "config.py": "b17d7c363f5619499888aa9953d8b043d4096f39dad2b6aa3a4f4a366d062c35",
+        "equations.py": "161a1155f2bd0b80095aeda941d01285aedce9c7a2e15e8f1bd0fe334ad7ae3f",
+        "plot_saved_comparison.py": "c765e343a6f2b2f0f1d390d2e17809c9fac6def32fe2c0e1d974ecf54853a1df",
+        "problem.py": "2286b16eb96673fa2cb781d9e15a64c387c33dd65cd8eccc657e0f6de13a3761",
+        "refine_soret_validation.py": "3718dffff3b6df4fb72abbfc909327d708a8ee6061633971f4db0742aeba87ab",
+        "run_saved_comparison.py": "28ae8b00224431685b637fdf04eed8431fc93d342f311cd7132b237251719cf7",
+        "solver.py": "837a9858a8949199b6f40f0a5907c3226fc5182f9a5b140799a321addb43624a",
+        "species_backend.py": "daeacfd193afb942ba9ed555c915074809ad62d5c6a05426fd0bd8331416e62f",
+        "state.py": "7f151533c07d5332fac60bcaeeb8d27c412743559f2dfe08ed4fcd2cc71aab00",
+        "trace_cantera_soret.py": "1f1e9932787b70bb9243bbf6fd72797ef1baba0b8aeb2c434e7dee1c252cd3fb",
+        "materiales\\collision_integrals_native.py": "168ac1d16fd1a85c0417750761f5b08650f597f8062d4f4fb7f07a1da557f959",
+        "materiales\\kinetics_native.py": "e6db3866548ce872e6ee8d84a2c2305fffe0a825d1f4062d6b942b487249de41",
+        "materiales\\mechanism_data.py": "bce21a5f71d484798006ca75fc565b9784edee7e8eb1e40796c4c6b074a2f2f0",
+        "materiales\\species_backend_native.py": "a9bcfe32fed377da7ec6c05257077d2514ef9d57fa84cd16d65267e555713d18",
+        "materiales\\thermo_native.py": "6afbbe05bc1404b8ca12cd122e88da2d3b72a6a30011dccfabbe0e7fbea584f0",
+        "materiales\\transport_multicomponent_kernels.py": "537844f3cf03998281638115db867fbb3df0088ef3afbe39076cca394713c5f6",
+        "materiales\\transport_multicomponent_native.py": "c09ef5e4a01199926d854e1a1c6a6fe94abd607834efb156e7619d5352f359dc",
+        "materiales\\transport_native.py": "87853760cd078be99c94678bff3117fb90fd2cadc8fb8bb4f2615ed96adbc581",
+        "materiales\\collision_integrals_mm.json": "d615ab6a957338231f55307f50062572a87dc126b41c415b0a7276eb30e2c145"
+      },
+      "mechanism_sha256": "06650b1e0ee0012f6903d5328b1bb218cb6007d07f8ebe375d18f24811039345",
+      "versions": {
+        "cantera": "3.2.0",
+        "numpy": "2.4.6"
+      },
+      "threads": {
+        "OPENBLAS_NUM_THREADS": "1",
+        "NUMBA_NUM_THREADS": "4"
+      },
+      "jit_policy": "Fresh process; disk JIT cache retained, not cleared; first pair retained",
+      "profile_cache": "none",
+      "rows": [
+        {
+          "time_s": 6.3065521999960765,
+          "setup_time_s": 0.5346619999909308,
+          "end_to_end_s": 6.841278100007912,
+          "accepted": true,
+          "bootstrap": true,
+          "Su": 2.106560355832967,
+          "n_points": 207,
+          "width": 0.03,
+          "species_sum_error": 8.201217482906031e-13,
+          "mass_flow_error": 2.15055641860351e-10,
+          "Finf": 6.7637689399580525,
+          "solver": "native",
+          "repetition": 0,
+          "profile_sha256": "ff3c966b0349b58918c9f49c74230c5b9062fc60d5c9f2b22a0bc38a33cbb878",
+          "same_mesh_as_first_repetition": true,
+          "repeat_max_absolute_difference": {
+            "z": 0.0,
+            "T": 0.0,
+            "Y": 0.0,
+            "u": 0.0
+          }
+        },
+        {
+          "time_s": 10.140133199980482,
+          "Su": 2.1063347436773245,
+          "width": 0.03,
+          "n_points": 203,
+          "accepted": true,
+          "solver": "cantera",
+          "repetition": 0,
+          "profile_sha256": "c4106a5e99fb794b0f868f0197bbd6f685fe57b5cd42dce8a88630ff093b7ee8",
+          "same_mesh_as_first_repetition": true,
+          "repeat_max_absolute_difference": {
+            "z": 0.0,
+            "T": 0.0,
+            "Y": 0.0,
+            "u": 0.0
+          }
+        },
+        {
+          "time_s": 9.599522400007118,
+          "Su": 2.1063347436773245,
+          "width": 0.03,
+          "n_points": 203,
+          "accepted": true,
+          "solver": "cantera",
+          "repetition": 1,
+          "profile_sha256": "c4106a5e99fb794b0f868f0197bbd6f685fe57b5cd42dce8a88630ff093b7ee8",
+          "same_mesh_as_first_repetition": true,
+          "repeat_max_absolute_difference": {
+            "z": 0.0,
+            "T": 0.0,
+            "Y": 0.0,
+            "u": 0.0
+          }
+        },
+        {
+          "time_s": 5.193476499989629,
+          "setup_time_s": 0.306606300000567,
+          "end_to_end_s": 5.500125899998238,
+          "accepted": true,
+          "bootstrap": true,
+          "Su": 2.106560355832967,
+          "n_points": 207,
+          "width": 0.03,
+          "species_sum_error": 8.201217482906031e-13,
+          "mass_flow_error": 2.15055641860351e-10,
+          "Finf": 6.7637689399580525,
+          "solver": "native",
+          "repetition": 1,
+          "profile_sha256": "ff3c966b0349b58918c9f49c74230c5b9062fc60d5c9f2b22a0bc38a33cbb878",
+          "same_mesh_as_first_repetition": true,
+          "repeat_max_absolute_difference": {
+            "z": 0.0,
+            "T": 0.0,
+            "Y": 0.0,
+            "u": 0.0
+          }
+        },
+        {
+          "time_s": 5.187407500023255,
+          "setup_time_s": 0.3328490999992937,
+          "end_to_end_s": 5.520292500004871,
+          "accepted": true,
+          "bootstrap": true,
+          "Su": 2.106560355832967,
+          "n_points": 207,
+          "width": 0.03,
+          "species_sum_error": 8.201217482906031e-13,
+          "mass_flow_error": 2.15055641860351e-10,
+          "Finf": 6.7637689399580525,
+          "solver": "native",
+          "repetition": 2,
+          "profile_sha256": "ff3c966b0349b58918c9f49c74230c5b9062fc60d5c9f2b22a0bc38a33cbb878",
+          "same_mesh_as_first_repetition": true,
+          "repeat_max_absolute_difference": {
+            "z": 0.0,
+            "T": 0.0,
+            "Y": 0.0,
+            "u": 0.0
+          }
+        },
+        {
+          "time_s": 9.466940199985402,
+          "Su": 2.1063347436773245,
+          "width": 0.03,
+          "n_points": 203,
+          "accepted": true,
+          "solver": "cantera",
+          "repetition": 2,
+          "profile_sha256": "c4106a5e99fb794b0f868f0197bbd6f685fe57b5cd42dce8a88630ff093b7ee8",
+          "same_mesh_as_first_repetition": true,
+          "repeat_max_absolute_difference": {
+            "z": 0.0,
+            "T": 0.0,
+            "Y": 0.0,
+            "u": 0.0
+          }
+        }
+      ],
+      "validation_sha256": "cbdb05285e02f66c5f65785263a6dfc709dedd8e8a2d1cbe677fcbbb9f7c5ba3",
+      "validation": {
+        "timing": {
+          "n_pairs": 3,
+          "all_pairs_accepted": true,
+          "native_median_s": 5.193476499989629,
+          "cantera_median_s": 9.599522400007118,
+          "native_iqr_s": [
+            5.190442000006442,
+            5.750014349992853
+          ],
+          "cantera_iqr_s": [
+            9.53323129999626,
+            9.8698277999938
+          ],
+          "paired_ratio_ci95": [
+            0.5410140508642157,
+            0.6219397788589419
+          ],
+          "reduction_percent": 45.89859491357843,
+          "first_pair_included": true
+        },
+        "alignment": {
+          "native": {
+            "offset_m": 0.010342453987177275,
+            "thermal_thickness_m": 0.00032234773705494893,
+            "heat_release_peak": 15326854456.35632,
+            "heat_release_peak_aligned_m": 3.596255222437089e-05,
+            "burned_temperature": 2372.5180600999447,
+            "relative_edge_gradients": [
+              2.0629242357088895e-17,
+              0.0
+            ]
+          },
+          "cantera": {
+            "offset_m": 0.01049964019075685,
+            "thermal_thickness_m": 0.00032249215905496567,
+            "heat_release_peak": 15320780643.40246,
+            "heat_release_peak_aligned_m": 3.551605924314964e-05,
+            "burned_temperature": 2371.8838109286603,
+            "relative_edge_gradients": [
+              7.486985200164798e-14,
+              0.0
+            ]
+          }
+        },
+        "aligned_profile_errors": {
+          "T": {
+            "E2": 0.0003850060778377652,
+            "max_absolute": 1.8938982061063143
+          },
+          "qdot": {
+            "E2": 0.0008465123235240831,
+            "max_absolute": 14610338.337887764
+          },
+          "H2": {
+            "E2": 0.00028237588017451944,
+            "max_absolute": 3.9182575395577124e-05
+          },
+          "H": {
+            "E2": 0.0024827255509662725,
+            "max_absolute": 2.1089863593587606e-06
+          },
+          "O": {
+            "E2": 0.002709349425565078,
+            "max_absolute": 1.4009359746404264e-05
+          },
+          "O2": {
+            "E2": 0.00028453928613941576,
+            "max_absolute": 0.0001538130925985634
+          },
+          "OH": {
+            "E2": 0.0014452847272101545,
+            "max_absolute": 2.01906164558098e-05
+          },
+          "H2O": {
+            "E2": 0.0001959119198477945,
+            "max_absolute": 0.00014623934201965505
+          },
+          "HO2": {
+            "E2": 0.0015983836645767607,
+            "max_absolute": 2.0958283294405334e-06
+          },
+          "H2O2": {
+            "E2": 0.0054054429664820835,
+            "max_absolute": 1.1320746349349395e-06
+          },
+          "NO": {
+            "E2": 0.004103878866511415,
+            "max_absolute": 1.3507671022473702e-06
+          },
+          "N2": {
+            "E2": 1.7834356770879684e-05,
+            "max_absolute": 2.8078824659494295e-05
+          }
+        },
+        "heat_release_diagnostic": "Cantera postprocessing of both saved compositions; excluded from solve times",
+        "speed_relative_difference": 0.00010711125395412857,
+        "active_species_threshold": 1e-05,
+        "limitations": "Adaptive acceptance and local edge gradients are not an independent mesh/domain study.",
+        "elemental_flux": {
+          "native": {
+            "convention": "Midpoint reconstructed convective + diffusive elemental flux; mesh-sensitive diagnostic",
+            "max_diffusive_mass_sum": 8.086979228606152e-13,
+            "min_mass_fraction": -9.190631025871984e-14,
+            "elements": {
+              "O": {
+                "inlet_flux": 0.40505240722587826,
+                "max_absolute_deviation": 0.0005341552412934658,
+                "relative_deviation": 0.0013187311858033055
+              },
+              "H": {
+                "inlet_flux": 0.05103979329754175,
+                "max_absolute_deviation": 0.000838984694181949,
+                "relative_deviation": 0.01643785446565195
+              },
+              "C": {
+                "inlet_flux": 0.0,
+                "max_absolute_deviation": 4.106520255830776e-13,
+                "relative_deviation": null
+              },
+              "N": {
+                "inlet_flux": 1.333372066737197,
+                "max_absolute_deviation": 0.0004696372611348032,
+                "relative_deviation": 0.0003522177139078818
+              },
+              "Ar": {
+                "inlet_flux": 0.0,
+                "max_absolute_deviation": 7.006241261237546e-14,
+                "relative_deviation": null
+              }
+            }
+          },
+          "cantera": {
+            "convention": "Midpoint reconstructed convective + diffusive elemental flux; mesh-sensitive diagnostic",
+            "max_diffusive_mass_sum": 7.561738707416167e-13,
+            "min_mass_fraction": -9.60646678270657e-12,
+            "elements": {
+              "O": {
+                "inlet_flux": 0.40500902620120127,
+                "max_absolute_deviation": 0.0004912763018586896,
+                "relative_deviation": 0.0012130008717747252
+              },
+              "H": {
+                "inlet_flux": 0.05103432694678553,
+                "max_absolute_deviation": 0.0008253058080582784,
+                "relative_deviation": 0.016171582098434268
+              },
+              "C": {
+                "inlet_flux": 0.0,
+                "max_absolute_deviation": 1.4483729855023702e-10,
+                "relative_deviation": null
+              },
+              "N": {
+                "inlet_flux": 1.3332292628789832,
+                "max_absolute_deviation": 0.0004974260669969865,
+                "relative_deviation": 0.00037309867165894763
+              },
+              "Ar": {
+                "inlet_flux": 0.0,
+                "max_absolute_deviation": 1.1598863612635104e-11,
+                "relative_deviation": null
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "directory": "resultados\\soret_native_validation\\benchmark_20260905_091756",
+      "summary_sha256": "87c9201fa72e1a9b50acbf4c30e1163f8b91999b9de1a0babb88e0caa5896283",
+      "case": {
+        "mech": "C:\\Users\\lidia\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\cantera\\data\\gri30.yaml",
+        "fuel": "CH4",
+        "oxidizer": "O2:1, N2:3.76",
+        "phi": 1.0,
+        "T_in": 300,
+        "P": 101325.0,
+        "width": 0.03,
+        "transport_model": "mixture-averaged",
+        "flux_gradient_basis": "molar",
+        "soret_enabled": false,
+        "outlet_species_bc": "zero_gradient",
+        "upwind_factor": 1.0,
+        "cantera_seed_grid": true,
+        "adaptive_grid": true,
+        "cluster_strength": 8.0,
+        "cluster_sigma": 0.0,
+        "ratio": 2.5,
+        "slope": 0.04,
+        "curve": 0.08,
+        "prune": 0.003,
+        "refine_with_u": true,
+        "refine_with_T": true,
+        "refine_with_species": true,
+        "loglevel": 1,
+        "auto": true
+      },
+      "options": {
+        "u_left_guess": 1.0,
+        "steady_max_iter": 50,
+        "max_jac_age": 20,
+        "steady_max_jac_age": null,
+        "transient_max_jac_age": null,
+        "max_damp_iter": 7,
+        "damp_factor": 1.4142135623730951,
+        "tol": 1.0,
+        "jac_eps": 1e-05,
+        "jac_abs_perturb": 1e-10,
+        "jac_threshold": 0.0,
+        "jacobian_mode": "block_tridiag",
+        "precompute_jacobian_thermo": true,
+        "compiled_block_substitution": true,
+        "newton_fixed_weights": false,
+        "local_jacobian_refresh": false,
+        "local_jacobian_refresh_defect_threshold": 0.2,
+        "local_jacobian_refresh_max_fraction": 0.35,
+        "local_jacobian_refresh_min_blocks": 1,
+        "lag_multicomponent_transport": false,
+        "multicomponent_bootstrap": false,
+        "bootstrap_mesh_factor": 1.0,
+        "alpha_min": 1e-10,
+        "time_step": 1e-05,
+        "time_step_grow": 1.5,
+        "time_step_shrink": 0.5,
+        "time_step_factor": null,
+        "min_time_step": 1e-16,
+        "max_time_step": 100000000.0,
+        "transient_steps_per_cycle": 10,
+        "time_step_sequence": [
+          20
+        ],
+        "transient_scheme": "ptc-ser",
+        "transient_max_iter": 50,
+        "max_time_step_count": 500,
+        "reset_bad_after_failures": 3,
+        "refine_grid": true,
+        "max_refine_passes": 12,
+        "require_grid_convergence": true,
+        "refine_ratio": 2.5,
+        "refine_slope": 0.04,
+        "refine_curve": 0.08,
+        "refine_prune": 0.003,
+        "refine_grid_min": 1e-10,
+        "refine_max_points": 1600,
+        "refine_Finf_limit": 10000.0,
+        "final_Finf_limit": 10000.0,
+        "accept_residual_converged": false,
+        "accept_initial_residual_converged": false,
+        "acceptance_criterion": "cantera",
+        "weighted_step_norm_limit": null,
+        "residual_guard_inf": 10000.0,
+        "domain_auto_expand": true,
+        "max_domain_expansions": 12,
+        "domain_expand_factor": 2.0,
+        "domain_edge_slope_tol": 0.02,
+        "domain_edge_strict_mode": true,
+        "domain_check_after_refine_only": false,
+        "auto_bootstrap_grids": false,
+        "bootstrap_grid_points": [
+          12,
+          24,
+          48
+        ],
+        "bootstrap_max_grid_points": 1000,
+        "restart_insert_anchor": false,
+        "max_total_time_s": 120.0,
+        "verbose": false,
+        "profile": true,
+        "trace_solver": false
+      },
+      "command": [
+        "V2/benchmark_soret_native.py",
+        "--fuel",
+        "CH4",
+        "--transport",
+        "mixture-averaged",
+        "--no-soret",
+        "--repeat",
+        "3",
+        "--max-seconds",
+        "120"
+      ],
+      "source_sha256": {
+        "analyze_soret_validation.py": "a9648d99265dfd33a884cf844cc81685e8c17697e1f48e30801efd3f751ad5f2",
+        "audit_soret_solver_trace.py": "25c24fe88d8be9276989912a54fc9175814ec2e08000f6d9bfcdc93f9c7d2b87",
+        "benchmark_soret_native.py": "adaa1775cb33909316d9a41f3bbd64d52ce625ddd9fe84897d3f7b5e1d688d7e",
+        "config.py": "b17d7c363f5619499888aa9953d8b043d4096f39dad2b6aa3a4f4a366d062c35",
+        "equations.py": "161a1155f2bd0b80095aeda941d01285aedce9c7a2e15e8f1bd0fe334ad7ae3f",
+        "plot_saved_comparison.py": "c765e343a6f2b2f0f1d390d2e17809c9fac6def32fe2c0e1d974ecf54853a1df",
+        "problem.py": "2286b16eb96673fa2cb781d9e15a64c387c33dd65cd8eccc657e0f6de13a3761",
+        "refine_soret_validation.py": "3718dffff3b6df4fb72abbfc909327d708a8ee6061633971f4db0742aeba87ab",
+        "run_saved_comparison.py": "28ae8b00224431685b637fdf04eed8431fc93d342f311cd7132b237251719cf7",
+        "solver.py": "837a9858a8949199b6f40f0a5907c3226fc5182f9a5b140799a321addb43624a",
+        "species_backend.py": "daeacfd193afb942ba9ed555c915074809ad62d5c6a05426fd0bd8331416e62f",
+        "state.py": "7f151533c07d5332fac60bcaeeb8d27c412743559f2dfe08ed4fcd2cc71aab00",
+        "trace_cantera_soret.py": "1f1e9932787b70bb9243bbf6fd72797ef1baba0b8aeb2c434e7dee1c252cd3fb",
+        "materiales\\collision_integrals_native.py": "168ac1d16fd1a85c0417750761f5b08650f597f8062d4f4fb7f07a1da557f959",
+        "materiales\\kinetics_native.py": "e6db3866548ce872e6ee8d84a2c2305fffe0a825d1f4062d6b942b487249de41",
+        "materiales\\mechanism_data.py": "bce21a5f71d484798006ca75fc565b9784edee7e8eb1e40796c4c6b074a2f2f0",
+        "materiales\\species_backend_native.py": "a9bcfe32fed377da7ec6c05257077d2514ef9d57fa84cd16d65267e555713d18",
+        "materiales\\thermo_native.py": "6afbbe05bc1404b8ca12cd122e88da2d3b72a6a30011dccfabbe0e7fbea584f0",
+        "materiales\\transport_multicomponent_kernels.py": "537844f3cf03998281638115db867fbb3df0088ef3afbe39076cca394713c5f6",
+        "materiales\\transport_multicomponent_native.py": "c09ef5e4a01199926d854e1a1c6a6fe94abd607834efb156e7619d5352f359dc",
+        "materiales\\transport_native.py": "87853760cd078be99c94678bff3117fb90fd2cadc8fb8bb4f2615ed96adbc581",
+        "materiales\\collision_integrals_mm.json": "d615ab6a957338231f55307f50062572a87dc126b41c415b0a7276eb30e2c145"
+      },
+      "mechanism_sha256": "06650b1e0ee0012f6903d5328b1bb218cb6007d07f8ebe375d18f24811039345",
+      "versions": {
+        "cantera": "3.2.0",
+        "numpy": "2.4.6"
+      },
+      "threads": {
+        "OPENBLAS_NUM_THREADS": "1",
+        "NUMBA_NUM_THREADS": "4"
+      },
+      "jit_policy": "Fresh process; disk JIT cache retained, not cleared; first pair retained",
+      "profile_cache": "none",
+      "rows": [
+        {
+          "time_s": 4.032601099985186,
+          "setup_time_s": 0.4001233000017237,
+          "end_to_end_s": 4.432759999996051,
+          "accepted": true,
+          "bootstrap": false,
+          "Su": 0.3788377358667777,
+          "n_points": 261,
+          "width": 0.06,
+          "species_sum_error": 1.690882989180409e-10,
+          "mass_flow_error": 1.235597467321756e-06,
+          "Finf": 1748.5017851525054,
+          "solver": "native",
+          "repetition": 0,
+          "profile_sha256": "60b68129dfe2c8a754ef954c2c41940be66029e2ad32d93d9ac868dff4266697",
+          "same_mesh_as_first_repetition": true,
+          "repeat_max_absolute_difference": {
+            "z": 0.0,
+            "T": 0.0,
+            "Y": 0.0,
+            "u": 0.0
+          }
+        },
+        {
+          "time_s": 18.84741870002472,
+          "Su": 0.3788136782847252,
+          "width": 0.06,
+          "n_points": 275,
+          "accepted": true,
+          "solver": "cantera",
+          "repetition": 0,
+          "profile_sha256": "3821ac578fd296140028bcbb3f4cc7f3d9816678cee342647101f3e2ba0bc363",
+          "same_mesh_as_first_repetition": true,
+          "repeat_max_absolute_difference": {
+            "z": 0.0,
+            "T": 0.0,
+            "Y": 0.0,
+            "u": 0.0
+          }
+        },
+        {
+          "time_s": 18.92336039998918,
+          "Su": 0.3788136782847252,
+          "width": 0.06,
+          "n_points": 275,
+          "accepted": true,
+          "solver": "cantera",
+          "repetition": 1,
+          "profile_sha256": "3821ac578fd296140028bcbb3f4cc7f3d9816678cee342647101f3e2ba0bc363",
+          "same_mesh_as_first_repetition": true,
+          "repeat_max_absolute_difference": {
+            "z": 0.0,
+            "T": 0.0,
+            "Y": 0.0,
+            "u": 0.0
+          }
+        },
+        {
+          "time_s": 3.6969886000151746,
+          "setup_time_s": 0.18280279997270554,
+          "end_to_end_s": 3.879827899974771,
+          "accepted": true,
+          "bootstrap": false,
+          "Su": 0.3788377358667777,
+          "n_points": 261,
+          "width": 0.06,
+          "species_sum_error": 1.690882989180409e-10,
+          "mass_flow_error": 1.235597467321756e-06,
+          "Finf": 1748.5017851525054,
+          "solver": "native",
+          "repetition": 1,
+          "profile_sha256": "60b68129dfe2c8a754ef954c2c41940be66029e2ad32d93d9ac868dff4266697",
+          "same_mesh_as_first_repetition": true,
+          "repeat_max_absolute_difference": {
+            "z": 0.0,
+            "T": 0.0,
+            "Y": 0.0,
+            "u": 0.0
+          }
+        },
+        {
+          "time_s": 3.7950804000138305,
+          "setup_time_s": 0.1862156999995932,
+          "end_to_end_s": 3.9813278000219725,
+          "accepted": true,
+          "bootstrap": false,
+          "Su": 0.3788377358667777,
+          "n_points": 261,
+          "width": 0.06,
+          "species_sum_error": 1.690882989180409e-10,
+          "mass_flow_error": 1.235597467321756e-06,
+          "Finf": 1748.5017851525054,
+          "solver": "native",
+          "repetition": 2,
+          "profile_sha256": "60b68129dfe2c8a754ef954c2c41940be66029e2ad32d93d9ac868dff4266697",
+          "same_mesh_as_first_repetition": true,
+          "repeat_max_absolute_difference": {
+            "z": 0.0,
+            "T": 0.0,
+            "Y": 0.0,
+            "u": 0.0
+          }
+        },
+        {
+          "time_s": 18.93378359999042,
+          "Su": 0.3788136782847252,
+          "width": 0.06,
+          "n_points": 275,
+          "accepted": true,
+          "solver": "cantera",
+          "repetition": 2,
+          "profile_sha256": "3821ac578fd296140028bcbb3f4cc7f3d9816678cee342647101f3e2ba0bc363",
+          "same_mesh_as_first_repetition": true,
+          "repeat_max_absolute_difference": {
+            "z": 0.0,
+            "T": 0.0,
+            "Y": 0.0,
+            "u": 0.0
+          }
+        }
+      ],
+      "validation_sha256": "6e4808a685a58eac2972d12293dd229c56a8774236628016a67485ded599b5fe",
+      "validation": {
+        "timing": {
+          "n_pairs": 3,
+          "all_pairs_accepted": true,
+          "native_median_s": 3.7950804000138305,
+          "cantera_median_s": 18.92336039998918,
+          "native_iqr_s": [
+            3.7460345000145026,
+            3.9138407499995083
+          ],
+          "cantera_iqr_s": [
+            18.88538955000695,
+            18.9285719999898
+          ],
+          "paired_ratio_ci95": [
+            0.19536638957725969,
+            0.21396039235759629
+          ],
+          "reduction_percent": 79.94499750680644,
+          "first_pair_included": true
+        },
+        "alignment": {
+          "native": {
+            "offset_m": 0.020686023500762766,
+            "thermal_thickness_m": 0.0004380200768922881,
+            "heat_release_peak": 4485998386.28784,
+            "heat_release_peak_aligned_m": 0.00023264425474694983,
+            "burned_temperature": 2231.175174390911,
+            "relative_edge_gradients": [
+              1.7405492101934384e-16,
+              0.0
+            ]
+          },
+          "cantera": {
+            "offset_m": 0.021000396743255455,
+            "thermal_thickness_m": 0.0004374477146176712,
+            "heat_release_peak": 4491048447.560171,
+            "heat_release_peak_aligned_m": 0.00023104856924454492,
+            "burned_temperature": 2231.4022375843506,
+            "relative_edge_gradients": [
+              3.132839836472765e-13,
+              0.0
+            ]
+          }
+        },
+        "aligned_profile_errors": {
+          "T": {
+            "E2": 0.00011265132170838541,
+            "max_absolute": 1.196244847666776
+          },
+          "qdot": {
+            "E2": 0.0032509673847143958,
+            "max_absolute": 13911617.62408781
+          },
+          "H2": {
+            "E2": 0.0022904963832088756,
+            "max_absolute": 4.56792285109769e-06
+          },
+          "H": {
+            "E2": 0.0023946728114726283,
+            "max_absolute": 4.778574524448782e-07
+          },
+          "O": {
+            "E2": 0.0019645363280359554,
+            "max_absolute": 3.986569174843635e-06
+          },
+          "O2": {
+            "E2": 8.854285217720255e-05,
+            "max_absolute": 0.0001532024482095301
+          },
+          "OH": {
+            "E2": 0.0011874722665847536,
+            "max_absolute": 8.980965850792586e-06
+          },
+          "H2O": {
+            "E2": 0.00010473073707846349,
+            "max_absolute": 8.274895705378746e-05
+          },
+          "HO2": {
+            "E2": 0.0020642454175406884,
+            "max_absolute": 4.537598190571771e-07
+          },
+          "H2O2": {
+            "E2": 0.005339651585613556,
+            "max_absolute": 1.7417632560875448e-07
+          },
+          "CH2": {
+            "E2": 0.004240764687359493,
+            "max_absolute": 8.585854807759529e-08
+          },
+          "CH3": {
+            "E2": 0.0031080217947461863,
+            "max_absolute": 3.2049128606985227e-06
+          },
+          "CH4": {
+            "E2": 8.472913683626225e-05,
+            "max_absolute": 4.135394573464776e-05
+          },
+          "CO": {
+            "E2": 0.0021174803817331973,
+            "max_absolute": 6.72888517934192e-05
+          },
+          "CO2": {
+            "E2": 0.00022597177429165588,
+            "max_absolute": 0.00010615993533392987
+          },
+          "HCO": {
+            "E2": 0.0037873113443731765,
+            "max_absolute": 1.5293468565138124e-07
+          },
+          "CH2O": {
+            "E2": 0.001767158158540282,
+            "max_absolute": 2.1370674334965953e-06
+          },
+          "CH3O": {
+            "E2": 0.00315248096871145,
+            "max_absolute": 2.0219799769269993e-07
+          },
+          "CH3OH": {
+            "E2": 0.0020609298804503246,
+            "max_absolute": 3.450323427366407e-07
+          },
+          "C2H2": {
+            "E2": 0.0028399255792320092,
+            "max_absolute": 3.24526363521514e-07
+          },
+          "C2H4": {
+            "E2": 0.002320364112538449,
+            "max_absolute": 1.4374441585357088e-06
+          },
+          "C2H5": {
+            "E2": 0.0034443134677110674,
+            "max_absolute": 1.2783434030208532e-07
+          },
+          "C2H6": {
+            "E2": 0.002232852469334226,
+            "max_absolute": 2.796828679875701e-06
+          },
+          "HCCO": {
+            "E2": 0.004068672981550485,
+            "max_absolute": 3.8209276640899105e-08
+          },
+          "CH2CO": {
+            "E2": 0.0025471259208296178,
+            "max_absolute": 4.725172540012598e-07
+          },
+          "NO": {
+            "E2": 0.0024225623482687984,
+            "max_absolute": 6.794979325598605e-07
+          },
+          "N2": {
+            "E2": 1.6133738912919854e-05,
+            "max_absolute": 2.3871375508743853e-05
+          },
+          "C3H8": {
+            "E2": 0.0029520455341897943,
+            "max_absolute": 8.963713383532005e-08
+          },
+          "CH3CHO": {
+            "E2": 0.0026393440026745135,
+            "max_absolute": 1.954326991344038e-07
+          }
+        },
+        "heat_release_diagnostic": "Cantera postprocessing of both saved compositions; excluded from solve times",
+        "speed_relative_difference": 6.350769106711063e-05,
+        "active_species_threshold": 1e-05,
+        "limitations": "Adaptive acceptance and local edge gradients are not an independent mesh/domain study."
+      }
+    },
+    {
+      "directory": "resultados\\soret_native_validation\\benchmark_20260905_091946",
+      "summary_sha256": "b6bd8dce75142ff441c03dea4ab1ff80db5895739f6abf906c7326b1c2d9bcfd",
+      "case": {
+        "mech": "C:\\Users\\lidia\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\cantera\\data\\gri30.yaml",
+        "fuel": "H2",
+        "oxidizer": "O2:1, N2:3.76",
+        "phi": 1.0,
+        "T_in": 300,
+        "P": 1013250.0,
+        "width": 0.03,
+        "transport_model": "multicomponent",
+        "flux_gradient_basis": "molar",
+        "soret_enabled": true,
+        "outlet_species_bc": "zero_gradient",
+        "upwind_factor": 1.0,
+        "cantera_seed_grid": true,
+        "adaptive_grid": true,
+        "cluster_strength": 8.0,
+        "cluster_sigma": 0.0,
+        "ratio": 2.5,
+        "slope": 0.02,
+        "curve": 0.04,
+        "prune": 0.003,
+        "refine_with_u": true,
+        "refine_with_T": true,
+        "refine_with_species": true,
+        "loglevel": 1,
+        "auto": true
+      },
+      "options": {
+        "u_left_guess": 1.0,
+        "steady_max_iter": 50,
+        "max_jac_age": 20,
+        "steady_max_jac_age": null,
+        "transient_max_jac_age": null,
+        "max_damp_iter": 7,
+        "damp_factor": 1.4142135623730951,
+        "tol": 1.0,
+        "jac_eps": 1e-05,
+        "jac_abs_perturb": 1e-10,
+        "jac_threshold": 0.0,
+        "jacobian_mode": "block_tridiag",
+        "precompute_jacobian_thermo": true,
+        "compiled_block_substitution": true,
+        "newton_fixed_weights": false,
+        "local_jacobian_refresh": false,
+        "local_jacobian_refresh_defect_threshold": 0.2,
+        "local_jacobian_refresh_max_fraction": 0.35,
+        "local_jacobian_refresh_min_blocks": 1,
+        "lag_multicomponent_transport": true,
+        "multicomponent_bootstrap": true,
+        "bootstrap_mesh_factor": 2.0,
+        "alpha_min": 1e-10,
+        "time_step": 1e-05,
+        "time_step_grow": 1.5,
+        "time_step_shrink": 0.5,
+        "time_step_factor": null,
+        "min_time_step": 1e-16,
+        "max_time_step": 100000000.0,
+        "transient_steps_per_cycle": 10,
+        "time_step_sequence": [
+          20
+        ],
+        "transient_scheme": "ptc-ser",
+        "transient_max_iter": 50,
+        "max_time_step_count": 500,
+        "reset_bad_after_failures": 3,
+        "refine_grid": true,
+        "max_refine_passes": 12,
+        "require_grid_convergence": true,
+        "refine_ratio": 2.5,
+        "refine_slope": 0.02,
+        "refine_curve": 0.04,
+        "refine_prune": 0.003,
+        "refine_grid_min": 1e-10,
+        "refine_max_points": 1600,
+        "refine_Finf_limit": 10000.0,
+        "final_Finf_limit": 10000.0,
+        "accept_residual_converged": false,
+        "accept_initial_residual_converged": false,
+        "acceptance_criterion": "cantera",
+        "weighted_step_norm_limit": null,
+        "residual_guard_inf": 10000.0,
+        "domain_auto_expand": true,
+        "max_domain_expansions": 12,
+        "domain_expand_factor": 2.0,
+        "domain_edge_slope_tol": 0.02,
+        "domain_edge_strict_mode": true,
+        "domain_check_after_refine_only": false,
+        "auto_bootstrap_grids": false,
+        "bootstrap_grid_points": [
+          12,
+          24,
+          48
+        ],
+        "bootstrap_max_grid_points": 1000,
+        "restart_insert_anchor": false,
+        "max_total_time_s": 120.0,
+        "verbose": false,
+        "profile": true,
+        "trace_solver": false
+      },
+      "command": [
+        "V2/benchmark_soret_native.py",
+        "--bootstrap",
+        "--bootstrap-mesh-factor",
+        "2",
+        "--lag",
+        "--pressure-atm",
+        "10",
+        "--slope",
+        "0.02",
+        "--curve",
+        "0.04",
+        "--max-seconds",
+        "120"
+      ],
+      "source_sha256": {
+        "analyze_soret_validation.py": "a9648d99265dfd33a884cf844cc81685e8c17697e1f48e30801efd3f751ad5f2",
+        "audit_soret_solver_trace.py": "25c24fe88d8be9276989912a54fc9175814ec2e08000f6d9bfcdc93f9c7d2b87",
+        "benchmark_soret_native.py": "adaa1775cb33909316d9a41f3bbd64d52ce625ddd9fe84897d3f7b5e1d688d7e",
+        "config.py": "b17d7c363f5619499888aa9953d8b043d4096f39dad2b6aa3a4f4a366d062c35",
+        "equations.py": "161a1155f2bd0b80095aeda941d01285aedce9c7a2e15e8f1bd0fe334ad7ae3f",
+        "plot_saved_comparison.py": "c765e343a6f2b2f0f1d390d2e17809c9fac6def32fe2c0e1d974ecf54853a1df",
+        "problem.py": "2286b16eb96673fa2cb781d9e15a64c387c33dd65cd8eccc657e0f6de13a3761",
+        "refine_soret_validation.py": "3718dffff3b6df4fb72abbfc909327d708a8ee6061633971f4db0742aeba87ab",
+        "run_saved_comparison.py": "28ae8b00224431685b637fdf04eed8431fc93d342f311cd7132b237251719cf7",
+        "solver.py": "837a9858a8949199b6f40f0a5907c3226fc5182f9a5b140799a321addb43624a",
+        "species_backend.py": "daeacfd193afb942ba9ed555c915074809ad62d5c6a05426fd0bd8331416e62f",
+        "state.py": "7f151533c07d5332fac60bcaeeb8d27c412743559f2dfe08ed4fcd2cc71aab00",
+        "trace_cantera_soret.py": "1f1e9932787b70bb9243bbf6fd72797ef1baba0b8aeb2c434e7dee1c252cd3fb",
+        "materiales\\collision_integrals_native.py": "168ac1d16fd1a85c0417750761f5b08650f597f8062d4f4fb7f07a1da557f959",
+        "materiales\\kinetics_native.py": "e6db3866548ce872e6ee8d84a2c2305fffe0a825d1f4062d6b942b487249de41",
+        "materiales\\mechanism_data.py": "bce21a5f71d484798006ca75fc565b9784edee7e8eb1e40796c4c6b074a2f2f0",
+        "materiales\\species_backend_native.py": "a9bcfe32fed377da7ec6c05257077d2514ef9d57fa84cd16d65267e555713d18",
+        "materiales\\thermo_native.py": "6afbbe05bc1404b8ca12cd122e88da2d3b72a6a30011dccfabbe0e7fbea584f0",
+        "materiales\\transport_multicomponent_kernels.py": "537844f3cf03998281638115db867fbb3df0088ef3afbe39076cca394713c5f6",
+        "materiales\\transport_multicomponent_native.py": "c09ef5e4a01199926d854e1a1c6a6fe94abd607834efb156e7619d5352f359dc",
+        "materiales\\transport_native.py": "87853760cd078be99c94678bff3117fb90fd2cadc8fb8bb4f2615ed96adbc581",
+        "materiales\\collision_integrals_mm.json": "d615ab6a957338231f55307f50062572a87dc126b41c415b0a7276eb30e2c145"
+      },
+      "mechanism_sha256": "06650b1e0ee0012f6903d5328b1bb218cb6007d07f8ebe375d18f24811039345",
+      "versions": {
+        "cantera": "3.2.0",
+        "numpy": "2.4.6"
+      },
+      "threads": {
+        "OPENBLAS_NUM_THREADS": "1",
+        "NUMBA_NUM_THREADS": "4"
+      },
+      "jit_policy": "Fresh process; disk JIT cache retained, not cleared; first pair retained",
+      "profile_cache": "none",
+      "rows": [
+        {
+          "time_s": 36.31821840000339,
+          "setup_time_s": 0.5623720000148751,
+          "end_to_end_s": 36.88066650001565,
+          "accepted": true,
+          "bootstrap": true,
+          "Su": 1.3572549983956612,
+          "n_points": 440,
+          "width": 0.06,
+          "species_sum_error": 6.181721801112872e-12,
+          "mass_flow_error": 3.856801909960864e-11,
+          "Finf": 578.3065079654644,
+          "solver": "native",
+          "repetition": 0,
+          "profile_sha256": "d8160d9c9f417dfe07647413ae2cb111cc3c0d005a5823191527727a4fdc05eb",
+          "same_mesh_as_first_repetition": true,
+          "repeat_max_absolute_difference": {
+            "z": 0.0,
+            "T": 0.0,
+            "Y": 0.0,
+            "u": 0.0
+          }
+        },
+        {
+          "time_s": 51.33324300000095,
+          "Su": 1.3604072404715786,
+          "width": 0.06,
+          "n_points": 455,
+          "accepted": true,
+          "solver": "cantera",
+          "repetition": 0,
+          "profile_sha256": "4a9391aed65dffd0b992ee52b81ce505c7dfd0cb25464a36dd4c1c93bac94fcd",
+          "same_mesh_as_first_repetition": true,
+          "repeat_max_absolute_difference": {
+            "z": 0.0,
+            "T": 0.0,
+            "Y": 0.0,
+            "u": 0.0
+          }
+        }
+      ],
+      "validation_sha256": "2bd144f5e6d66e6b42e4a276306bc016ad66ad6a13c989aed9beb1fdc82b85de",
+      "validation": {
+        "timing": {
+          "n_pairs": 1,
+          "all_pairs_accepted": true
+        },
+        "alignment": {
+          "native": {
+            "offset_m": 0.020685611399274877,
+            "thermal_thickness_m": 2.391723677036299e-05,
+            "heat_release_peak": 1622949184852.3723,
+            "heat_release_peak_aligned_m": 7.094688883494543e-06,
+            "burned_temperature": 2432.63284992086,
+            "relative_edge_gradients": [
+              2.1219819803468225e-19,
+              0.0
+            ]
+          },
+          "cantera": {
+            "offset_m": 0.02099998559630177,
+            "thermal_thickness_m": 2.39020450490946e-05,
+            "heat_release_peak": 1628505595495.009,
+            "heat_release_peak_aligned_m": 7.1555169794783324e-06,
+            "burned_temperature": 2433.846704942627,
+            "relative_edge_gradients": [
+              5.4924617779813785e-16,
+              0.0
+            ]
+          }
+        },
+        "aligned_profile_errors": {
+          "T": {
+            "E2": 0.0004958027754067063,
+            "max_absolute": 1.855333035926833
+          },
+          "qdot": {
+            "E2": 0.0034354231825442037,
+            "max_absolute": 6344036533.47583
+          },
+          "H2": {
+            "E2": 0.0005228960226241185,
+            "max_absolute": 5.0375345112992076e-05
+          },
+          "H": {
+            "E2": 0.012928896957681702,
+            "max_absolute": 2.1391663770308194e-06
+          },
+          "O": {
+            "E2": 0.0057019798603411675,
+            "max_absolute": 3.8003375429501718e-06
+          },
+          "O2": {
+            "E2": 0.0008715393238207152,
+            "max_absolute": 0.00018571734337797813
+          },
+          "OH": {
+            "E2": 0.0019376366974933404,
+            "max_absolute": 2.428019465856423e-05
+          },
+          "H2O": {
+            "E2": 0.0006839316607722098,
+            "max_absolute": 0.00023566759417339989
+          },
+          "HO2": {
+            "E2": 0.0018056546126032015,
+            "max_absolute": 2.8947984114402903e-06
+          },
+          "H2O2": {
+            "E2": 0.0022171996978184337,
+            "max_absolute": 7.284146557622246e-07
+          },
+          "NO": {
+            "E2": 0.0021344038567633274,
+            "max_absolute": 1.2457831283483245e-05
+          },
+          "N2": {
+            "E2": 2.873825022389528e-05,
+            "max_absolute": 3.188254923358613e-05
+          }
+        },
+        "heat_release_diagnostic": "Cantera postprocessing of both saved compositions; excluded from solve times",
+        "speed_relative_difference": 0.0023171312105224606,
+        "active_species_threshold": 1e-05,
+        "limitations": "Adaptive acceptance and local edge gradients are not an independent mesh/domain study.",
+        "elemental_flux": {
+          "native": {
+            "convention": "Midpoint reconstructed convective + diffusive elemental flux; mesh-sensitive diagnostic",
+            "max_diffusive_mass_sum": 2.5630511066035396e-11,
+            "min_mass_fraction": -1.0962680567271132e-13,
+            "elements": {
+              "O": {
+                "inlet_flux": 2.6097491239558273,
+                "max_absolute_deviation": 0.0029975949179936734,
+                "relative_deviation": 0.0011486142060467307
+              },
+              "H": {
+                "inlet_flux": 0.32884894267735154,
+                "max_absolute_deviation": 0.004552258241654339,
+                "relative_deviation": 0.01384300707976052
+              },
+              "C": {
+                "inlet_flux": 0.0,
+                "max_absolute_deviation": 2.4638485372346854e-11,
+                "relative_deviation": null
+              },
+              "N": {
+                "inlet_flux": 8.590904586660246,
+                "max_absolute_deviation": 0.002433642521118884,
+                "relative_deviation": 0.0002832812885499609
+              },
+              "Ar": {
+                "inlet_flux": 0.0,
+                "max_absolute_deviation": 8.71185186501829e-12,
+                "relative_deviation": null
+              }
+            }
+          },
+          "cantera": {
+            "convention": "Midpoint reconstructed convective + diffusive elemental flux; mesh-sensitive diagnostic",
+            "max_diffusive_mass_sum": 1.7822740721765053e-11,
+            "min_mass_fraction": -2.856825042724786e-13,
+            "elements": {
+              "O": {
+                "inlet_flux": 2.615810299641879,
+                "max_absolute_deviation": 0.0029761686950542376,
+                "relative_deviation": 0.0011377616700498862
+              },
+              "H": {
+                "inlet_flux": 0.329612698548536,
+                "max_absolute_deviation": 0.004222316170538254,
+                "relative_deviation": 0.012809931744533536
+              },
+              "C": {
+                "inlet_flux": 0.0,
+                "max_absolute_deviation": 3.107427074347163e-10,
+                "relative_deviation": null
+              },
+              "N": {
+                "inlet_flux": 8.610857072331713,
+                "max_absolute_deviation": 0.0021926273669095053,
+                "relative_deviation": 0.0002546352062856583
+              },
+              "Ar": {
+                "inlet_flux": 0.0,
+                "max_absolute_deviation": 2.462436951303578e-11,
+                "relative_deviation": null
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "directory": "resultados\\soret_native_validation\\benchmark_20260905_092520",
+      "summary_sha256": "ebf1884236c56932850aa2ea877e5b96dde69ea187a229d917ad74254243e9d7",
+      "case": {
+        "mech": "C:\\Users\\lidia\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\cantera\\data\\gri30.yaml",
+        "fuel": "H2",
+        "oxidizer": "O2:1, N2:3.76",
+        "phi": 1.0,
+        "T_in": 300,
+        "P": 1013250.0,
+        "width": 0.03,
+        "transport_model": "multicomponent",
+        "flux_gradient_basis": "molar",
+        "soret_enabled": true,
+        "outlet_species_bc": "zero_gradient",
+        "upwind_factor": 1.0,
+        "cantera_seed_grid": true,
+        "adaptive_grid": true,
+        "cluster_strength": 8.0,
+        "cluster_sigma": 0.0,
+        "ratio": 2.5,
+        "slope": 0.01,
+        "curve": 0.02,
+        "prune": 0.003,
+        "refine_with_u": true,
+        "refine_with_T": true,
+        "refine_with_species": true,
+        "loglevel": 1,
+        "auto": true
+      },
+      "options": {
+        "u_left_guess": 1.0,
+        "steady_max_iter": 50,
+        "max_jac_age": 20,
+        "steady_max_jac_age": null,
+        "transient_max_jac_age": null,
+        "max_damp_iter": 7,
+        "damp_factor": 1.4142135623730951,
+        "tol": 1.0,
+        "jac_eps": 1e-05,
+        "jac_abs_perturb": 1e-10,
+        "jac_threshold": 0.0,
+        "jacobian_mode": "block_tridiag",
+        "precompute_jacobian_thermo": true,
+        "compiled_block_substitution": true,
+        "newton_fixed_weights": false,
+        "local_jacobian_refresh": false,
+        "local_jacobian_refresh_defect_threshold": 0.2,
+        "local_jacobian_refresh_max_fraction": 0.35,
+        "local_jacobian_refresh_min_blocks": 1,
+        "lag_multicomponent_transport": true,
+        "multicomponent_bootstrap": true,
+        "bootstrap_mesh_factor": 2.0,
+        "alpha_min": 1e-10,
+        "time_step": 1e-05,
+        "time_step_grow": 1.5,
+        "time_step_shrink": 0.5,
+        "time_step_factor": null,
+        "min_time_step": 1e-16,
+        "max_time_step": 100000000.0,
+        "transient_steps_per_cycle": 10,
+        "time_step_sequence": [
+          20
+        ],
+        "transient_scheme": "ptc-ser",
+        "transient_max_iter": 50,
+        "max_time_step_count": 500,
+        "reset_bad_after_failures": 3,
+        "refine_grid": true,
+        "max_refine_passes": 12,
+        "require_grid_convergence": true,
+        "refine_ratio": 2.5,
+        "refine_slope": 0.01,
+        "refine_curve": 0.02,
+        "refine_prune": 0.003,
+        "refine_grid_min": 1e-10,
+        "refine_max_points": 1600,
+        "refine_Finf_limit": 10000.0,
+        "final_Finf_limit": 10000.0,
+        "accept_residual_converged": false,
+        "accept_initial_residual_converged": false,
+        "acceptance_criterion": "cantera",
+        "weighted_step_norm_limit": null,
+        "residual_guard_inf": 10000.0,
+        "domain_auto_expand": true,
+        "max_domain_expansions": 12,
+        "domain_expand_factor": 2.0,
+        "domain_edge_slope_tol": 0.02,
+        "domain_edge_strict_mode": true,
+        "domain_check_after_refine_only": false,
+        "auto_bootstrap_grids": false,
+        "bootstrap_grid_points": [
+          12,
+          24,
+          48
+        ],
+        "bootstrap_max_grid_points": 1000,
+        "restart_insert_anchor": false,
+        "max_total_time_s": 180.0,
+        "verbose": false,
+        "profile": true,
+        "trace_solver": false
+      },
+      "command": [
+        "V2/benchmark_soret_native.py",
+        "--bootstrap",
+        "--bootstrap-mesh-factor",
+        "2",
+        "--lag",
+        "--pressure-atm",
+        "10",
+        "--slope",
+        "0.01",
+        "--curve",
+        "0.02",
+        "--repeat",
+        "7",
+        "--max-seconds",
+        "180"
+      ],
+      "source_sha256": {
+        "analyze_soret_validation.py": "a9648d99265dfd33a884cf844cc81685e8c17697e1f48e30801efd3f751ad5f2",
+        "audit_soret_solver_trace.py": "25c24fe88d8be9276989912a54fc9175814ec2e08000f6d9bfcdc93f9c7d2b87",
+        "benchmark_soret_native.py": "adaa1775cb33909316d9a41f3bbd64d52ce625ddd9fe84897d3f7b5e1d688d7e",
+        "config.py": "b17d7c363f5619499888aa9953d8b043d4096f39dad2b6aa3a4f4a366d062c35",
+        "equations.py": "161a1155f2bd0b80095aeda941d01285aedce9c7a2e15e8f1bd0fe334ad7ae3f",
+        "plot_saved_comparison.py": "c765e343a6f2b2f0f1d390d2e17809c9fac6def32fe2c0e1d974ecf54853a1df",
+        "problem.py": "2286b16eb96673fa2cb781d9e15a64c387c33dd65cd8eccc657e0f6de13a3761",
+        "refine_soret_validation.py": "3718dffff3b6df4fb72abbfc909327d708a8ee6061633971f4db0742aeba87ab",
+        "run_saved_comparison.py": "28ae8b00224431685b637fdf04eed8431fc93d342f311cd7132b237251719cf7",
+        "solver.py": "837a9858a8949199b6f40f0a5907c3226fc5182f9a5b140799a321addb43624a",
+        "species_backend.py": "daeacfd193afb942ba9ed555c915074809ad62d5c6a05426fd0bd8331416e62f",
+        "state.py": "7f151533c07d5332fac60bcaeeb8d27c412743559f2dfe08ed4fcd2cc71aab00",
+        "trace_cantera_soret.py": "1f1e9932787b70bb9243bbf6fd72797ef1baba0b8aeb2c434e7dee1c252cd3fb",
+        "materiales\\collision_integrals_native.py": "168ac1d16fd1a85c0417750761f5b08650f597f8062d4f4fb7f07a1da557f959",
+        "materiales\\kinetics_native.py": "e6db3866548ce872e6ee8d84a2c2305fffe0a825d1f4062d6b942b487249de41",
+        "materiales\\mechanism_data.py": "bce21a5f71d484798006ca75fc565b9784edee7e8eb1e40796c4c6b074a2f2f0",
+        "materiales\\species_backend_native.py": "a9bcfe32fed377da7ec6c05257077d2514ef9d57fa84cd16d65267e555713d18",
+        "materiales\\thermo_native.py": "6afbbe05bc1404b8ca12cd122e88da2d3b72a6a30011dccfabbe0e7fbea584f0",
+        "materiales\\transport_multicomponent_kernels.py": "537844f3cf03998281638115db867fbb3df0088ef3afbe39076cca394713c5f6",
+        "materiales\\transport_multicomponent_native.py": "c09ef5e4a01199926d854e1a1c6a6fe94abd607834efb156e7619d5352f359dc",
+        "materiales\\transport_native.py": "87853760cd078be99c94678bff3117fb90fd2cadc8fb8bb4f2615ed96adbc581",
+        "materiales\\collision_integrals_mm.json": "d615ab6a957338231f55307f50062572a87dc126b41c415b0a7276eb30e2c145"
+      },
+      "mechanism_sha256": "06650b1e0ee0012f6903d5328b1bb218cb6007d07f8ebe375d18f24811039345",
+      "versions": {
+        "cantera": "3.2.0",
+        "numpy": "2.4.6"
+      },
+      "threads": {
+        "OPENBLAS_NUM_THREADS": "1",
+        "NUMBA_NUM_THREADS": "4"
+      },
+      "jit_policy": "Fresh process; disk JIT cache retained, not cleared; first pair retained",
+      "profile_cache": "none",
+      "rows": [
+        {
+          "time_s": 47.22387240000535,
+          "setup_time_s": 0.5442288999911398,
+          "end_to_end_s": 47.76832019997528,
+          "accepted": true,
+          "bootstrap": true,
+          "Su": 1.3732138303847155,
+          "n_points": 854,
+          "width": 0.06,
+          "species_sum_error": 5.480060849549773e-12,
+          "mass_flow_error": 2.012532719373528e-12,
+          "Finf": 0.35918090169389105,
+          "solver": "native",
+          "repetition": 0,
+          "profile_sha256": "486d573efab6f66f62727ce659d7c6d890cb7b5808cc20f33b1cf693a7137cd9",
+          "same_mesh_as_first_repetition": true,
+          "repeat_max_absolute_difference": {
+            "z": 0.0,
+            "T": 0.0,
+            "Y": 0.0,
+            "u": 0.0
+          }
+        },
+        {
+          "time_s": 78.46315279998817,
+          "Su": 1.371896178806676,
+          "width": 0.06,
+          "n_points": 868,
+          "accepted": true,
+          "solver": "cantera",
+          "repetition": 0,
+          "profile_sha256": "666a2d1bc2cf43ffec8a7df35630db953e269878ef39e73fe87f9d1146f16639",
+          "same_mesh_as_first_repetition": true,
+          "repeat_max_absolute_difference": {
+            "z": 0.0,
+            "T": 0.0,
+            "Y": 0.0,
+            "u": 0.0
+          }
+        },
+        {
+          "time_s": 79.49030529998709,
+          "Su": 1.371896178806676,
+          "width": 0.06,
+          "n_points": 868,
+          "accepted": true,
+          "solver": "cantera",
+          "repetition": 1,
+          "profile_sha256": "666a2d1bc2cf43ffec8a7df35630db953e269878ef39e73fe87f9d1146f16639",
+          "same_mesh_as_first_repetition": true,
+          "repeat_max_absolute_difference": {
+            "z": 0.0,
+            "T": 0.0,
+            "Y": 0.0,
+            "u": 0.0
+          }
+        },
+        {
+          "time_s": 44.90779029999976,
+          "setup_time_s": 0.33587410001200624,
+          "end_to_end_s": 45.24375819999841,
+          "accepted": true,
+          "bootstrap": true,
+          "Su": 1.3732138303847155,
+          "n_points": 854,
+          "width": 0.06,
+          "species_sum_error": 5.480060849549773e-12,
+          "mass_flow_error": 2.012532719373528e-12,
+          "Finf": 0.35918090169389105,
+          "solver": "native",
+          "repetition": 1,
+          "profile_sha256": "486d573efab6f66f62727ce659d7c6d890cb7b5808cc20f33b1cf693a7137cd9",
+          "same_mesh_as_first_repetition": true,
+          "repeat_max_absolute_difference": {
+            "z": 0.0,
+            "T": 0.0,
+            "Y": 0.0,
+            "u": 0.0
+          }
+        },
+        {
+          "time_s": 44.87403419998009,
+          "setup_time_s": 0.32364590000361204,
+          "end_to_end_s": 45.19777100000647,
+          "accepted": true,
+          "bootstrap": true,
+          "Su": 1.3732138303847155,
+          "n_points": 854,
+          "width": 0.06,
+          "species_sum_error": 5.480060849549773e-12,
+          "mass_flow_error": 2.012532719373528e-12,
+          "Finf": 0.35918090169389105,
+          "solver": "native",
+          "repetition": 2,
+          "profile_sha256": "486d573efab6f66f62727ce659d7c6d890cb7b5808cc20f33b1cf693a7137cd9",
+          "same_mesh_as_first_repetition": true,
+          "repeat_max_absolute_difference": {
+            "z": 0.0,
+            "T": 0.0,
+            "Y": 0.0,
+            "u": 0.0
+          }
+        },
+        {
+          "time_s": 76.99869410000974,
+          "Su": 1.371896178806676,
+          "width": 0.06,
+          "n_points": 868,
+          "accepted": true,
+          "solver": "cantera",
+          "repetition": 2,
+          "profile_sha256": "666a2d1bc2cf43ffec8a7df35630db953e269878ef39e73fe87f9d1146f16639",
+          "same_mesh_as_first_repetition": true,
+          "repeat_max_absolute_difference": {
+            "z": 0.0,
+            "T": 0.0,
+            "Y": 0.0,
+            "u": 0.0
+          }
+        },
+        {
+          "time_s": 76.52550119999796,
+          "Su": 1.371896178806676,
+          "width": 0.06,
+          "n_points": 868,
+          "accepted": true,
+          "solver": "cantera",
+          "repetition": 3,
+          "profile_sha256": "666a2d1bc2cf43ffec8a7df35630db953e269878ef39e73fe87f9d1146f16639",
+          "same_mesh_as_first_repetition": true,
+          "repeat_max_absolute_difference": {
+            "z": 0.0,
+            "T": 0.0,
+            "Y": 0.0,
+            "u": 0.0
+          }
+        },
+        {
+          "time_s": 44.85629319999134,
+          "setup_time_s": 0.3496325000014622,
+          "end_to_end_s": 45.20604050002294,
+          "accepted": true,
+          "bootstrap": true,
+          "Su": 1.3732138303847155,
+          "n_points": 854,
+          "width": 0.06,
+          "species_sum_error": 5.480060849549773e-12,
+          "mass_flow_error": 2.012532719373528e-12,
+          "Finf": 0.35918090169389105,
+          "solver": "native",
+          "repetition": 3,
+          "profile_sha256": "486d573efab6f66f62727ce659d7c6d890cb7b5808cc20f33b1cf693a7137cd9",
+          "same_mesh_as_first_repetition": true,
+          "repeat_max_absolute_difference": {
+            "z": 0.0,
+            "T": 0.0,
+            "Y": 0.0,
+            "u": 0.0
+          }
+        },
+        {
+          "time_s": 45.87342419999186,
+          "setup_time_s": 0.31267600000137463,
+          "end_to_end_s": 46.186212200002046,
+          "accepted": true,
+          "bootstrap": true,
+          "Su": 1.3732138303847155,
+          "n_points": 854,
+          "width": 0.06,
+          "species_sum_error": 5.480060849549773e-12,
+          "mass_flow_error": 2.012532719373528e-12,
+          "Finf": 0.35918090169389105,
+          "solver": "native",
+          "repetition": 4,
+          "profile_sha256": "486d573efab6f66f62727ce659d7c6d890cb7b5808cc20f33b1cf693a7137cd9",
+          "same_mesh_as_first_repetition": true,
+          "repeat_max_absolute_difference": {
+            "z": 0.0,
+            "T": 0.0,
+            "Y": 0.0,
+            "u": 0.0
+          }
+        },
+        {
+          "time_s": 78.81567939999513,
+          "Su": 1.371896178806676,
+          "width": 0.06,
+          "n_points": 868,
+          "accepted": true,
+          "solver": "cantera",
+          "repetition": 4,
+          "profile_sha256": "666a2d1bc2cf43ffec8a7df35630db953e269878ef39e73fe87f9d1146f16639",
+          "same_mesh_as_first_repetition": true,
+          "repeat_max_absolute_difference": {
+            "z": 0.0,
+            "T": 0.0,
+            "Y": 0.0,
+            "u": 0.0
+          }
+        },
+        {
+          "time_s": 78.66560519998893,
+          "Su": 1.371896178806676,
+          "width": 0.06,
+          "n_points": 868,
+          "accepted": true,
+          "solver": "cantera",
+          "repetition": 5,
+          "profile_sha256": "666a2d1bc2cf43ffec8a7df35630db953e269878ef39e73fe87f9d1146f16639",
+          "same_mesh_as_first_repetition": true,
+          "repeat_max_absolute_difference": {
+            "z": 0.0,
+            "T": 0.0,
+            "Y": 0.0,
+            "u": 0.0
+          }
+        },
+        {
+          "time_s": 52.505697399989,
+          "setup_time_s": 0.3108692000096198,
+          "end_to_end_s": 52.81666090001818,
+          "accepted": true,
+          "bootstrap": true,
+          "Su": 1.3732138303847155,
+          "n_points": 854,
+          "width": 0.06,
+          "species_sum_error": 5.480060849549773e-12,
+          "mass_flow_error": 2.012532719373528e-12,
+          "Finf": 0.35918090169389105,
+          "solver": "native",
+          "repetition": 5,
+          "profile_sha256": "486d573efab6f66f62727ce659d7c6d890cb7b5808cc20f33b1cf693a7137cd9",
+          "same_mesh_as_first_repetition": true,
+          "repeat_max_absolute_difference": {
+            "z": 0.0,
+            "T": 0.0,
+            "Y": 0.0,
+            "u": 0.0
+          }
+        },
+        {
+          "time_s": 58.104448400001274,
+          "setup_time_s": 0.31812410001293756,
+          "end_to_end_s": 58.42266529999324,
+          "accepted": true,
+          "bootstrap": true,
+          "Su": 1.3732138303847155,
+          "n_points": 854,
+          "width": 0.06,
+          "species_sum_error": 5.480060849549773e-12,
+          "mass_flow_error": 2.012532719373528e-12,
+          "Finf": 0.35918090169389105,
+          "solver": "native",
+          "repetition": 6,
+          "profile_sha256": "486d573efab6f66f62727ce659d7c6d890cb7b5808cc20f33b1cf693a7137cd9",
+          "same_mesh_as_first_repetition": true,
+          "repeat_max_absolute_difference": {
+            "z": 0.0,
+            "T": 0.0,
+            "Y": 0.0,
+            "u": 0.0
+          }
+        },
+        {
+          "time_s": 90.76872309998726,
+          "Su": 1.371896178806676,
+          "width": 0.06,
+          "n_points": 868,
+          "accepted": true,
+          "solver": "cantera",
+          "repetition": 6,
+          "profile_sha256": "666a2d1bc2cf43ffec8a7df35630db953e269878ef39e73fe87f9d1146f16639",
+          "same_mesh_as_first_repetition": true,
+          "repeat_max_absolute_difference": {
+            "z": 0.0,
+            "T": 0.0,
+            "Y": 0.0,
+            "u": 0.0
+          }
+        }
+      ],
+      "validation_sha256": "619f1843c358e19c4e18fd93d9059fb1888c93325e31f7bdce0c6ed2ea7986b1",
+      "validation": {
+        "timing": {
+          "n_pairs": 7,
+          "all_pairs_accepted": true,
+          "native_median_s": 45.87342419999186,
+          "cantera_median_s": 78.66560519998893,
+          "native_iqr_s": [
+            44.890912249989924,
+            49.864784899997176
+          ],
+          "cantera_iqr_s": [
+            77.73092344999895,
+            79.15299234999111
+          ],
+          "paired_ratio_ci95": [
+            0.5649467583565446,
+            0.6674543120402561
+          ],
+          "reduction_percent": 41.68553831961327,
+          "first_pair_included": true
+        },
+        "alignment": {
+          "native": {
+            "offset_m": 0.020685628325402772,
+            "thermal_thickness_m": 2.3693618668707764e-05,
+            "heat_release_peak": 1655705306037.8547,
+            "heat_release_peak_aligned_m": 6.976616082655929e-06,
+            "burned_temperature": 2438.4417470700078,
+            "relative_edge_gradients": [
+              0.0,
+              0.0
+            ]
+          },
+          "cantera": {
+            "offset_m": 0.02100000250640444,
+            "thermal_thickness_m": 2.3708693011600106e-05,
+            "heat_release_peak": 1653250605682.2324,
+            "heat_release_peak_aligned_m": 7.001277775246784e-06,
+            "burned_temperature": 2438.369166631565,
+            "relative_edge_gradients": [
+              2.3342658198993417e-15,
+              0.0
+            ]
+          }
+        },
+        "aligned_profile_errors": {
+          "T": {
+            "E2": 4.054550462543869e-05,
+            "max_absolute": 0.45295050849836116
+          },
+          "qdot": {
+            "E2": 0.0014282981464755872,
+            "max_absolute": 2988608550.5249023
+          },
+          "H2": {
+            "E2": 0.0001868903515823325,
+            "max_absolute": 1.8918804498783276e-05
+          },
+          "H": {
+            "E2": 0.003735225829275496,
+            "max_absolute": 9.541191355504964e-07
+          },
+          "O": {
+            "E2": 0.00401455252848319,
+            "max_absolute": 1.6819205338896876e-06
+          },
+          "O2": {
+            "E2": 0.0003009422275547253,
+            "max_absolute": 9.939788913324032e-05
+          },
+          "OH": {
+            "E2": 0.002054021987056926,
+            "max_absolute": 9.914393841674307e-06
+          },
+          "H2O": {
+            "E2": 0.00024401683608844157,
+            "max_absolute": 9.267135552148975e-05
+          },
+          "HO2": {
+            "E2": 0.0008431203960264101,
+            "max_absolute": 1.539469745824324e-06
+          },
+          "H2O2": {
+            "E2": 0.00068042177879351,
+            "max_absolute": 2.1078751553078672e-07
+          },
+          "NO": {
+            "E2": 0.004326125291649147,
+            "max_absolute": 6.644187244359001e-06
+          },
+          "N2": {
+            "E2": 4.035063138333698e-06,
+            "max_absolute": 1.2809975036276455e-05
+          }
+        },
+        "heat_release_diagnostic": "Cantera postprocessing of both saved compositions; excluded from solve times",
+        "speed_relative_difference": 0.0009604601269359581,
+        "active_species_threshold": 1e-05,
+        "limitations": "Adaptive acceptance and local edge gradients are not an independent mesh/domain study.",
+        "elemental_flux": {
+          "native": {
+            "convention": "Midpoint reconstructed convective + diffusive elemental flux; mesh-sensitive diagnostic",
+            "max_diffusive_mass_sum": 4.957880206538758e-11,
+            "min_mass_fraction": -7.189821654393795e-15,
+            "elements": {
+              "O": {
+                "inlet_flux": 2.6404349920145367,
+                "max_absolute_deviation": 0.001554968144960256,
+                "relative_deviation": 0.0005889060513373529
+              },
+              "H": {
+                "inlet_flux": 0.332715603719064,
+                "max_absolute_deviation": 0.002377303813474285,
+                "relative_deviation": 0.0071451527577937575
+              },
+              "C": {
+                "inlet_flux": 0.0,
+                "max_absolute_deviation": 2.3159520472246215e-11,
+                "relative_deviation": null
+              },
+              "N": {
+                "inlet_flux": 8.69191788415745,
+                "max_absolute_deviation": 0.0012836392525112927,
+                "relative_deviation": 0.00014768193505957427
+              },
+              "Ar": {
+                "inlet_flux": 0.0,
+                "max_absolute_deviation": 1.7879957979718465e-12,
+                "relative_deviation": null
+              }
+            }
+          },
+          "cantera": {
+            "convention": "Midpoint reconstructed convective + diffusive elemental flux; mesh-sensitive diagnostic",
+            "max_diffusive_mass_sum": 5.300989331431143e-11,
+            "min_mass_fraction": -1.093607134949596e-13,
+            "elements": {
+              "O": {
+                "inlet_flux": 2.637901392908163,
+                "max_absolute_deviation": 0.0016109503443666462,
+                "relative_deviation": 0.0006106939208181123
+              },
+              "H": {
+                "inlet_flux": 0.33239635027832093,
+                "max_absolute_deviation": 0.0024934464284885882,
+                "relative_deviation": 0.007501425410961295
+              },
+              "C": {
+                "inlet_flux": 0.0,
+                "max_absolute_deviation": 5.488130265696361e-10,
+                "relative_deviation": null
+              },
+              "N": {
+                "inlet_flux": 8.683577654062569,
+                "max_absolute_deviation": 0.0013671669760739746,
+                "relative_deviation": 0.00015744282259448123
+              },
+              "Ar": {
+                "inlet_flux": 0.0,
+                "max_absolute_deviation": 4.338075023896627e-11,
+                "relative_deviation": null
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

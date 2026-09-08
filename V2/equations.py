@@ -6,10 +6,13 @@ from time import perf_counter
 
 import numpy as np
 from scipy import sparse
-from scipy.linalg import get_lapack_funcs, lu_factor, lu_solve
+from scipy.linalg import get_lapack_funcs, lu_solve
 from scipy.sparse.linalg import splu
 
 from state import C_T, C_U, C_Y, build_transient_mask
+
+# Cache LAPACK dispatch outside the per-block factorization loop.
+_block_getrf, _block_getrs = get_lapack_funcs(("getrf", "getrs"), dtype=np.float64)
 
 try:
     from numba import njit
@@ -82,12 +85,75 @@ def _corrected_flux(Y_L: np.ndarray, Y_R: np.ndarray,
     return J_star - Y_L * J_star.sum()
 
 
+def _mole_fractions_from_Y(Y: np.ndarray, W: np.ndarray) -> np.ndarray:
+    """Convert pointwise mass fractions to mole fractions without clipping.
+
+    The residual deliberately preserves the Newton trial state, including its
+    small allowed negative species values.  Clipping here would alter the root
+    of the discrete system and hide a failed physical step.
+    """
+    inv_wmix = np.sum(Y / W[:, None], axis=0)
+    Wmix = 1.0 / np.maximum(inv_wmix, 1.0e-300)
+    return Y * (Wmix[None, :] / W[:, None])
+
+
+def _multicomponent_flux(
+    Y_L: np.ndarray,
+    Y_R: np.ndarray,
+    T_L: np.ndarray,
+    T_R: np.ndarray,
+    rho_f: np.ndarray,
+    W_mix_f: np.ndarray,
+    multi_diff: np.ndarray,
+    thermal_diff: np.ndarray,
+    dz: np.ndarray,
+    W: np.ndarray,
+) -> np.ndarray:
+    """Cantera Flow1D multicomponent/Soret face flux.
+
+    ``multi_diff[k,i]`` is Cantera's multicomponent diffusion coefficient and
+    ``thermal_diff[k]`` its thermal-diffusion coefficient.  The expression is
+    the public Flow1D formulation, including the face ``grad(log(T))`` used by
+    the Soret term.  No mixture-averaged correction velocity is applied: the
+    multicomponent coefficients already satisfy the zero-total-mass-flux
+    constraint to roundoff.
+    """
+    X_L = _mole_fractions_from_Y(Y_L, W)
+    X_R = _mole_fractions_from_Y(Y_R, W)
+    grad_X_weighted = W[:, None] * (X_R - X_L) / dz[None, :]
+    ordinary = np.einsum("kif,if->kf", multi_diff, grad_X_weighted, optimize=True)
+    ordinary *= (rho_f[None, :] * W[:, None] / (W_mix_f[None, :] ** 2))
+
+    T_face = 0.5 * (T_L + T_R)
+    grad_log_T = (T_R - T_L) / (np.maximum(T_face, 1.0e-300) * dz)
+    return ordinary - thermal_diff * grad_log_T[None, :]
+
+
+def _multicomponent_flux_frozen(
+    Y_L: np.ndarray,
+    Y_R: np.ndarray,
+    T_L: np.ndarray,
+    T_R: np.ndarray,
+    multi_face_coeff: np.ndarray,
+    soret_face_coeff: np.ndarray,
+    dz: np.ndarray,
+    W: np.ndarray,
+) -> np.ndarray:
+    """Local-Jacobian flux with transport coefficients frozen at base state."""
+    X_L = _mole_fractions_from_Y(Y_L, W)
+    X_R = _mole_fractions_from_Y(Y_R, W)
+    ordinary = np.einsum(
+        "kif,if->kf", multi_face_coeff, (X_R - X_L) / dz[None, :], optimize=True
+    )
+    return ordinary - soret_face_coeff * (T_R - T_L)[None, :] / dz[None, :]
+
+
 if _NUMBA_AVAILABLE:
     @njit(cache=True)
     def _assemble_residual_numba_core(
         F, u, T, Y, z, rho, cp_n, omega, hk_n, lam_face, flux,
         invW, Y_in, T_prof, has_T_prof, solve_energy, j_fixed,
-        T_fixed, T_in, upwind_factor, outlet_species_flux,
+        T_fixed, T_in, outlet_species_flux,
     ):
         n_pts = z.shape[0]
         n_sp = Y.shape[0]
@@ -139,11 +205,7 @@ if _NUMBA_AVAILABLE:
 
             if solve_energy:
                 dTdz_up = (T[jloc] - T[jloc - 1]) / dz_up
-                if upwind_factor < 1.0:
-                    dTdz_cent = T[j-1]*(-dzp)/(dzm*dz2) + T[j]*(dzp-dzm)/(dzp*dzm) + T[j+1]*dzm/(dzp*dz2)
-                    dTdz = upwind_factor * dTdz_up + (1.0 - upwind_factor) * dTdz_cent
-                else:
-                    dTdz = dTdz_up
+                dTdz = dTdz_up
                 cond = -2.0 * (
                     lam_face[j] * (T[j + 1] - T[j]) / dzp
                     - lam_face[j - 1] * (T[j] - T[j - 1]) / dzm
@@ -163,11 +225,7 @@ if _NUMBA_AVAILABLE:
 
             for k in range(n_sp):
                 dYdz_up = (Y[k, jloc] - Y[k, jloc - 1]) / dz_up
-                if upwind_factor < 1.0:
-                    dYdz_cent = Y[k, j-1]*(-dzp)/(dzm*dz2) + Y[k, j]*(dzp-dzm)/(dzp*dzm) + Y[k, j+1]*dzm/(dzp*dz2)
-                    dYdz = upwind_factor * dYdz_up + (1.0 - upwind_factor) * dYdz_cent
-                else:
-                    dYdz = dYdz_up
+                dYdz = dYdz_up
                 conv = rho_u_j * dYdz
                 diff = 2.0 * (flux[k, j] - flux[k, j - 1]) / dz2
                 F[b + C_Y + k] = (omega[k, j] - conv - diff) / rho_j
@@ -223,6 +281,7 @@ def residual(
     problem,
     rdt: float = 0.0,
     x_old: np.ndarray | None = None,
+    force_exact_transport: bool = False,
 ) -> np.ndarray:
     """
     Residual acoplado completo.
@@ -296,7 +355,44 @@ def residual(
     flux = np.empty((n_sp, n_pts - 1))
 
     try:
-        if hasattr(backend, "eval_faces"):
+        eval_multi_face = getattr(backend, "eval_multicomponent_face_transport", None)
+        frozen_multi = getattr(problem, "_frozen_multicomponent_transport", None)
+        use_frozen_multi = (
+            bool(getattr(problem, "lag_multicomponent_transport", False))
+            and not bool(force_exact_transport)
+            and bool(getattr(backend, "uses_multicomponent_flux", False))
+            and isinstance(frozen_multi, dict)
+            and int(frozen_multi.get("n_points", -1)) == n_pts
+            and np.array_equal(np.asarray(frozen_multi.get("z", ())), np.asarray(z))
+        )
+        if use_frozen_multi:
+            dz_face = z[1:] - z[:-1]
+            lam_face = np.asarray(frozen_multi["lam_face"], dtype=float)
+            flux[:] = _multicomponent_flux_frozen(
+                Y[:, :-1], Y[:, 1:], T[:-1], T[1:],
+                np.asarray(frozen_multi["multi_face_coeff"], dtype=float),
+                np.asarray(frozen_multi["soret_face_coeff"], dtype=float),
+                dz_face, W,
+            )
+            _profile_record(problem, "residual_transport_lagged", t_profile)
+        elif bool(getattr(backend, "uses_multicomponent_flux", False)) and callable(eval_multi_face):
+            T_face = 0.5 * (T[:-1] + T[1:])
+            Y_face = 0.5 * (Y[:, :-1] + Y[:, 1:])
+            face_data = eval_multi_face(T_face, Y_face)
+            if face_data is None:
+                raise RuntimeError("El backend multicomponente no devolvió datos de cara.")
+            rho_face, lam_face, W_mix_f, multi_diff, thermal_diff = face_data
+            rho_face = _to_numpy(rho_face)
+            lam_face = _to_numpy(lam_face)
+            W_mix_f = _to_numpy(W_mix_f)
+            multi_diff = _to_numpy(multi_diff)
+            thermal_diff = _to_numpy(thermal_diff)
+            dz_face = z[1:] - z[:-1]
+            flux[:] = _multicomponent_flux(
+                Y[:, :-1], Y[:, 1:], T[:-1], T[1:], rho_face, W_mix_f,
+                multi_diff, thermal_diff, dz_face, W,
+            )
+        elif hasattr(backend, "eval_faces"):
             T_face = 0.5 * (T[:-1] + T[1:])
             Y_face = 0.5 * (Y[:, :-1] + Y[:, 1:])
             rho_f, D_f, lam_f, W_mix_f = backend.eval_faces(T_face, Y_face)
@@ -350,7 +446,7 @@ def residual(
                 F_numba, u, T, Y, np.asarray(z, dtype=float), rho, cp_n,
                 omega, hk_n, lam_face, flux, invW, np.asarray(problem.Y_in, dtype=float),
                 T_prof_arr, bool(has_T_prof), bool(problem.solve_energy),
-                j_fixed, T_fixed, float(problem.T_in), float(getattr(problem, "upwind_factor", 1.0)),
+                j_fixed, T_fixed, float(problem.T_in),
                 bool(_outlet_species_flux_bc(problem)),
             )
             _profile_record(problem, "residual_assembly_numba", t_assembly)
@@ -408,12 +504,7 @@ def residual(
             jloc = j if u[j] > 0.0 else j + 1
             dz_up = z[jloc] - z[jloc - 1]
             dYdz_up = (Y[k, jloc] - Y[k, jloc - 1]) / dz_up
-            upwind_factor = float(getattr(problem, "upwind_factor", 1.0))
-            if upwind_factor < 1.0:
-                dYdz_cent = Y[k, j-1]*(-dzp)/(dzm*dz2) + Y[k, j]*(dzp-dzm)/(dzp*dzm) + Y[k, j+1]*dzm/(dzp*dz2)
-                dYdz = upwind_factor * dYdz_up + (1.0 - upwind_factor) * dYdz_cent
-            else:
-                dYdz = dYdz_up
+            dYdz = dYdz_up
             conv = rho_u_j * dYdz
             diff = 2.0 * (fp[k] - fm[k]) / dz2
             F[b + C_Y + k] = (omega[k, j] - conv - diff) / rho[j]
@@ -504,12 +595,7 @@ def _energy_residual(u, T, Y, rho, cp_n, lam_n, hk_n, omega, lam_face,
     jloc = j if u[j] > 0.0 else j + 1
     dz_up = z[jloc] - z[jloc - 1]
     dTdz_up = (T[jloc] - T[jloc - 1]) / dz_up
-    upwind_factor = float(getattr(problem, "upwind_factor", 1.0))
-    if upwind_factor < 1.0:
-        dTdz_cent = T[j-1]*(-dzp)/(dzm*dz2) + T[j]*(dzp-dzm)/(dzp*dzm) + T[j+1]*dzm/(dzp*dz2)
-        dTdz = upwind_factor * dTdz_up + (1.0 - upwind_factor) * dTdz_cent
-    else:
-        dTdz = dTdz_up
+    dTdz = dTdz_up
 
     # Conducción centrada
     lam_m = lam_face[j - 1]
@@ -587,10 +673,38 @@ def build_local_jacobian_cache(x: np.ndarray, problem) -> dict:
     n_faces = max(0, n_pts - 1)
     lam_face = np.empty(n_faces, dtype=float)
     face_coeff = np.empty((n_sp, n_faces), dtype=float)
+    multi_face_coeff = None
+    soret_face_coeff = None
+    flux_model = "mixture-averaged"
     dz_face = z[1:] - z[:-1]
 
     if n_faces > 0:
-        if hasattr(backend, "eval_faces"):
+        eval_multi_face = getattr(backend, "eval_multicomponent_face_transport", None)
+        if bool(getattr(backend, "uses_multicomponent_flux", False)) and callable(eval_multi_face):
+            T_face = 0.5 * (T[:-1] + T[1:])
+            Y_face = 0.5 * (Y[:, :-1] + Y[:, 1:])
+            face_data = eval_multi_face(T_face, Y_face)
+            if face_data is None:
+                raise RuntimeError("El backend multicomponente no devolvió datos de cara.")
+            rho_f, lam_f, W_mix_f, multi_diff, dthermal = face_data
+            rho_f = _to_numpy(rho_f)
+            lam_face[:] = _to_numpy(lam_f)
+            W_mix_f = _to_numpy(W_mix_f)
+            multi_diff = _to_numpy(multi_diff)
+            dthermal = _to_numpy(dthermal)
+            # Coefficients are deliberately frozen during local FD, matching
+            # Cantera's default Jacobian transport treatment.  The temperature
+            # scale in D^T grad(log T) is part of this frozen face closure.
+            multi_face_coeff = (
+                rho_f[None, None, :]
+                * W[:, None, None]
+                * multi_diff
+                * W[None, :, None]
+                / (W_mix_f[None, None, :] ** 2)
+            )
+            soret_face_coeff = dthermal / np.maximum(T_face[None, :], 1.0e-300)
+            flux_model = "multicomponent"
+        elif hasattr(backend, "eval_faces"):
             T_face = 0.5 * (T[:-1] + T[1:])
             Y_face = 0.5 * (Y[:, :-1] + Y[:, 1:])
             rho_f, D_f, lam_f, W_mix_f = backend.eval_faces(T_face, Y_face)
@@ -633,7 +747,7 @@ def build_local_jacobian_cache(x: np.ndarray, problem) -> dict:
         if problem.T_fixed_point is not None else 0.0
     )
 
-    return _profile_return(problem, "jacobian_cache", t_profile, {
+    cache = {
         "n_pts": n_pts,
         "n_sp": n_sp,
         "nv": 2 + n_sp,
@@ -648,6 +762,14 @@ def build_local_jacobian_cache(x: np.ndarray, problem) -> dict:
         "hk_n": hk_n,
         "lam_face": lam_face,
         "face_coeff": face_coeff,
+        "flux_model": flux_model,
+        "multi_face_coeff": multi_face_coeff,
+        "soret_face_coeff": soret_face_coeff,
+        # Shape-compatible placeholders are built once per Jacobian cache,
+        # not eagerly allocated by dict.get() for every perturbed node.
+        "unused_face_tensor": np.zeros((1, 1, 1)),
+        "unused_face_matrix": np.zeros((1, 1)),
+        "unused_mole_denom": np.ones(1),
         "dz_face": dz_face,
         "local_rows": local_rows,
         "Y_in": np.asarray(problem.Y_in, dtype=float),
@@ -659,7 +781,29 @@ def build_local_jacobian_cache(x: np.ndarray, problem) -> dict:
         "T_in": float(problem.T_in),
         "basis_molar": basis in ("molar", "mole"),
         "rho0": float(rho[0]),
-    })
+    }
+    if flux_model == "multicomponent":
+        # A single Y_s perturbation changes all mole fractions through one
+        # common denominator. Cache D X on each side of a face so this exact
+        # rational update costs O(K), not a fresh O(K^2) product per column.
+        mole_base = _mole_fractions_from_Y(Y, W)
+        cache["multi_product_left"] = np.einsum("kif,if->kf", multi_face_coeff, mole_base[:, :-1])
+        cache["multi_product_right"] = np.einsum("kif,if->kf", multi_face_coeff, mole_base[:, 1:])
+        cache["mass_to_mole_denom"] = np.sum(Y / W[:, None], axis=0)
+        cache["base_Y"] = Y.copy()
+    if bool(getattr(problem, "lag_multicomponent_transport", False)) and (
+        flux_model == "multicomponent"
+    ):
+        # Reuse the exact face linearisation only during trial residuals. A
+        # caller can force full transport for acceptance and diagnostics.
+        problem._frozen_multicomponent_transport = {
+            "n_points": int(n_pts),
+            "z": np.asarray(z, dtype=float).copy(),
+            "lam_face": lam_face.copy(),
+            "multi_face_coeff": multi_face_coeff.copy(),
+            "soret_face_coeff": soret_face_coeff.copy(),
+        }
+    return _profile_return(problem, "jacobian_cache", t_profile, cache)
 
 
 def _corrected_flux_frozen(Y_L: np.ndarray, Y_R: np.ndarray,
@@ -760,8 +904,15 @@ def residual_local_rows(x: np.ndarray, problem, center_j: int,
         YL = Y[:, f0:f1 + 1]
         YR = Y[:, f0 + 1:f1 + 2]
         dz = cache["dz_face"][f0:f1 + 1]
-        coeff = cache["face_coeff"][:, f0:f1 + 1]
-        flux_local[:] = _corrected_flux_frozen(YL, YR, coeff, dz, W, basis)
+        if cache.get("flux_model") == "multicomponent":
+            flux_local[:] = _multicomponent_flux_frozen(
+                YL, YR, T[f0:f1 + 1], T[f0 + 1:f1 + 2],
+                cache["multi_face_coeff"][:, :, f0:f1 + 1],
+                cache["soret_face_coeff"][:, f0:f1 + 1], dz, W,
+            )
+        else:
+            coeff = cache["face_coeff"][:, f0:f1 + 1]
+            flux_local[:] = _corrected_flux_frozen(YL, YR, coeff, dz, W, basis)
 
     lam_face = cache["lam_face"]
 
@@ -834,12 +985,7 @@ def residual_local_rows(x: np.ndarray, problem, center_j: int,
 
             if solve_energy:
                 dTdz_up = (T[jloc] - T[jloc - 1]) / dz_up
-                upwind_factor = float(getattr(problem, "upwind_factor", 1.0))
-                if upwind_factor < 1.0:
-                    dTdz_cent = T[j-1]*(-dzp)/(dzm*dz2) + T[j]*(dzp-dzm)/(dzp*dzm) + T[j+1]*dzm/(dzp*dz2)
-                    dTdz = upwind_factor * dTdz_up + (1.0 - upwind_factor) * dTdz_cent
-                else:
-                    dTdz = dTdz_up
+                dTdz = dTdz_up
 
                 lam_m = lam_face[j - 1]
                 lam_p = lam_face[j]
@@ -858,12 +1004,7 @@ def residual_local_rows(x: np.ndarray, problem, center_j: int,
 
             om_j = omega_local[:, jo]
             dYdz_up = (Y[:, jloc] - Y[:, jloc - 1]) / dz_up
-            upwind_factor = float(getattr(problem, "upwind_factor", 1.0))
-            if upwind_factor < 1.0:
-                dYdz_cent = Y[:, j-1]*(-dzp)/(dzm*dz2) + Y[:, j]*(dzp-dzm)/(dzp*dzm) + Y[:, j+1]*dzm/(dzp*dz2)
-                dYdz = upwind_factor * dYdz_up + (1.0 - upwind_factor) * dYdz_cent
-            else:
-                dYdz = dYdz_up
+            dYdz = dYdz_up
             conv = rho_u_j * dYdz
             diff = 2.0 * (fp - fm) / dz2
             block[C_Y:C_Y + n_sp] = (om_j - conv - diff) / rho_j
@@ -980,9 +1121,11 @@ if _NUMBA_AVAILABLE:
     @njit(cache=True)
     def _assemble_local_batch_numba_core(
         vals_out, u, T, Y, rho_local, cp_local, omega_local, hk_local,
-        z, lam_face, face_coeff, dz_face, W, invW, Y_in, T_prof,
+        z, lam_face, face_coeff, multi_face_coeff, soret_face_coeff,
+        multi_product_left, multi_product_right, mole_denom, base_Y, local_vars, j_center,
+        multicomponent_flux, dz_face, W, invW, Y_in, T_prof,
         has_T_prof, solve_energy, j_fixed, T_fixed, T_in, p0, p1, n0,
-        f0, n_faces, basis_molar, rho0_base, upwind_factor, outlet_species_flux,
+        f0, n_faces, basis_molar, rho0_base, outlet_species_flux,
     ):
         n_batch = u.shape[0]
         n_sp = Y.shape[1]
@@ -998,7 +1141,23 @@ if _NUMBA_AVAILABLE:
                 dz = dz_face[f]
                 sum_j = 0.0
 
-                if basis_molar:
+                if multicomponent_flux:
+                    species = local_vars[ib] - C_Y
+                    fraction = 0.0
+                    if species >= 0:
+                        dy_over_w = (Y[ib, species, j_center - n0] - base_Y[species, j_center]) / W[species]
+                        fraction = dy_over_w / max(mole_denom[j_center] + dy_over_w, 1e-300)
+                    dT = T[ib, jr] - T[ib, jl]
+                    for k in range(n_sp):
+                        product_l = multi_product_left[k, f]
+                        product_r = multi_product_right[k, f]
+                        if species >= 0:
+                            if f == j_center:
+                                product_l += fraction * (multi_face_coeff[k, species, f] - product_l)
+                            if f + 1 == j_center:
+                                product_r += fraction * (multi_face_coeff[k, species, f] - product_r)
+                        flux_local[ib, k, lf] = (product_r - product_l - soret_face_coeff[k, f] * dT) / dz
+                elif basis_molar:
                     denom_l = 0.0
                     denom_r = 0.0
                     for k in range(n_sp):
@@ -1113,11 +1272,7 @@ if _NUMBA_AVAILABLE:
 
                     if solve_energy:
                         dTdz_up = (T[ib, jloc_o] - T[ib, jloc_m_o]) / dz_up
-                        if upwind_factor < 1.0:
-                            dTdz_cent = T[ib, jo-1]*(-dzp)/(dzm*dz2) + T[ib, jo]*(dzp-dzm)/(dzp*dzm) + T[ib, jo+1]*dzm/(dzp*dz2)
-                            dTdz = upwind_factor * dTdz_up + (1.0 - upwind_factor) * dTdz_cent
-                        else:
-                            dTdz = dTdz_up
+                        dTdz = dTdz_up
                         cond = -2.0 * (
                             lam_face[j] * (T[ib, jo + 1] - T[ib, jo]) / dzp
                             - lam_face[j - 1] * (T[ib, jo] - T[ib, jo - 1]) / dzm
@@ -1143,11 +1298,7 @@ if _NUMBA_AVAILABLE:
                         fm = flux_local[ib, k, fm_i]
                         fp = flux_local[ib, k, fp_i]
                         dYdz_up = (Y[ib, k, jloc_o] - Y[ib, k, jloc_m_o]) / dz_up
-                        if upwind_factor < 1.0:
-                            dYdz_cent = Y[ib, k, jo-1]*(-dzp)/(dzm*dz2) + Y[ib, k, jo]*(dzp-dzm)/(dzp*dzm) + Y[ib, k, jo+1]*dzm/(dzp*dz2)
-                            dYdz = upwind_factor * dYdz_up + (1.0 - upwind_factor) * dYdz_cent
-                        else:
-                            dYdz = dYdz_up
+                        dYdz = dYdz_up
                         conv = rho_u_j * dYdz
                         diff = 2.0 * (fp - fm) / dz2
                         vals_out[ib, base + C_Y + k] = (omega_local[ib, k, jo] - conv - diff) / rho_j
@@ -1304,6 +1455,23 @@ def residual_local_rows_batch_perturbed(
             cache["z"],
             cache["lam_face"],
             cache["face_coeff"],
+            (
+                cache["multi_face_coeff"]
+                if cache.get("flux_model") == "multicomponent"
+                else cache["unused_face_tensor"]
+            ),
+            (
+                cache["soret_face_coeff"]
+                if cache.get("flux_model") == "multicomponent"
+                else cache["unused_face_matrix"]
+            ),
+            cache.get("multi_product_left", cache["unused_face_matrix"]),
+            cache.get("multi_product_right", cache["unused_face_matrix"]),
+            cache.get("mass_to_mole_denom", cache["unused_mole_denom"]),
+            cache.get("base_Y", cache["unused_face_matrix"]),
+            local_vars,
+            j_center,
+            bool(cache.get("flux_model") == "multicomponent"),
             cache["dz_face"],
             cache["W"],
             cache["invW"],
@@ -1321,7 +1489,6 @@ def residual_local_rows_batch_perturbed(
             int(n_faces),
             bool(cache["basis_molar"]),
             float(cache["rho0"]),
-            float(getattr(problem, "upwind_factor", 1.0)),
             bool(_outlet_species_flux_bc(problem)),
         )
     except Exception as exc:
@@ -1443,8 +1610,16 @@ def residual_local_rows_batch(x_batch: np.ndarray, problem, center_j: int,
         YL = Y[:, :, f0:f1 + 1]
         YR = Y[:, :, f0 + 1:f1 + 2]
         dz = cache["dz_face"][f0:f1 + 1]
-        coeff = cache["face_coeff"][:, f0:f1 + 1]
-        flux_local[:] = _corrected_flux_frozen_batch(YL, YR, coeff, dz, W, basis)
+        if cache.get("flux_model") == "multicomponent":
+            for ib in range(n_batch):
+                flux_local[ib] = _multicomponent_flux_frozen(
+                    YL[ib], YR[ib], T[ib, f0:f1 + 1], T[ib, f0 + 1:f1 + 2],
+                    cache["multi_face_coeff"][:, :, f0:f1 + 1],
+                    cache["soret_face_coeff"][:, f0:f1 + 1], dz, W,
+                )
+        else:
+            coeff = cache["face_coeff"][:, f0:f1 + 1]
+            flux_local[:] = _corrected_flux_frozen_batch(YL, YR, coeff, dz, W, basis)
 
     lam_face = cache["lam_face"]
     rows_out = cache["local_rows"][j_center]
@@ -1521,12 +1696,7 @@ def residual_local_rows_batch(x_batch: np.ndarray, problem, center_j: int,
 
             if solve_energy:
                 dTdz_up = (T[batch_idx, jloc] - T[batch_idx, jloc_m]) / dz_up
-                upwind_factor = float(getattr(problem, "upwind_factor", 1.0))
-                if upwind_factor < 1.0:
-                    dTdz_cent = T[:, j-1]*(-dzp)/(dzm*dz2) + T[:, j]*(dzp-dzm)/(dzp*dzm) + T[:, j+1]*dzm/(dzp*dz2)
-                    dTdz = upwind_factor * dTdz_up + (1.0 - upwind_factor) * dTdz_cent
-                else:
-                    dTdz = dTdz_up
+                dTdz = dTdz_up
                 cond = -2.0 * (
                     lam_face[j] * (T[:, j + 1] - T[:, j]) / dzp
                     - lam_face[j - 1] * (T[:, j] - T[:, j - 1]) / dzm
@@ -1550,12 +1720,7 @@ def residual_local_rows_batch(x_batch: np.ndarray, problem, center_j: int,
             Y_jloc = _take_point_values(Y, jloc)
             Y_jloc_m = _take_point_values(Y, jloc_m)
             dYdz_up = (Y_jloc - Y_jloc_m) / dz_up[:, None]
-            upwind_factor = float(getattr(problem, "upwind_factor", 1.0))
-            if upwind_factor < 1.0:
-                dYdz_cent = Y[:, :, j-1]*(-dzp)/(dzm*dz2) + Y[:, :, j]*(dzp-dzm)/(dzp*dzm) + Y[:, :, j+1]*dzm/(dzp*dz2)
-                dYdz = upwind_factor * dYdz_up + (1.0 - upwind_factor) * dYdz_cent
-            else:
-                dYdz = dYdz_up
+            dYdz = dYdz_up
             conv = rho_u_j[:, None] * dYdz
             diff = 2.0 * (fp - fm) / dz2
             block[:, C_Y:C_Y + n_sp] = (om_j - conv - diff) / rho_j[:, None]
@@ -1827,6 +1992,8 @@ def _banded_jacobian_batched_local(fun, x: np.ndarray, problem, eps: float = 1e-
     rel_perturb = float(getattr(problem, "jacobian_rel_perturb", eps))
     abs_perturb = float(getattr(problem, "jacobian_abs_perturb", 1e-10))
     threshold = float(getattr(problem, "jacobian_threshold", 0.0))
+
+
     precomputed_thermo = None
     if bool(getattr(problem, "precompute_jacobian_thermo", False)):
         try:
@@ -2346,12 +2513,18 @@ def factorize(jmat) -> dict:
             mat = jmat.diag[i].copy()
             if i > 0:
                 mat -= jmat.lower[i - 1] @ cprime[i - 1]
-            lu = lu_factor(mat, overwrite_a=True, check_finite=False)
+            factors, pivots, info = _block_getrf(mat, overwrite_a=True)
+            if int(info) != 0:
+                raise RuntimeError(f"Block {i}: LAPACK dgetrf failed with info={int(info)}")
+            lu = (factors, pivots)
             lu_blocks.append(lu)
             lu_blocks_array[i] = lu[0]
             pivots_array[i] = lu[1]
             if i < n - 1:
-                cprime[i] = lu_solve(lu, jmat.upper[i], check_finite=False)
+                solved, info = _block_getrs(factors, pivots, jmat.upper[i])
+                if int(info) != 0:
+                    raise RuntimeError(f"Block {i}: LAPACK dgetrs failed with info={int(info)}")
+                cprime[i] = solved
         out = {
             "method": "block_tridiag",
             "solver": "block_thomas",
@@ -2390,21 +2563,6 @@ def solve_linear(linear_state, rhs: np.ndarray) -> np.ndarray:
     problem = linear_state.get("profile_problem") if isinstance(linear_state, dict) else None
     t_profile = _profile_start(problem) if problem is not None else 0.0
     rhs_array = np.asarray(rhs, dtype=float)
-    rhs_multiplier = (
-        linear_state.get("rhs_multiplier")
-        if isinstance(linear_state, dict) else None
-    )
-    if rhs_multiplier is not None:
-        rhs_array = rhs_array * np.asarray(rhs_multiplier, dtype=float)
-
-    def physical_solution(value: np.ndarray) -> np.ndarray:
-        solution_multiplier = (
-            linear_state.get("solution_multiplier")
-            if isinstance(linear_state, dict) else None
-        )
-        if solution_multiplier is not None:
-            return np.asarray(value, dtype=float) * np.asarray(solution_multiplier, dtype=float)
-        return np.asarray(value, dtype=float)
 
     if hasattr(linear_state, "solve") and not isinstance(linear_state, dict):
         return linear_state.solve(rhs_array)
@@ -2422,7 +2580,7 @@ def solve_linear(linear_state, rhs: np.ndarray) -> np.ndarray:
         )
         if int(info) != 0:
             raise RuntimeError(f"LAPACK dgbtrs failed with info={int(info)}")
-        out = physical_solution(x[:, 0])
+        out = x[:, 0]
         if problem is not None:
             _profile_record(problem, "linear_solve", t_profile)
         return out
@@ -2442,7 +2600,6 @@ def solve_linear(linear_state, rhs: np.ndarray) -> np.ndarray:
                 linear_state["cprime"],
                 rhs_array,
             )
-            out = physical_solution(out)
             if problem is not None:
                 _profile_record(problem, "linear_solve", t_profile)
             return out
@@ -2464,11 +2621,11 @@ def solve_linear(linear_state, rhs: np.ndarray) -> np.ndarray:
         x_b[-1] = y[-1]
         for i in range(n - 2, -1, -1):
             x_b[i] = y[i] - cprime[i] @ x_b[i + 1]
-        out = physical_solution(x_b.ravel())
+        out = x_b.ravel()
         if problem is not None:
             _profile_record(problem, "linear_solve", t_profile)
         return out
-    out = physical_solution(linear_state["solver"].solve(rhs_array))
+    out = linear_state["solver"].solve(rhs_array)
     if problem is not None:
         _profile_record(problem, "linear_solve", t_profile)
     return out

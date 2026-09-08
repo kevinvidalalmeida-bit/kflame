@@ -1,0 +1,330 @@
+{
+  "campaigns": [
+    {
+      "directory": "resultados\\kernel_ablation\\20260905_160536",
+      "summary_sha256": "4b114011c21c5a95fa05792b9990b1361c2ebb0877bdf950b7d95aa22b3e9dfe",
+      "full_stack_warmup": true,
+      "warmup_runs": [
+        {
+          "case": "ch4_1",
+          "variant": "baseline",
+          "accepted": true,
+          "time_s": 6.507913699984783
+        },
+        {
+          "case": "ch4_1",
+          "variant": "lapack",
+          "accepted": true,
+          "time_s": 3.8048789000022225
+        },
+        {
+          "case": "ch4_1",
+          "variant": "products",
+          "accepted": true,
+          "time_s": 7.622526299994206
+        },
+        {
+          "case": "h2_1",
+          "variant": "baseline",
+          "accepted": true,
+          "time_s": 5.467395499988925
+        },
+        {
+          "case": "h2_1",
+          "variant": "lapack",
+          "accepted": true,
+          "time_s": 5.230027399986284
+        },
+        {
+          "case": "h2_1",
+          "variant": "products",
+          "accepted": true,
+          "time_s": 5.034630300011486
+        }
+      ],
+      "source_sha256": {
+        "validation\\benchmark_kernel_ablation.py": "6ad9a34db081d00baf3044393d6a1ae145037511b81db0a0419b8eb3aa0668cf",
+        "V2\\equations.py": "fbcacce5f66f7673bb6b28fee3610ca925774dd239136f3635b180f2418c4111",
+        "V2\\materiales\\kinetics_native.py": "520908e5408b0fe1828fa94be0ea629016eb5fc3428f7048695067ffc9df45e3",
+        "V2\\materiales\\species_backend_native.py": "30ef593f8a3146dcbb46c2e12908517f00ee117643aa407af3af5875052ed19d"
+      },
+      "cases": [
+        {
+          "case": "ch4_1",
+          "all_accepted": true,
+          "statistics": {
+            "baseline": {
+              "n": 7,
+              "raw_s": [
+                3.708459200017387,
+                3.73806100001093,
+                3.7753742999921087,
+                3.931120599998394,
+                3.8251864000048954,
+                3.8568130000203382,
+                3.691136000008555
+              ],
+              "median_s": 3.7753742999921087,
+              "quartiles_s": [
+                3.7232601000141585,
+                3.840999700012617
+              ],
+              "all_same_mesh_as_baseline": true,
+              "max_absolute_profile_differences": {
+                "z": 0.0,
+                "T": 0.0,
+                "Y": 0.0,
+                "u": 0.0
+              },
+              "reduction_percent": 0.0,
+              "paired_ratio_ci95": [
+                1.0,
+                1.0
+              ]
+            },
+            "lapack": {
+              "n": 7,
+              "raw_s": [
+                3.6560931999993045,
+                3.6455221999785863,
+                3.710730099992361,
+                3.702458999992814,
+                3.745229299995117,
+                3.8269518000015523,
+                3.8220277999935206
+              ],
+              "median_s": 3.710730099992361,
+              "quartiles_s": [
+                3.679276099996059,
+                3.7836285499943187
+              ],
+              "all_same_mesh_as_baseline": true,
+              "max_absolute_profile_differences": {
+                "z": 0.0,
+                "T": 0.0,
+                "Y": 0.0,
+                "u": 0.0
+              },
+              "reduction_percent": 1.7122593645849338,
+              "paired_ratio_ci95": [
+                0.9599788737419443,
+                1.0306242010093036
+              ]
+            },
+            "products": {
+              "n": 7,
+              "raw_s": [
+                3.522843800019473,
+                3.5527334999933373,
+                3.526491900003748,
+                3.600840600003721,
+                3.5480860999959987,
+                3.571822899975814,
+                3.527429800014943
+              ],
+              "median_s": 3.5480860999959987,
+              "quartiles_s": [
+                3.5269608500093454,
+                3.5622781999845756
+              ],
+              "all_same_mesh_as_baseline": true,
+              "max_absolute_profile_differences": {
+                "z": 0.0,
+                "T": 9.51195033849217e-09,
+                "Y": 1.3603979054366278e-12,
+                "u": 9.527378885820781e-12
+              },
+              "reduction_percent": 6.020282545139565,
+              "paired_ratio_ci95": [
+                0.9261073585774002,
+                0.9511847400123492
+              ]
+            }
+          }
+        },
+        {
+          "case": "h2_1",
+          "all_accepted": true,
+          "statistics": {
+            "baseline": {
+              "n": 7,
+              "raw_s": [
+                5.5991419999918435,
+                5.025288000004366,
+                5.071685700007947,
+                5.088941300025908,
+                5.489390900009312,
+                4.894712600013008,
+                4.857811100024264
+              ],
+              "median_s": 5.071685700007947,
+              "quartiles_s": [
+                4.960000300008687,
+                5.28916610001761
+              ],
+              "all_same_mesh_as_baseline": true,
+              "max_absolute_profile_differences": {
+                "z": 0.0,
+                "T": 0.0,
+                "Y": 0.0,
+                "u": 0.0
+              },
+              "reduction_percent": 0.0,
+              "paired_ratio_ci95": [
+                1.0,
+                1.0
+              ]
+            },
+            "lapack": {
+              "n": 7,
+              "raw_s": [
+                5.092960000009043,
+                5.011102200020105,
+                4.981357199983904,
+                5.169095300021581,
+                4.768358300003456,
+                4.715379100001883,
+                4.847061900014523
+              ],
+              "median_s": 4.981357199983904,
+              "quartiles_s": [
+                4.80771010000899,
+                5.052031100014574
+              ],
+              "all_same_mesh_as_baseline": true,
+              "max_absolute_profile_differences": {
+                "z": 0.0,
+                "T": 0.0,
+                "Y": 0.0,
+                "u": 0.0
+              },
+              "reduction_percent": 1.7810350515983564,
+              "paired_ratio_ci95": [
+                0.8686497986498588,
+                1.0007896927368989
+              ]
+            },
+            "products": {
+              "n": 7,
+              "raw_s": [
+                4.732884700002614,
+                4.726153199997498,
+                4.762155799980974,
+                4.799286200024653,
+                4.442808399995556,
+                4.536904599983245,
+                4.608517400018172
+              ],
+              "median_s": 4.726153199997498,
+              "quartiles_s": [
+                4.572711000000709,
+                4.747520249991794
+              ],
+              "all_same_mesh_as_baseline": true,
+              "max_absolute_profile_differences": {
+                "z": 0.0,
+                "T": 1.1281144907115959e-09,
+                "Y": 5.002664948960955e-13,
+                "u": 3.369571288658335e-11
+              },
+              "reduction_percent": 6.812971474354335,
+              "paired_ratio_ci95": [
+                0.8264859767912591,
+                0.9415297233193884
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "directory": "resultados\\kernel_ablation\\20260905_163302",
+      "summary_sha256": "96d018bcb2b73e9cc224c492e0f522d126bb8d0ee97a8a9da6ad2ea3ffc8d88f",
+      "full_stack_warmup": true,
+      "warmup_runs": [
+        {
+          "case": "h2_10",
+          "variant": "baseline",
+          "accepted": true,
+          "time_s": 57.595492100022966
+        },
+        {
+          "case": "h2_10",
+          "variant": "products",
+          "accepted": true,
+          "time_s": 52.36589029998868
+        }
+      ],
+      "source_sha256": {
+        "validation\\benchmark_kernel_ablation.py": "9f6a08d2cd6a4e284af4bc40a9c2baea18db6f705da0a532a0ca12dc24609c7f",
+        "V2\\equations.py": "fbcacce5f66f7673bb6b28fee3610ca925774dd239136f3635b180f2418c4111",
+        "V2\\materiales\\kinetics_native.py": "520908e5408b0fe1828fa94be0ea629016eb5fc3428f7048695067ffc9df45e3",
+        "V2\\materiales\\species_backend_native.py": "0c6299ed614e68d420d1d970ea69636d2f7c4ba30cad3ee4df4e8be0e7b97da5"
+      },
+      "cases": [
+        {
+          "case": "h2_10",
+          "all_accepted": true,
+          "statistics": {
+            "baseline": {
+              "n": 3,
+              "raw_s": [
+                55.47910899997805,
+                56.42642259999411,
+                56.56198910000967
+              ],
+              "median_s": 56.42642259999411,
+              "quartiles_s": [
+                55.95276579998608,
+                56.49420585000189
+              ],
+              "all_same_mesh_as_baseline": true,
+              "max_absolute_profile_differences": {
+                "z": 0.0,
+                "T": 0.0,
+                "Y": 0.0,
+                "u": 0.0
+              },
+              "reduction_percent": 0.0,
+              "paired_ratio_ci95": [
+                1.0,
+                1.0
+              ]
+            },
+            "products": {
+              "n": 3,
+              "raw_s": [
+                49.92043530000956,
+                49.89917520000017,
+                50.53845490000094
+              ],
+              "median_s": 49.92043530000956,
+              "quartiles_s": [
+                49.909805250004865,
+                50.22944510000525
+              ],
+              "all_same_mesh_as_baseline": true,
+              "max_absolute_profile_differences": {
+                "z": 0.0,
+                "T": 2.7330315788276494e-10,
+                "Y": 4.265143793702464e-12,
+                "u": 3.185451902254499e-11
+              },
+              "reduction_percent": 11.53003681644924,
+              "paired_ratio_ci95": [
+                0.8843228562217124,
+                0.8998060026528059
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Cold flame initialization, not cold compilation: predeclared warm-up is separate and never a seed.",
+    "Bootstrap intervals with three pairs are exploratory, not a substitute for a larger campaign.",
+    "Kernel/same-mesh equivalence is not a mesh independence or experimental validation study.",
+    "These are within-V2 ablations; they do not measure Cantera performance."
+  ]
+}

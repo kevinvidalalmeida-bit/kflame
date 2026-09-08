@@ -24,6 +24,19 @@ from solver import (
 
 
 class BlockDiagonalUpdateTests(unittest.TestCase):
+    def test_singular_block_is_reported_before_substitution(self) -> None:
+        matrix = BlockTridiagJacobian(np.empty((0, 2, 2)),
+                                      np.zeros((1, 2, 2)), np.empty((0, 2, 2)))
+        with self.assertRaisesRegex(RuntimeError, 'Block 0: LAPACK dgetrf'):
+            factorize(matrix)
+
+    def test_low_level_lapack_failure_is_not_ignored(self) -> None:
+        matrix = BlockTridiagJacobian(np.zeros((1, 2, 2)),
+                                      np.tile(np.eye(2), (2, 1, 1)), np.zeros((1, 2, 2)))
+        with patch.object(equations, '_block_getrs', return_value=(np.zeros((2, 2)), -1)):
+            with self.assertRaisesRegex(RuntimeError, 'dgetrs failed'):
+                factorize(matrix)
+
     def test_vectorized_diagonal_round_trip_preserves_off_diagonals(self) -> None:
         rng = np.random.default_rng(42)
         diag_blocks = rng.normal(size=(4, 3, 3))

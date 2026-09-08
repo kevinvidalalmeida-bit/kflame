@@ -1,0 +1,564 @@
+{
+  "campaigns": [
+    {
+      "directory": "resultados\\kernel_ablation\\20260905_164234",
+      "summary_sha256": "833bb08b7d7f08a62375f2097cbb89b0f3810ff3ecb74557a8b971c691a0ad22",
+      "full_stack_warmup": true,
+      "warmup_runs": [
+        {
+          "case": "ch4_1",
+          "variant": "baseline",
+          "accepted": true,
+          "time_s": 7.954225900000893
+        },
+        {
+          "case": "ch4_1",
+          "variant": "products",
+          "accepted": true,
+          "time_s": 4.569572099979268
+        },
+        {
+          "case": "h2_1",
+          "variant": "baseline",
+          "accepted": true,
+          "time_s": 9.070767900004284
+        },
+        {
+          "case": "h2_1",
+          "variant": "products",
+          "accepted": true,
+          "time_s": 6.461173699994106
+        }
+      ],
+      "reference_kinetics": "original loop placement and signed mass-action arithmetic",
+      "reference_kernel_sha256": "b6297f165ce96272d53edcfb3bb7d1611a5f7c68cc1525b190ce79a0d2e9d277",
+      "source_sha256": {
+        "validation\\benchmark_kernel_ablation.py": "62f0b2c66136d9afec3485cb0fbf4a7efde157c69627c6c22dabb03347b2550f",
+        "V2\\equations.py": "bdd6a38f842207c163d7eec4a2ff135eb4f0cac67c886989ecff1d3d850e4e35",
+        "V2\\materiales\\kinetics_native.py": "520908e5408b0fe1828fa94be0ea629016eb5fc3428f7048695067ffc9df45e3",
+        "V2\\materiales\\species_backend_native.py": "0c6299ed614e68d420d1d970ea69636d2f7c4ba30cad3ee4df4e8be0e7b97da5"
+      },
+      "cases": [
+        {
+          "case": "ch4_1",
+          "configuration": {
+            "mech": "C:\\Users\\lidia\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\cantera\\data\\gri30.yaml",
+            "fuel": "CH4",
+            "oxidizer": "O2:1,N2:3.76",
+            "phi": 1.0,
+            "T_in": 300.0,
+            "P": 101325.0,
+            "width": 0.03,
+            "transport_model": "mixture-averaged",
+            "flux_gradient_basis": "molar",
+            "soret_enabled": false,
+            "outlet_species_bc": "zero_gradient",
+            "upwind_factor": 1.0,
+            "cantera_seed_grid": true,
+            "adaptive_grid": true,
+            "cluster_strength": 8.0,
+            "cluster_sigma": 0.0,
+            "ratio": 2.5,
+            "slope": 0.04,
+            "curve": 0.08,
+            "prune": 0.003,
+            "refine_with_u": true,
+            "refine_with_T": true,
+            "refine_with_species": true,
+            "loglevel": 1,
+            "auto": true
+          },
+          "effective_options": {
+            "u_left_guess": 1.0,
+            "steady_max_iter": 50,
+            "max_jac_age": 20,
+            "steady_max_jac_age": null,
+            "transient_max_jac_age": null,
+            "max_damp_iter": 7,
+            "damp_factor": 1.4142135623730951,
+            "tol": 1.0,
+            "jac_eps": 1e-05,
+            "jac_abs_perturb": 1e-10,
+            "jac_threshold": 0.0,
+            "jacobian_mode": "block_tridiag",
+            "precompute_jacobian_thermo": true,
+            "compiled_block_substitution": true,
+            "local_jacobian_refresh": false,
+            "local_jacobian_refresh_defect_threshold": 0.2,
+            "local_jacobian_refresh_max_fraction": 0.35,
+            "local_jacobian_refresh_min_blocks": 1,
+            "lag_multicomponent_transport": false,
+            "multicomponent_bootstrap": false,
+            "bootstrap_mesh_factor": 2.0,
+            "alpha_min": 1e-10,
+            "time_step": 1e-05,
+            "time_step_grow": 1.5,
+            "time_step_shrink": 0.5,
+            "time_step_factor": null,
+            "min_time_step": 1e-16,
+            "max_time_step": 100000000.0,
+            "transient_steps_per_cycle": 10,
+            "time_step_sequence": [
+              20
+            ],
+            "transient_max_iter": 50,
+            "max_time_step_count": 500,
+            "reset_bad_after_failures": 3,
+            "refine_grid": true,
+            "max_refine_passes": 12,
+            "require_grid_convergence": true,
+            "refine_ratio": 2.5,
+            "refine_slope": 0.04,
+            "refine_curve": 0.08,
+            "refine_prune": 0.003,
+            "refine_grid_min": 1e-10,
+            "refine_max_points": 1600,
+            "refine_Finf_limit": 10000.0,
+            "final_Finf_limit": 10000.0,
+            "accept_residual_converged": false,
+            "accept_initial_residual_converged": false,
+            "acceptance_criterion": "cantera",
+            "weighted_step_norm_limit": null,
+            "residual_guard_inf": 10000.0,
+            "domain_auto_expand": true,
+            "max_domain_expansions": 12,
+            "domain_expand_factor": 2.0,
+            "domain_edge_slope_tol": 0.02,
+            "domain_edge_strict_mode": true,
+            "domain_check_after_refine_only": false,
+            "auto_bootstrap_grids": false,
+            "bootstrap_grid_points": [
+              12,
+              24,
+              48
+            ],
+            "bootstrap_max_grid_points": 1000,
+            "restart_insert_anchor": false,
+            "max_total_time_s": 180.0,
+            "verbose": false,
+            "profile": true,
+            "trace_solver": false
+          },
+          "complete": true,
+          "expected_repetitions": 7,
+          "all_accepted": true,
+          "statistics": {
+            "baseline": {
+              "n": 7,
+              "raw_s": [
+                4.953030300006503,
+                4.963551199994981,
+                4.851796800008742,
+                4.952230800001416,
+                4.970314800011693,
+                4.907967600011034,
+                4.893749900016701
+              ],
+              "median_s": 4.952230800001416,
+              "quartiles_s": [
+                4.900858750013867,
+                4.958290750000742
+              ],
+              "all_same_mesh_as_baseline": true,
+              "max_absolute_profile_differences": {
+                "z": 0.0,
+                "T": 0.0,
+                "Y": 0.0,
+                "u": 0.0
+              },
+              "reduction_percent": 0.0,
+              "paired_ratio_ci95": [
+                1.0,
+                1.0
+              ]
+            },
+            "products": {
+              "n": 7,
+              "raw_s": [
+                4.661563400004525,
+                4.523424799990607,
+                4.719993100006832,
+                4.407778299995698,
+                4.576319199986756,
+                4.618482100020628,
+                4.598287800006801
+              ],
+              "median_s": 4.598287800006801,
+              "quartiles_s": [
+                4.549871999988682,
+                4.640022750012577
+              ],
+              "all_same_mesh_as_baseline": true,
+              "max_absolute_profile_differences": {
+                "z": 0.0,
+                "T": 9.51195033849217e-09,
+                "Y": 1.3603979054366278e-12,
+                "u": 9.527378885820781e-12
+              },
+              "reduction_percent": 7.147142657295246,
+              "paired_ratio_ci95": [
+                0.9113283247677955,
+                0.952554481786782
+              ]
+            }
+          }
+        },
+        {
+          "case": "h2_1",
+          "configuration": {
+            "mech": "C:\\Users\\lidia\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\cantera\\data\\gri30.yaml",
+            "fuel": "H2",
+            "oxidizer": "O2:1,N2:3.76",
+            "phi": 1.0,
+            "T_in": 300.0,
+            "P": 101325.0,
+            "width": 0.03,
+            "transport_model": "multicomponent",
+            "flux_gradient_basis": "molar",
+            "soret_enabled": true,
+            "outlet_species_bc": "zero_gradient",
+            "upwind_factor": 1.0,
+            "cantera_seed_grid": true,
+            "adaptive_grid": true,
+            "cluster_strength": 8.0,
+            "cluster_sigma": 0.0,
+            "ratio": 2.5,
+            "slope": 0.04,
+            "curve": 0.08,
+            "prune": 0.003,
+            "refine_with_u": true,
+            "refine_with_T": true,
+            "refine_with_species": true,
+            "loglevel": 1,
+            "auto": true
+          },
+          "effective_options": {
+            "u_left_guess": 1.0,
+            "steady_max_iter": 50,
+            "max_jac_age": 20,
+            "steady_max_jac_age": null,
+            "transient_max_jac_age": null,
+            "max_damp_iter": 7,
+            "damp_factor": 1.4142135623730951,
+            "tol": 1.0,
+            "jac_eps": 1e-05,
+            "jac_abs_perturb": 1e-10,
+            "jac_threshold": 0.0,
+            "jacobian_mode": "block_tridiag",
+            "precompute_jacobian_thermo": true,
+            "compiled_block_substitution": true,
+            "local_jacobian_refresh": false,
+            "local_jacobian_refresh_defect_threshold": 0.2,
+            "local_jacobian_refresh_max_fraction": 0.35,
+            "local_jacobian_refresh_min_blocks": 1,
+            "lag_multicomponent_transport": true,
+            "multicomponent_bootstrap": true,
+            "bootstrap_mesh_factor": 2.0,
+            "alpha_min": 1e-10,
+            "time_step": 1e-05,
+            "time_step_grow": 1.5,
+            "time_step_shrink": 0.5,
+            "time_step_factor": null,
+            "min_time_step": 1e-16,
+            "max_time_step": 100000000.0,
+            "transient_steps_per_cycle": 10,
+            "time_step_sequence": [
+              20
+            ],
+            "transient_max_iter": 50,
+            "max_time_step_count": 500,
+            "reset_bad_after_failures": 3,
+            "refine_grid": true,
+            "max_refine_passes": 12,
+            "require_grid_convergence": true,
+            "refine_ratio": 2.5,
+            "refine_slope": 0.04,
+            "refine_curve": 0.08,
+            "refine_prune": 0.003,
+            "refine_grid_min": 1e-10,
+            "refine_max_points": 1600,
+            "refine_Finf_limit": 10000.0,
+            "final_Finf_limit": 10000.0,
+            "accept_residual_converged": false,
+            "accept_initial_residual_converged": false,
+            "acceptance_criterion": "cantera",
+            "weighted_step_norm_limit": null,
+            "residual_guard_inf": 10000.0,
+            "domain_auto_expand": true,
+            "max_domain_expansions": 12,
+            "domain_expand_factor": 2.0,
+            "domain_edge_slope_tol": 0.02,
+            "domain_edge_strict_mode": true,
+            "domain_check_after_refine_only": false,
+            "auto_bootstrap_grids": false,
+            "bootstrap_grid_points": [
+              12,
+              24,
+              48
+            ],
+            "bootstrap_max_grid_points": 1000,
+            "restart_insert_anchor": false,
+            "max_total_time_s": 180.0,
+            "verbose": false,
+            "profile": true,
+            "trace_solver": false
+          },
+          "complete": true,
+          "expected_repetitions": 7,
+          "all_accepted": true,
+          "statistics": {
+            "baseline": {
+              "n": 7,
+              "raw_s": [
+                6.796355099999346,
+                6.924531299999217,
+                7.0246195000072476,
+                6.907512800011318,
+                6.848700000002282,
+                6.96127400000114,
+                7.016847899998538
+              ],
+              "median_s": 6.924531299999217,
+              "quartiles_s": [
+                6.8781064000068,
+                6.989060949999839
+              ],
+              "all_same_mesh_as_baseline": true,
+              "max_absolute_profile_differences": {
+                "z": 0.0,
+                "T": 0.0,
+                "Y": 0.0,
+                "u": 0.0
+              },
+              "reduction_percent": 0.0,
+              "paired_ratio_ci95": [
+                1.0,
+                1.0
+              ]
+            },
+            "products": {
+              "n": 7,
+              "raw_s": [
+                6.493342800007667,
+                6.565975100005744,
+                6.516162500018254,
+                6.363215500023216,
+                6.600068299972918,
+                6.503315099980682,
+                6.682639999984531
+              ],
+              "median_s": 6.516162500018254,
+              "quartiles_s": [
+                6.498328949994175,
+                6.583021699989331
+              ],
+              "all_same_mesh_as_baseline": true,
+              "max_absolute_profile_differences": {
+                "z": 0.0,
+                "T": 1.1281144907115959e-09,
+                "Y": 5.002664948960955e-13,
+                "u": 3.369571288658335e-11
+              },
+              "reduction_percent": 5.897421533512437,
+              "paired_ratio_ci95": [
+                0.9286452539493711,
+                0.9636965117424795
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "directory": "resultados\\kernel_ablation\\20260905_164624",
+      "summary_sha256": "ce04ceafc097a4dd631f574391b70c13a4a139bc6f3449f17b579ead7cbc692c",
+      "full_stack_warmup": true,
+      "warmup_runs": [
+        {
+          "case": "h2_10",
+          "variant": "baseline",
+          "accepted": true,
+          "time_s": 56.13978689999203
+        },
+        {
+          "case": "h2_10",
+          "variant": "products",
+          "accepted": true,
+          "time_s": 47.9647430999903
+        }
+      ],
+      "reference_kinetics": "original loop placement and signed mass-action arithmetic",
+      "reference_kernel_sha256": "b6297f165ce96272d53edcfb3bb7d1611a5f7c68cc1525b190ce79a0d2e9d277",
+      "source_sha256": {
+        "validation\\benchmark_kernel_ablation.py": "e143dd180b745cbac1a191570f59c053a193a420caa53dbb317ca8d35374decc",
+        "V2\\equations.py": "bdd6a38f842207c163d7eec4a2ff135eb4f0cac67c886989ecff1d3d850e4e35",
+        "V2\\materiales\\kinetics_native.py": "520908e5408b0fe1828fa94be0ea629016eb5fc3428f7048695067ffc9df45e3",
+        "V2\\materiales\\species_backend_native.py": "0c6299ed614e68d420d1d970ea69636d2f7c4ba30cad3ee4df4e8be0e7b97da5"
+      },
+      "cases": [
+        {
+          "case": "h2_10",
+          "configuration": {
+            "mech": "C:\\Users\\lidia\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\cantera\\data\\gri30.yaml",
+            "fuel": "H2",
+            "oxidizer": "O2:1,N2:3.76",
+            "phi": 1.0,
+            "T_in": 300.0,
+            "P": 1013250.0,
+            "width": 0.03,
+            "transport_model": "multicomponent",
+            "flux_gradient_basis": "molar",
+            "soret_enabled": true,
+            "outlet_species_bc": "zero_gradient",
+            "upwind_factor": 1.0,
+            "cantera_seed_grid": true,
+            "adaptive_grid": true,
+            "cluster_strength": 8.0,
+            "cluster_sigma": 0.0,
+            "ratio": 2.5,
+            "slope": 0.01,
+            "curve": 0.02,
+            "prune": 0.003,
+            "refine_with_u": true,
+            "refine_with_T": true,
+            "refine_with_species": true,
+            "loglevel": 1,
+            "auto": true
+          },
+          "effective_options": {
+            "u_left_guess": 1.0,
+            "steady_max_iter": 50,
+            "max_jac_age": 20,
+            "steady_max_jac_age": null,
+            "transient_max_jac_age": null,
+            "max_damp_iter": 7,
+            "damp_factor": 1.4142135623730951,
+            "tol": 1.0,
+            "jac_eps": 1e-05,
+            "jac_abs_perturb": 1e-10,
+            "jac_threshold": 0.0,
+            "jacobian_mode": "block_tridiag",
+            "precompute_jacobian_thermo": true,
+            "compiled_block_substitution": true,
+            "local_jacobian_refresh": false,
+            "local_jacobian_refresh_defect_threshold": 0.2,
+            "local_jacobian_refresh_max_fraction": 0.35,
+            "local_jacobian_refresh_min_blocks": 1,
+            "lag_multicomponent_transport": true,
+            "multicomponent_bootstrap": true,
+            "bootstrap_mesh_factor": 2.0,
+            "alpha_min": 1e-10,
+            "time_step": 1e-05,
+            "time_step_grow": 1.5,
+            "time_step_shrink": 0.5,
+            "time_step_factor": null,
+            "min_time_step": 1e-16,
+            "max_time_step": 100000000.0,
+            "transient_steps_per_cycle": 10,
+            "time_step_sequence": [
+              20
+            ],
+            "transient_max_iter": 50,
+            "max_time_step_count": 500,
+            "reset_bad_after_failures": 3,
+            "refine_grid": true,
+            "max_refine_passes": 12,
+            "require_grid_convergence": true,
+            "refine_ratio": 2.5,
+            "refine_slope": 0.01,
+            "refine_curve": 0.02,
+            "refine_prune": 0.003,
+            "refine_grid_min": 1e-10,
+            "refine_max_points": 1600,
+            "refine_Finf_limit": 10000.0,
+            "final_Finf_limit": 10000.0,
+            "accept_residual_converged": false,
+            "accept_initial_residual_converged": false,
+            "acceptance_criterion": "cantera",
+            "weighted_step_norm_limit": null,
+            "residual_guard_inf": 10000.0,
+            "domain_auto_expand": true,
+            "max_domain_expansions": 12,
+            "domain_expand_factor": 2.0,
+            "domain_edge_slope_tol": 0.02,
+            "domain_edge_strict_mode": true,
+            "domain_check_after_refine_only": false,
+            "auto_bootstrap_grids": false,
+            "bootstrap_grid_points": [
+              12,
+              24,
+              48
+            ],
+            "bootstrap_max_grid_points": 1000,
+            "restart_insert_anchor": false,
+            "max_total_time_s": 180.0,
+            "verbose": false,
+            "profile": true,
+            "trace_solver": false
+          },
+          "complete": true,
+          "expected_repetitions": 3,
+          "all_accepted": true,
+          "statistics": {
+            "baseline": {
+              "n": 3,
+              "raw_s": [
+                53.279121600004146,
+                54.09291020000819,
+                53.99521490000188
+              ],
+              "median_s": 53.99521490000188,
+              "quartiles_s": [
+                53.637168250003015,
+                54.04406255000504
+              ],
+              "all_same_mesh_as_baseline": true,
+              "max_absolute_profile_differences": {
+                "z": 0.0,
+                "T": 0.0,
+                "Y": 0.0,
+                "u": 0.0
+              },
+              "reduction_percent": 0.0,
+              "paired_ratio_ci95": [
+                1.0,
+                1.0
+              ]
+            },
+            "products": {
+              "n": 3,
+              "raw_s": [
+                47.03161960002035,
+                48.0510612000071,
+                48.78311289998237
+              ],
+              "median_s": 48.0510612000071,
+              "quartiles_s": [
+                47.54134040001372,
+                48.417087049994734
+              ],
+              "all_same_mesh_as_baseline": true,
+              "max_absolute_profile_differences": {
+                "z": 0.0,
+                "T": 2.7330315788276494e-10,
+                "Y": 4.265143793702464e-12,
+                "u": 3.185451902254499e-11
+              },
+              "reduction_percent": 11.008667547676676,
+              "paired_ratio_ci95": [
+                0.8827401463769007,
+                0.9034710388749776
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Cold flame initialization, not cold compilation: predeclared warm-up is separate and never a seed.",
+    "Bootstrap intervals with three pairs are exploratory, not a substitute for a larger campaign.",
+    "Kernel/same-mesh equivalence is not a mesh independence or experimental validation study.",
+    "These are within-V2 ablations; they do not measure Cantera performance."
+  ]
+}
