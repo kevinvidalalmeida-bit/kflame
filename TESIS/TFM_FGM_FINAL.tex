@@ -2748,11 +2748,15 @@ de malla y dominio.
   proc/.style={draw=azulTFM,rounded corners,fill=azulTFM!6,text width=4.3cm,
     minimum height=12mm,align=center,font=\small},
   cert/.style={proc,draw=verdeTFM,fill=verdeTFM!7},
+  rescue/.style={proc,draw=naranjaTFM,fill=naranjaTFM!9,text width=5.0cm},
   arr/.style={-{Latex[length=2mm]},thick}]
   \node[proc] (eval) at (0,0) {Evaluar el certificado\\no lineal en la malla actual};
   \node[proc] (newton) at (0,-2) {Newton amortiguado};
   \node[proc] (ptc) at (0,-4) {Una corrección PTC--SER};
   \node[proc] (be) at (0,-6) {Rescate BE\\volver a evaluar el estado};
+  \node[rescue] (fixedT) at (0,-8.1) {Si falla la etapa con energ\'ia activa:\\
+    fijar temporalmente \(T\), corregir especies y continuidad,\\
+    reactivar energ\'ia y reiniciar la etapa completa};
   \node[cert] (mesh) at (7.0,0) {Comprobar malla y dominio};
   \node[cert] (final) at (7.0,-2) {Reevaluar propiedades\\y certificado completo};
   \node[cert] (out) at (7.0,-4) {Publicar únicamente\\una llama aceptada};
@@ -2762,6 +2766,8 @@ de malla y dominio.
   \draw[arr] (newton.west)--++(-8mm,0)|-(eval.west);
   \draw[arr] (ptc.west)--++(-15mm,0)|-(eval.west);
   \draw[arr] (be.west)--++(-22mm,0)|-(eval.west);
+  \draw[arr,dashed,naranjaTFM] (be.south)--(fixedT.north);
+  \draw[arr,dashed,naranjaTFM] (fixedT.west)--++(-40mm,0)|-(eval.west);
   \draw[arr] (eval)--node[above,font=\footnotesize]{convergió}(mesh);
   \draw[arr] (mesh)--node[right,font=\footnotesize]{sin cambios}(final);
   \draw[arr] (mesh.north)--++(0,8mm)-|
