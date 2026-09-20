@@ -1,2 +1,2 @@
-cantera==3.2.0
--r requirements-native.txt
+# Install the package with optional reference and test dependencies.
+.[reference,test]

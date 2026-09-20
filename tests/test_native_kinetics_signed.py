@@ -10,10 +10,9 @@ except ImportError:
     ct = None
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'V2' / 'materiales'))
-from species_backend_native import NativeSpeciesBackend
-from kinetics_native import _negative_mass_action_factor_python
-from kinetics_native import _make_mass_action_plan, _mass_action_product_python
+from kava.chemistry.backend import NativeSpeciesBackend
+from kava.chemistry.kinetics import _negative_mass_action_factor_python
+from kava.chemistry.kinetics import _make_mass_action_plan, _mass_action_product_python
 
 
 class SignedKineticsTests(unittest.TestCase):

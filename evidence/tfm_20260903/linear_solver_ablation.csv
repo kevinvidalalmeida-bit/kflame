@@ -1,3 +1,0 @@
-fallback_run,compiled_run,fallback_solve_time_s,compiled_solve_time_s,speedup,reduction_percent,same_node_counts,max_abs_Su_m_per_s,max_abs_T_K,max_abs_Y,all_compiled_flames_accepted
-lapack_substitution_1,compiled_substitution_1,36.968870500073535,33.1980651000049,1.113585095658725,10.199947547927213,True,1.1845358027784414e-11,0.10634761434653228,1.4434130569188075e-05,True
-lapack_substitution_2,compiled_substitution_2,37.308349500002805,32.15085989999352,1.1604152926563038,13.823955412471134,True,1.1845358027784414e-11,0.10634761434653228,1.4434130569188075e-05,True

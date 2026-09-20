@@ -1,127 +1,114 @@
-# TFM - Solver V2 y generación FGM nativos
+# KAVA — native free flames and FGM tables
 
-## Comando principal
+KAVA solves one-dimensional premixed free flames and builds flamelet-generated
+manifold (FGM) tables in mixture-fraction/progress-variable coordinates (Z, c).
+The production solver is CPU-native: **Cantera is not a runtime dependency**.
+Initialization, NASA thermodynamics, reaction rates, molecular transport,
+multicomponent/Soret transport and tabulation run locally.
 
-Desde la raíz del proyecto, instalar las dependencias nativas y generar una tabla:
+## Install and run
 
-```powershell
-python -m pip install -r requirements-native.txt
-python .\FGM\scripts\generate_fgm_tables_native.py --phi-values 0.7,0.9,1,1.1,1.4 --save-raw-profiles
+Python 3.11 or later is required. From a clone of this repository:
+
+```sh
+python -m pip install .
+python -m kava fgm --phi-values 0.7,0.9,1,1.1,1.4 --save-raw-profiles
 ```
 
-Esta es la ruta por defecto sin Cantera: mezcla, equilibrio HP, solución,
-posprocesado, Bilger y tablas usan código nativo. Se incluyen `gri30.yaml` y
-`h2o2.yaml`; otros mecanismos compatibles se proporcionan mediante `--mech ruta.yaml`.
-Las tablas se guardan en `fgm_runs/run_..._fgm_native/`. Para un barrido frío sin
-semillas guardadas, añadir `--disable-seed-cache --parallel-workers 1`.
+The first execution compiles Numba kernels and can take noticeably longer.
+Outputs go to `runs/fgm/`, never into the installed package.
 
-Para Soret nativo:
+```sh
+# Force a cold sweep without saved profile seeds
+python -m kava fgm --phi-values 0.9,1,1.1 --disable-seed-cache --parallel-workers 1
 
-```powershell
-python .\V2\benchmark_soret_native.py --native-only --bootstrap --bootstrap-mesh-factor 2
+# Native H2/Soret benchmark with native mixture-averaged bootstrap
+python -m kava soret --bootstrap --bootstrap-mesh-factor 2 --pressure-atm 10
+
+# Export a generated table
+python -m kava export --npz runs/fgm/RUN_NAME/fgm_table.npz --all-species --single-flamelets
 ```
 
-Los comparadores y diagnósticos de referencia requieren instalar opcionalmente
-`requirements-test.txt`. Para comparar ambas implementaciones:
+Use `python -m kava COMMAND --help` for the full options. The installed `kava`
+console command is equivalent. Other commands are `refine-table`,
+`validate-table`, `plot`, `compare` and `reference-fgm`.
 
-```powershell
-python .\V2\run_saved_comparison.py --loglevel 1 --verbose-ours
+Plotting and reference comparisons are separate optional installations:
+
+```sh
+python -m pip install ".[plot]"
+python -m kava plot --run-dir runs/fgm/RUN_NAME
+
+python -m pip install ".[reference]"
+python -m kava compare --loglevel 1
 ```
 
-## Salidas
+`compare`, `reference-fgm`, `--transport-backend cantera-reference` and
+`soret --no-native-only` explicitly select Cantera-dependent validation.
+They are not silent fallback paths.
 
-Cada corrida del comparador se guarda en:
+## Repository layout
 
 ```text
-V2/comparison_runs/run_YYYYMMDD_HHMMSS/
+src/kava/
+  flame/        equations, nonlinear solver and adaptive mesh
+  chemistry/    native thermodynamics, kinetics, transport and bundled data
+  fgm/          generation, tabulation, export, plotting and validation
+  reference/    optional Cantera comparisons
+  benchmarks/   standalone Soret benchmark
+tests/          regression tests and no-Cantera audit guard
+benchmarks/     reproducible performance experiments, outside production
+docs/           architecture, migration and dated validation evidence
+DECISIONES_DESCARTADAS.md   retained negative results and design decisions
 ```
 
-Ese directorio contiene:
+Manuscripts, thesis figures, research-only scripts, archived experiments and
+their data are kept locally under `.local/research/`, excluded from Git and
+from the package. Generated `runs/`, `tmp/` and caches are also excluded.
+The old `V2/` and `FGM/scripts/` entry points have been replaced by installed
+package imports and commands; see [migration](docs/migration.md).
 
-- `summary.json`
-- `comparison_data.npz`
-- `profiles_cantera.csv`
-- `profiles_ours.csv`
-- `plots/`
+## Performance and numerical scope
 
-## Estructura limpia
+The solver retains strict acceptance and mesh checks, block-tridiagonal finite
+differences, pivoted LU, damped Newton and PTC with backward-Euler rescue.
+Exact thermal-factor reuse, immutable molecular caches and vectorized
+perturbation preparation reduce repeated work without relaxing tolerances.
 
-- `V2/`: solver 1-D y comparación de referencia.
-- `FGM/scripts/generate_fgm_tables_native.py`: generador FGM con el backend
-  nativo CPU.
-- `FGM/scripts/generate_fgm_tables_cantera.py`: generador FGM de referencia.
-- `FGM/scripts/fgm_common.py`: matemática y utilidades compartidas por ambos
-  generadores, sin código duplicado.
-- `FGM/resultados/`: salidas voluminosas generadas localmente; Git las ignora.
-- `evidence/tfm_20260903/`: resúmenes compactos y versionados de la evidencia
-  utilizada en la tesis.
-- `TESIS/TFM_FGM_FINAL.tex`: manuscrito maestro de la tesis.
-- `output/pdf/TFM_FGM_FINAL.pdf`: PDF final verificado.
+A three-pair CH4/GRI30 five-flame FGM test measured a median reduction from
+18.44 to 15.89 seconds (13.8%) for the new perturbation preparation. Tables
+were bit-identical; one pair was slower, so this is not a universal speed claim.
+[Protocol and results](docs/validation/FGM_BATCH_VECTORIZATION_20260920.md).
 
-Los perfiles, cachés, respaldos, binarios compilados y scripts de ensayo se
-eliminaron del árbol de trabajo. La ruta de producción usa Newton amortiguado
-tipo Cantera, continuación pseudo-transitoria PTC-SER con rescate BE,
-Jacobiano block-tridiagonal y una ruta lineal híbrida. SciPy/LAPACK conserva la
-factorización pivotada de cada bloque; un kernel Numba fusiona las sustituciones
-hacia delante y atrás a lo largo de la malla. En cada paso PTC se hace una sola
-corrección lineal y el paso temporal se adapta con la reducción del residual;
-si esa corrección falla, el solver vuelve al Euler implícito totalmente
-convergido. En el generador FGM, la ruta fría usa por defecto
-`block_tridiag + direct` y desactiva los grids fijos intermedios; esto evita
-resolver y refinar varias veces la misma llama. La ruta `recycled_gmres` fue
-retirada porque el perfil mostró retrocesos frecuentes a LU directa y mayor
-tiempo total sin mejorar la solución.
-La opción `--auto-bootstrap-grids` conserva el bootstrap 12/24/48 para
-diagnóstico y reproducibilidad histórica.
-Para evitar sobre-hilos en los bloques densos pequeños, V2 fija
-`OPENBLAS_NUM_THREADS=1` si el usuario no lo define. En corridas FGM
-secuenciales y en V2, el kernel de química usa 4 hilos de Numba por defecto;
-puede modificarse con `NUMBA_NUM_THREADS` o, en FGM, con
-`--numba-kinetics-threads`.
+Saved native seeds accelerate repeated sweeps; parallel workers are enabled
+automatically only when every requested seed is available. A seeded regeneration
+is not a cold-start benchmark. Thread defaults respect explicit environment
+overrides. Seed identities include mechanism contents, not just filenames.
 
-PTC-SER con rescate BE es la única ruta pseudo-transitoria expuesta. Los
-selectores de métodos usados durante la evaluación se retiraron después de
-validar la configuración final.
+GRI30 and H2/O2 YAML inputs are included. Other NASA-7 ideal-gas mechanisms
+need compatibility and validation checks; arbitrary Cantera features are not
+claimed to be supported. The historical Bilger reference-stream convention
+remains unchanged and is recorded in output metadata. Software independence
+does not establish mesh-independent physical accuracy; see
+[architecture](docs/architecture.md) and
+[independence audit](docs/validation/NATIVE_ALL_STAGES_20260920.md).
 
-Las variantes medidas y descartadas están registradas en
-[`DECISIONES_DESCARTADAS.md`](DECISIONES_DESCARTADAS.md). No deben volver a
-añadirse sin una validación end-to-end de FGM reproducible.
+## Development and validation
 
-La auditoría actual, con un entorno sin Cantera y sin acceso a polinomios
-preexportados, está en
-[validation/NATIVE_ALL_STAGES_20260920.md](validation/NATIVE_ALL_STAGES_20260920.md).
-La auditoría anterior se conserva en
-[validation/NATIVE_INDEPENDENCE_20260919.md](validation/NATIVE_INDEPENDENCE_20260919.md).
-Los nombres históricos `acceptance_criterion="cantera"`, `cantera_seed_grid` y
-`cantera_local` describen algoritmos implementados en V2; no cargan la librería.
-La opción `--transport-backend cantera-reference` sí la carga explícitamente.
-Viscosidad, conductividad y difusión se ajustan nativamente desde los datos del
-mecanismo y las tablas moleculares de colisión; ya no se lee el archivo histórico
-`cantera_transport_poly_coeffs.json`. Los ajustes y parámetros moleculares
-inmutables se reutilizan automáticamente entre mallas con claves basadas en sus
-entradas numéricas. Las tablas de colisión, los mecanismos y las formulaciones
-conservan su procedencia y atribución. Independencia de ejecución y generación
-de ajustes no significa que los datos científicos sean de autoría exclusiva.
-Las figuras requieren Matplotlib adicional, pero no Cantera; las figuras
-comparativas sí necesitan perfiles de referencia previamente guardados.
+```sh
+python -m pip install -e ".[reference,test]"
+python -m unittest discover -s tests -v
+python -m pytest -q
+```
 
-La interpretación científica de los resultados, las pruebas todavía necesarias
-para un artículo y las extensiones matemáticas candidatas se mantienen en
-[`PAPER_ROADMAP.md`](PAPER_ROADMAP.md).
+CI tests both Linux and Windows, plus a built distribution with Cantera and the
+retired transport-fit archive blocked. Instructions for native-only validation
+and benchmark protocols are in [CONTRIBUTING.md](CONTRIBUTING.md) and
+[benchmarks/README.md](benchmarks/README.md).
 
-La continuación FGM trata cada perfil previo como una aproximación local: lo
-reutiliza solo cuando la razón entre valores consecutivos de `phi` está entre
-`1/1.15` y `1.15`. Los saltos mayores reinician desde el arranque robusto y
-anulan también la secante anterior. Esto evita que una semilla lejana fuerce
-una trayectoria no lineal con una malla adaptativa innecesariamente densa.
+The [refactoring audit](docs/validation/REFACTOR_AUDIT_20260920.md) records
+preserved interfaces, exact before/after comparisons and remaining warnings.
 
-Para barridos FGM repetidos, el generador conserva las semillas V2 aceptadas
-en `output-root/_v2_seed_cache` y activa automáticamente procesos paralelos
-cuando todas las semillas del barrido ya existen. Es la ruta recomendada para
-producción: mantiene la misma malla y criterio de convergencia, y evita pagar
-el bootstrap frío en cada regeneración. La clave de las semillas incluye el
-contenido SHA-256 del mecanismo, no solo su ruta. Las semillas antiguas se
-conservan, pero esta actualización genera una clave nueva y exige un primer
-barrido sin ellas. La comparación estricta fría y sus
-limitaciones están documentadas en
-[`DECISIONES_DESCARTADAS.md`](DECISIONES_DESCARTADAS.md).
+Bundled mechanisms, collision data and adapted formulations retain their
+[third-party attribution](src/kava/chemistry/data/README.md).
+An original-code redistribution license has not yet been selected.

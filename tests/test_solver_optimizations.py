@@ -10,13 +10,10 @@ import numpy as np
 
 
 ROOT = Path(__file__).resolve().parents[1]
-V2 = ROOT / "V2"
-if str(V2) not in sys.path:
-    sys.path.insert(0, str(V2))
 
-import equations
-from equations import BlockTridiagJacobian, factorize, refresh_block_tridiag_jacobian_columns, solve_linear
-from solver import (
+import kava.flame.equations as equations
+from kava.flame.equations import BlockTridiagJacobian, factorize, refresh_block_tridiag_jacobian_columns, solve_linear
+from kava.flame.solver import (
     _local_linearisation_defect_blocks,
 )
 

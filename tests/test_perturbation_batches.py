@@ -5,8 +5,7 @@ import unittest
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'V2'))
-from equations import _center_perturbation_states
+from kava.flame.equations import _center_perturbation_states
 
 
 def legacy_perturbation_states(x_r, rel, absolute, eps):

@@ -10,19 +10,17 @@ import unittest
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-for folder in ('V2', 'V2/materiales', 'FGM/scripts'):
-    sys.path.insert(0, str(ROOT / folder))
 
-from config import FlameCase
-from problem import FreeFlameProblem
-from mechanism_data import load_mechanism, resolve_mechanism
-from initialization_native import fresh_mixture, NativeMixture
-from thermo_native import NativeThermo
-from transport_native import NativeTransport
-from species_backend_native import NativeSpeciesBackend
-from collision_integrals_native import native_transport_fits
-from fgm_common import compute_bilger_Z, invert_bilger_Z_to_phi
-from generate_fgm_tables_native import build_argparser, tabulated_properties, seed_cache_key
+from kava.flame.config import FlameCase
+from kava.flame.problem import FreeFlameProblem
+from kava.chemistry.mechanism import load_mechanism, resolve_mechanism
+from kava.chemistry.initialization import fresh_mixture, NativeMixture
+from kava.chemistry.thermo import NativeThermo
+from kava.chemistry.transport import NativeTransport
+from kava.chemistry.backend import NativeSpeciesBackend
+from kava.chemistry.collision_integrals import native_transport_fits
+from kava.fgm.common import compute_bilger_Z, invert_bilger_Z_to_phi
+from kava.fgm.generate import build_argparser, tabulated_properties, seed_cache_key
 
 try:
     import cantera as ct
@@ -43,22 +41,19 @@ class NativeContracts(unittest.TestCase):
 
     def test_default_construction_and_generator_import_without_cantera(self):
         env = os.environ.copy()
-        env['PYTHONPATH'] = os.pathsep.join([
-            str(ROOT / 'validation/no_cantera'), str(ROOT / 'V2'),
-            str(ROOT / 'FGM/scripts')])
+        env['PYTHONPATH'] = str(ROOT / 'tests/no_cantera')
         code = '''
 import sys
 from pathlib import Path
-from config import FlameCase
-from problem import FreeFlameProblem
-from solver import _make_backend
-from generate_fgm_tables_native import build_argparser
+from kava.flame.config import FlameCase
+from kava.flame.problem import FreeFlameProblem
+from kava.flame.solver import _make_backend
+from kava.fgm.generate import build_argparser
 p = FreeFlameProblem(FlameCase())
 assert _make_backend(p).backend_kind == 'native'
 assert build_argparser().parse_args([]).transport_backend == 'native'
 assert 'cantera' not in sys.modules
-for path in (str(Path('V2/materiales/cantera_transport_poly_coeffs.json')),
-             bytes('V2/materiales/cantera_transport_poly_coeffs.json', 'utf-8')):
+for path in ('cantera_transport_poly_coeffs.json', b'cantera_transport_poly_coeffs.json'):
     try:
         open(path, 'rb')
     except RuntimeError:

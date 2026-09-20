@@ -8,10 +8,9 @@ import unittest
 os.environ.setdefault('NUMBA_NUM_THREADS', '4')
 os.environ.setdefault('OPENBLAS_NUM_THREADS', '1')
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'V2/materiales'))
 import numpy as np
-from mechanism_data import load_mechanism, resolve_mechanism
-from transport_native import NativeTransport
+from kava.chemistry.mechanism import load_mechanism, resolve_mechanism
+from kava.chemistry.transport import NativeTransport
 
 try:
     import cantera as ct

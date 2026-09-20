@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kava-fgm"
+version = "0.1.0"
+description = "Native CPU free-flame solver and flamelet-generated manifold tables"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "numba>=0.61,<0.66",
+  "numpy>=2.0,<2.5",
+  "PyYAML>=6.0,<7.0",
+  "scipy>=1.14,<1.18",
+]
+
+[project.optional-dependencies]
+plot = ["matplotlib>=3.8,<4"]
+reference = ["cantera==3.2.0", "matplotlib>=3.8,<4"]
+test = ["pytest>=8,<10"]
+
+[project.scripts]
+kava = "kava.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"kava.chemistry" = ["data/*.yaml", "data/*.json", "data/*.txt", "data/*.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

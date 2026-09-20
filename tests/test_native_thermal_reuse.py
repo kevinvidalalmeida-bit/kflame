@@ -8,15 +8,14 @@ from unittest.mock import patch
 os.environ.setdefault('OPENBLAS_NUM_THREADS', '1')
 os.environ.setdefault('NUMBA_NUM_THREADS', '4')
 ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT / 'V2'), str(ROOT / 'V2/materiales')]
 
 import numpy as np
-from config import FlameCase
-from problem import FreeFlameProblem
-from species_backend_native import NativeSpeciesBackend
-import species_backend_native as native
-from equations import build_jacobian_steady, residual
-from state import pack_state
+from kava.flame.config import FlameCase
+from kava.flame.problem import FreeFlameProblem
+from kava.chemistry.backend import NativeSpeciesBackend
+import kava.chemistry.backend as native
+from kava.flame.equations import build_jacobian_steady, residual
+from kava.flame.state import pack_state
 
 
 def inputs(backend):

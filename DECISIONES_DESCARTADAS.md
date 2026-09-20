@@ -1,5 +1,10 @@
 # Decisiones descartadas de optimización
 
+Nota de organización (20/09/2026): este historial se conserva. La ruta actual
+es el paquete `src/kava/`; los informes están en `docs/validation/` y las
+instrucciones actuales en `docs/migration.md`. Las rutas de campañas y código
+citadas dentro de las entradas históricas corresponden a sus instantáneas.
+
 Este documento conserva los resultados negativos para no reintroducir rutas
 que ya se midieron. Las referencias de tiempo corresponden a GRI-Mech 3.0,
 CH4/aire, 300 K, 1 atm y transporte mixture-averaged.

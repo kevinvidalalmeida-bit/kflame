@@ -1,76 +1,57 @@
-name: Solver regression tests
+name: KAVA regression tests
 
 on:
   pull_request:
   push:
-    branches:
-      - main
+    branches: [main]
 
 permissions:
   contents: read
 
 concurrency:
-  group: solver-tests-${{ github.ref }}
+  group: kava-tests-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  unit-tests:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v5
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
-          cache: pip
-          cache-dependency-path: |
-            requirements-test.txt
-            requirements-native.txt
-
-      - name: Install test dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements-test.txt
-
-      - name: Compile modified modules
-        run: |
-          python -m py_compile \
-            V2/equations.py \
-            V2/solver.py \
-            V2/problem.py \
-            V2/materiales/initialization_native.py \
-            V2/materiales/collision_integrals_native.py \
-            V2/materiales/transport_native.py \
-            V2/materiales/thermochemical_jacobian_native.py \
-            V2/run_saved_comparison.py \
-            FGM/scripts/fgm_common.py \
-            FGM/scripts/generate_fgm_tables_native.py \
-            FGM/scripts/generate_fgm_tables_cantera.py \
-            FGM/scripts/analyze_predictor_corrector_ablation.py
-
-      - name: Run regression tests
-        run: python -m unittest discover -s tests -v
-
-  native-without-cantera:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+  regression:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     env:
-      PYTHONPATH: ${{ github.workspace }}/validation/no_cantera
+      OPENBLAS_NUM_THREADS: '1'
+      NUMBA_NUM_THREADS: '4'
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - name: Install native dependencies only
-        run: python -m pip install -r requirements-native.txt
-      - name: Run native suite (reference comparisons explicitly skipped)
-        run: python -m unittest discover -s tests -v
-      - name: Generate a cold flame and FGM table without Cantera
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: python -m pip install -e ".[reference,test]"
+      - run: python -m compileall -q src tests benchmarks
+      - run: python -m unittest discover -s tests -v
+
+  native-wheel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONPATH: ${{ github.workspace }}/tests/no_cantera
+      OPENBLAS_NUM_THREADS: '1'
+      NUMBA_NUM_THREADS: '4'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install built distribution, not editable source
+        run: python -m pip install .
+      - run: python -m unittest discover -s tests -v
+      - name: Smoke test installed CLI outside repository root
+        working-directory: ${{ runner.temp }}
         run: >-
-          python FGM/scripts/generate_fgm_tables_native.py --phi-values 1
-          --disable-seed-cache --parallel-workers 1 --max-flame-time-s 180
-          --output-root tmp/native-ci --save-raw-profiles
+          python -m kava fgm --phi-values 1 --disable-seed-cache
+          --parallel-workers 1 --max-flame-time-s 180
+          --output-root native-ci --save-raw-profiles

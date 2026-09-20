@@ -16,13 +16,8 @@ import numpy as np
 
 
 ROOT = Path(__file__).resolve().parents[1]
-V2 = ROOT / "V2"
-MATERIALS = V2 / "materiales"
-for path in (V2, MATERIALS):
-    if str(path) not in sys.path:
-        sys.path.insert(0, str(path))
 
-from equations import (  # noqa: E402
+from kava.flame.equations import (  # noqa: E402
     _multicomponent_flux,
     build_jacobian_steady,
     build_local_jacobian_cache,
@@ -32,13 +27,13 @@ from equations import (  # noqa: E402
     residual_local_rows_batch_perturbed,
     solve_linear,
 )
-from problem import FreeFlameProblem  # noqa: E402
+from kava.flame.problem import FreeFlameProblem  # noqa: E402
 if ct is not None:
-    from species_backend import SpeciesBackend  # noqa: E402
-from species_backend_native import NativeSpeciesBackend  # noqa: E402
-from mechanism_data import ONE_ATM, resolve_mechanism  # noqa: E402
-from state import pack_state  # noqa: E402
-from solver import SolveOptions, JacobianState, newton_solve, _acceptance_status, _solve_auto_stages, _refine_and_solve, _hybrid_newton  # noqa: E402
+    from kava.reference.backend import SpeciesBackend  # noqa: E402
+from kava.chemistry.backend import NativeSpeciesBackend  # noqa: E402
+from kava.chemistry.mechanism import ONE_ATM, resolve_mechanism  # noqa: E402
+from kava.flame.state import pack_state  # noqa: E402
+from kava.flame.solver import SolveOptions, JacobianState, newton_solve, _acceptance_status, _solve_auto_stages, _refine_and_solve, _hybrid_newton  # noqa: E402
 
 
 def _case(*, soret: bool, transport: str = "multicomponent"):
@@ -74,10 +69,10 @@ class SoretReferenceTransportTests(unittest.TestCase):
         x = np.array([1., 300., 2., 400.])
         target = x + 1.
         jac = JacobianState(J=np.eye(4), lu=True, ss_diag=np.ones(4), last_rdt=0., age=0)
-        with patch("equations.residual", side_effect=lambda state, *a, **kw: state-target), \
-             patch("solver.solve_linear", side_effect=lambda lu, rhs: rhs), \
-             patch("solver.bound_step_limit", return_value=(1., "")), \
-             patch("solver.weighted_norm", side_effect=[10., 2.]) as norms:
+        with patch("kava.flame.equations.residual", side_effect=lambda state, *a, **kw: state-target), \
+             patch("kava.flame.solver.solve_linear", side_effect=lambda lu, rhs: rhs), \
+             patch("kava.flame.solver.bound_step_limit", return_value=(1., "")), \
+             patch("kava.flame.solver.weighted_norm", side_effect=[10., 2.]) as norms:
             _, ok, history, _ = newton_solve(None, x, p, max_iter=1, jac_state=jac)
         self.assertFalse(ok)  # contraction is not convergence when norm > 1
         self.assertEqual(history[-1]["s1"], 2.)
@@ -97,8 +92,8 @@ class SoretReferenceTransportTests(unittest.TestCase):
                 return state, False, [{"status": "no_damp", "normF": 10.}], None
             ptc = kw["residual_damping"]
             return state, not ptc, [{"status": "step" if ptc else "ok", "normF": 10., "s1": .1}], None
-        with patch("solver.newton_solve", side_effect=newton), \
-             patch("solver._residual_inf", return_value=10.):
+        with patch("kava.flame.solver.newton_solve", side_effect=newton), \
+             patch("kava.flame.solver._residual_inf", return_value=10.):
             _, ok, history = _hybrid_newton(p, x, opts)
         self.assertFalse(ok)
         self.assertEqual([c["max_iter"] for c in calls if c["rdt"]], [1, 1])
@@ -120,8 +115,8 @@ class SoretReferenceTransportTests(unittest.TestCase):
             if kw["residual_damping"]:
                 return state, False, [{"status": "no_damp", "normF": 10., "s1": 2.}], None
             return state, True, [{"status": "ok", "normF": 10., "s1": .1}], None
-        with patch("solver.newton_solve", side_effect=newton), \
-             patch("solver._residual_inf", return_value=10.):
+        with patch("kava.flame.solver.newton_solve", side_effect=newton), \
+             patch("kava.flame.solver._residual_inf", return_value=10.):
             actual, ok, history = _hybrid_newton(p, x, opts)
         self.assertFalse(ok)  # successful pseudo-steps are not a steady certificate
         self.assertEqual([c["max_iter"] for c in calls if c["rdt"] > 0], [1, 50])
@@ -139,8 +134,8 @@ class SoretReferenceTransportTests(unittest.TestCase):
             calls.append(kw)
             return state, False, [{"status": "step" if kw["rdt"] else "no_damp",
                                    "normF": 10., "s1": 2.}], None
-        with patch("solver.newton_solve", side_effect=newton), \
-             patch("solver._residual_inf", return_value=5.):
+        with patch("kava.flame.solver.newton_solve", side_effect=newton), \
+             patch("kava.flame.solver._residual_inf", return_value=5.):
             _, ok, history = _hybrid_newton(p, x, opts)
         self.assertFalse(ok)
         self.assertEqual([c["max_iter"] for c in calls if c["rdt"] > 0], [1, 1])
@@ -184,10 +179,10 @@ class SoretReferenceTransportTests(unittest.TestCase):
                         weighted_step_norm=0.0, weighted_step_norm_limit=1.0,
                         weighted_step_accepted=True, residual_guard_inf=1e4,
                         residual_guard_accepted=True, criterion="cantera", accepted=True)
-        with patch("solver.AdaptiveRefiner", return_value=refiner), \
-             patch("solver._refresh_backend"), \
-             patch("solver._acceptance_status", return_value=accepted), \
-             patch("solver._hybrid_newton", side_effect=lambda prob, state, opts, **kw:
+        with patch("kava.flame.solver.AdaptiveRefiner", return_value=refiner), \
+             patch("kava.flame.solver._refresh_backend"), \
+             patch("kava.flame.solver._acceptance_status", return_value=accepted), \
+             patch("kava.flame.solver._hybrid_newton", side_effect=lambda prob, state, opts, **kw:
                    (state, False, [{"status": "max_time_step_count"}])):
             actual, ok, log = _refine_and_solve(p, x, SolveOptions(require_grid_convergence=True), None)
         self.assertFalse(ok)
@@ -208,7 +203,7 @@ class SoretReferenceTransportTests(unittest.TestCase):
             if ok and kw["steady_callback"] is not None:
                 kw["steady_callback"](state)
             return state, ok, [{"status": "ok" if ok else "failed"}]
-        with patch("solver._hybrid_newton", side_effect=hybrid):
+        with patch("kava.flame.solver._hybrid_newton", side_effect=hybrid):
             _, ok, _ = _solve_auto_stages(p, x, SolveOptions(), None, refine_grid=False,
                                          width_check=lambda state: checks.append(p.solve_energy))
         self.assertTrue(ok)
@@ -224,7 +219,7 @@ class SoretReferenceTransportTests(unittest.TestCase):
         def residual_probe(x, p, *, force_exact_transport=False):
             return np.array([2e4 if force_exact_transport else 0.0])
 
-        with patch("solver.residual", side_effect=residual_probe) as probe:
+        with patch("kava.flame.solver.residual", side_effect=residual_probe) as probe:
             result = _acceptance_status(problem, np.array([1.0]), options)
         self.assertFalse(result["accepted"])
         self.assertEqual(result["Finf"], 2e4)
@@ -237,7 +232,7 @@ class SoretReferenceTransportTests(unittest.TestCase):
                                    final_Finf_limit=float("inf"), residual_guard_inf=float("inf"))
             for state, value in ((1.0, np.nan), (1.0, np.inf), (np.nan, 0.0)):
                 with self.subTest(criterion=criterion, state=state, residual=value):
-                    with patch("solver.residual", return_value=np.array([value])):
+                    with patch("kava.flame.solver.residual", return_value=np.array([value])):
                         result = _acceptance_status(problem, np.array([state]), options)
                     self.assertFalse(result["accepted"])
 
