@@ -6,8 +6,12 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 import builtins
+from contextlib import nullcontext
 
-import cantera as ct
+try:
+    import cantera as ct
+except ImportError:
+    ct = None
 import numpy as np
 
 
@@ -29,8 +33,10 @@ from equations import (  # noqa: E402
     solve_linear,
 )
 from problem import FreeFlameProblem  # noqa: E402
-from species_backend import SpeciesBackend  # noqa: E402
+if ct is not None:
+    from species_backend import SpeciesBackend  # noqa: E402
 from species_backend_native import NativeSpeciesBackend  # noqa: E402
+from mechanism_data import ONE_ATM, resolve_mechanism  # noqa: E402
 from state import pack_state  # noqa: E402
 from solver import SolveOptions, JacobianState, newton_solve, _acceptance_status, _solve_auto_stages, _refine_and_solve, _hybrid_newton  # noqa: E402
 
@@ -42,7 +48,7 @@ def _case(*, soret: bool, transport: str = "multicomponent"):
         oxidizer="O2:1.0, N2:3.76",
         phi=1.0,
         T_in=300.0,
-        P=ct.one_atm,
+        P=ONE_ATM,
         width=0.03,
         transport_model=transport,
         flux_gradient_basis="molar",
@@ -140,6 +146,7 @@ class SoretReferenceTransportTests(unittest.TestCase):
         self.assertEqual([c["max_iter"] for c in calls if c["rdt"] > 0], [1, 1])
         self.assertTrue(all(h["scheme"] == "PTC-SER" for h in history if h["phase"] == "transient"))
 
+    @unittest.skipIf(ct is None, 'Optional independent Cantera reference')
     def test_hydrogen_thermochemistry_at_low_and_high_pressure(self) -> None:
         for mechanism in ("gri30.yaml", "h2o2.yaml"):
             case = _case(soret=True)
@@ -235,10 +242,14 @@ class SoretReferenceTransportTests(unittest.TestCase):
                     self.assertFalse(result["accepted"])
 
     def test_soret_requires_multicomponent_transport(self) -> None:
-        problem = SimpleNamespace(case=_case(soret=True, transport="mixture-averaged"), P=ct.one_atm)
+        problem = SimpleNamespace(case=_case(soret=True, transport="mixture-averaged"), P=ONE_ATM)
         with self.assertRaises(ValueError):
-            SpeciesBackend(problem)
+            NativeSpeciesBackend(problem)
+        if ct is not None:
+            with self.assertRaises(ValueError):
+                SpeciesBackend(problem)
 
+    @unittest.skipIf(ct is None, 'Optional independent Cantera reference')
     def test_native_backend_matches_multicomponent_soret_face_data(self) -> None:
         """The V2 face kernel must not query Cantera after construction."""
         case = _case(soret=True)
@@ -267,8 +278,8 @@ class SoretReferenceTransportTests(unittest.TestCase):
 
     def test_native_construction_and_evaluation_without_cantera(self) -> None:
         case = _case(soret=True)
-        case.mech = str(Path(ct.get_data_directories()[-1]) / "gri30.yaml")
-        problem = SimpleNamespace(case=case, P=ct.one_atm)
+        case.mech = resolve_mechanism('gri30.yaml')
+        problem = SimpleNamespace(case=case, P=ONE_ATM)
         original_import = builtins.__import__
 
         def no_cantera(name, *args, **kwargs):
@@ -276,9 +287,8 @@ class SoretReferenceTransportTests(unittest.TestCase):
                 raise AssertionError("Native Soret attempted to import Cantera")
             return original_import(name, *args, **kwargs)
 
-        with patch("builtins.__import__", side_effect=no_cantera), patch.object(
-            ct, "Solution", side_effect=AssertionError("Native Soret called Cantera")
-        ):
+        ct_guard = patch.object(ct, 'Solution', side_effect=AssertionError('Native Soret called Cantera')) if ct is not None else nullcontext()
+        with patch("builtins.__import__", side_effect=no_cantera), ct_guard:
             native = NativeSpeciesBackend(problem)
             y = np.zeros((native.n_species, 1)) if hasattr(native, "n_species") else np.zeros((len(native.W), 1))
             y[native.mech.species_names.index("N2")] = 0.8
@@ -286,6 +296,7 @@ class SoretReferenceTransportTests(unittest.TestCase):
             actual = native.eval_multicomponent_face_transport(np.array([800.0]), y)
         self.assertTrue(all(np.isfinite(a).all() for a in actual))
 
+    @unittest.skipIf(ct is None, 'Optional independent Cantera reference')
     def test_native_transport_with_a_different_species_set(self) -> None:
         case = _case(soret=True)
         case.mech = str(Path(ct.get_data_directories()[-1]) / "h2o2.yaml")
@@ -303,6 +314,7 @@ class SoretReferenceTransportTests(unittest.TestCase):
                              reference.eval_multicomponent_face_transport(temperature, y)):
             np.testing.assert_allclose(got, want, rtol=2e-6, atol=2e-12)
 
+    @unittest.skipIf(ct is None, 'Optional independent Cantera reference')
     def test_schur_matches_dense_and_reference_in_reactive_states(self) -> None:
         case = _case(soret=True)
         case.mech = str(Path(ct.get_data_directories()[-1]) / "gri30.yaml")
@@ -338,12 +350,13 @@ class SoretReferenceTransportTests(unittest.TestCase):
                     expected = (gas.density, gas.thermal_conductivity, gas.mean_molecular_weight,
                                 gas.multi_diff_coeffs, gas.thermal_diff_coeffs)
                     for got, want in zip(reduced, expected):
-                        # Native Debye/vacuum-permittivity constants differ at
-                        # sub-ppm level from the reference polar correction.
+                        # Independently fitted collision data and dense/Schur
+                        # solves retain the established reference tolerance.
                         np.testing.assert_allclose(np.squeeze(got), want, rtol=2e-6, atol=2e-12)
                     dt = reduced[-1][:, 0]
                     self.assertLess(abs(dt.sum()), 1e-10 * np.linalg.norm(dt) + 1e-14)
 
+    @unittest.skipIf(ct is None, 'Optional independent Cantera reference')
     def test_compiled_and_python_multicomponent_local_perturbations_agree(self) -> None:
         case = _case(soret=True)
         problem = FreeFlameProblem(case, n_points=4)
@@ -377,7 +390,7 @@ class SoretReferenceTransportTests(unittest.TestCase):
     def test_native_lagged_transport_equals_exact_at_refresh_state(self) -> None:
         """Lagging may reuse a model, never alter it at the refresh state."""
         case = _case(soret=True)
-        case.mech = str(Path(ct.get_data_directories()[-1]) / "gri30.yaml")
+        case.mech = resolve_mechanism('gri30.yaml')
         problem = FreeFlameProblem(case, n_points=4)
         problem.backend = NativeSpeciesBackend(problem)
         problem.use_numba_residual = False
@@ -385,10 +398,7 @@ class SoretReferenceTransportTests(unittest.TestCase):
         problem.z = np.array([0.0, 1.0e-4, 2.0e-4, 3.0e-4])
         problem.n_points = int(problem.z.size)
 
-        gas = ct.Solution(case.mech)
-        gas.TP = case.T_in, case.P
-        gas.set_equivalence_ratio(case.phi, case.fuel, case.oxidizer)
-        Y = np.repeat(gas.Y[:, None], problem.n_points, axis=1)
+        Y = np.repeat(problem.Y_in[:, None], problem.n_points, axis=1)
         x = pack_state(
             np.full(problem.n_points, 2.0),
             np.array([300.0, 700.0, 1500.0, 2200.0]),
@@ -399,6 +409,7 @@ class SoretReferenceTransportTests(unittest.TestCase):
         lagged = residual(x, problem)
         np.testing.assert_allclose(lagged, exact, rtol=2.0e-10, atol=2.0e-10)
 
+    @unittest.skipIf(ct is None, 'Optional independent Cantera reference')
     def test_face_flux_matches_public_flow1d_formula_and_mass_closure(self) -> None:
         case = _case(soret=True)
         problem = SimpleNamespace(case=case, P=ct.one_atm, soret_enabled=True,
@@ -438,6 +449,7 @@ class SoretReferenceTransportTests(unittest.TestCase):
         self.assertLess(abs(float(np.sum(actual))), 1.0e-10 * np.linalg.norm(actual) + 1.0e-12)
         self.assertGreater(np.linalg.norm(dthermal * (T_right - T_left) / (T_face * dz)), 0.0)
 
+    @unittest.skipIf(ct is None, 'Optional independent Cantera reference')
     def test_full_and_frozen_local_residual_agree_at_base_state(self) -> None:
         case = _case(soret=True)
         problem = FreeFlameProblem(case, n_points=4)
@@ -462,17 +474,14 @@ class SoretReferenceTransportTests(unittest.TestCase):
 
     def test_native_signed_trial_residual_matches_frozen_local_base(self) -> None:
         case = _case(soret=True)
-        case.mech = str(Path(ct.get_data_directories()[-1]) / 'gri30.yaml')
-        case.P = 10 * ct.one_atm
+        case.mech = resolve_mechanism('gri30.yaml')
+        case.P = 10 * ONE_ATM
         problem = FreeFlameProblem(case, n_points=4)
         problem.backend = NativeSpeciesBackend(problem)
         problem.z = np.array([0., 1e-4, 2e-4, 3e-4])
         problem.n_points = 4
-        gas = ct.Solution(case.mech)
-        gas.TP = case.T_in, case.P
-        gas.set_equivalence_ratio(case.phi, case.fuel, case.oxidizer)
-        y = np.repeat(gas.Y[:, None], 4, axis=1)
-        y[gas.species_index('H'), :] = -1e-8
+        y = np.repeat(problem.Y_in[:, None], 4, axis=1)
+        y[problem.species_names.index('H'), :] = -1e-8
         x = pack_state(np.full(4, 2.), np.array([300., 700., 1500., 2200.]), y)
         for compiled in (False, True):
             problem.use_numba_residual = compiled
@@ -483,6 +492,7 @@ class SoretReferenceTransportTests(unittest.TestCase):
                 np.testing.assert_allclose(local, full[rows], rtol=2e-10, atol=2e-9)
                 self.assertTrue(np.all(np.isfinite(full)))
 
+    @unittest.skipIf(ct is None, 'Optional independent Cantera reference')
     def test_multicomponent_soret_block_jacobian_factorizes(self) -> None:
         """The reference closure preserves V2's local block linear algebra."""
         case = _case(soret=True)

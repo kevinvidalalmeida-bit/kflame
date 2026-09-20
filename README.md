@@ -1,20 +1,28 @@
-# TFM - Flujo Principal Cantera vs V2
+# TFM - Solver V2 y generación FGM nativos
 
 ## Comando principal
 
-Desde la raíz del proyecto:
+Desde la raíz del proyecto, instalar las dependencias nativas y generar una tabla:
 
 ```powershell
-python .\V2\run_saved_comparison.py --loglevel 0
+python -m pip install -r requirements-native.txt
+python .\FGM\scripts\generate_fgm_tables_native.py --phi-values 0.7,0.9,1,1.1,1.4 --save-raw-profiles
 ```
 
-Para ver el avance del solver V2:
+Esta es la ruta por defecto sin Cantera: mezcla, equilibrio HP, solución,
+posprocesado, Bilger y tablas usan código nativo. Se incluyen `gri30.yaml` y
+`h2o2.yaml`; otros mecanismos compatibles se proporcionan mediante `--mech ruta.yaml`.
+Las tablas se guardan en `fgm_runs/run_..._fgm_native/`. Para un barrido frío sin
+semillas guardadas, añadir `--disable-seed-cache --parallel-workers 1`.
+
+Para Soret nativo:
 
 ```powershell
-python .\V2\run_saved_comparison.py --loglevel 0 --verbose-ours
+python .\V2\benchmark_soret_native.py --native-only --bootstrap --bootstrap-mesh-factor 2
 ```
 
-Para ver también la salida de Cantera:
+Los comparadores y diagnósticos de referencia requieren instalar opcionalmente
+`requirements-test.txt`. Para comparar ambas implementaciones:
 
 ```powershell
 python .\V2\run_saved_comparison.py --loglevel 1 --verbose-ours
@@ -22,7 +30,7 @@ python .\V2\run_saved_comparison.py --loglevel 1 --verbose-ours
 
 ## Salidas
 
-Cada corrida se guarda en:
+Cada corrida del comparador se guarda en:
 
 ```text
 V2/comparison_runs/run_YYYYMMDD_HHMMSS/
@@ -79,6 +87,24 @@ Las variantes medidas y descartadas están registradas en
 [`DECISIONES_DESCARTADAS.md`](DECISIONES_DESCARTADAS.md). No deben volver a
 añadirse sin una validación end-to-end de FGM reproducible.
 
+La auditoría actual, con un entorno sin Cantera y sin acceso a polinomios
+preexportados, está en
+[validation/NATIVE_ALL_STAGES_20260920.md](validation/NATIVE_ALL_STAGES_20260920.md).
+La auditoría anterior se conserva en
+[validation/NATIVE_INDEPENDENCE_20260919.md](validation/NATIVE_INDEPENDENCE_20260919.md).
+Los nombres históricos `acceptance_criterion="cantera"`, `cantera_seed_grid` y
+`cantera_local` describen algoritmos implementados en V2; no cargan la librería.
+La opción `--transport-backend cantera-reference` sí la carga explícitamente.
+Viscosidad, conductividad y difusión se ajustan nativamente desde los datos del
+mecanismo y las tablas moleculares de colisión; ya no se lee el archivo histórico
+`cantera_transport_poly_coeffs.json`. Los ajustes y parámetros moleculares
+inmutables se reutilizan automáticamente entre mallas con claves basadas en sus
+entradas numéricas. Las tablas de colisión, los mecanismos y las formulaciones
+conservan su procedencia y atribución. Independencia de ejecución y generación
+de ajustes no significa que los datos científicos sean de autoría exclusiva.
+Las figuras requieren Matplotlib adicional, pero no Cantera; las figuras
+comparativas sí necesitan perfiles de referencia previamente guardados.
+
 La interpretación científica de los resultados, las pruebas todavía necesarias
 para un artículo y las extensiones matemáticas candidatas se mantienen en
 [`PAPER_ROADMAP.md`](PAPER_ROADMAP.md).
@@ -93,6 +119,9 @@ Para barridos FGM repetidos, el generador conserva las semillas V2 aceptadas
 en `output-root/_v2_seed_cache` y activa automáticamente procesos paralelos
 cuando todas las semillas del barrido ya existen. Es la ruta recomendada para
 producción: mantiene la misma malla y criterio de convergencia, y evita pagar
-el bootstrap frío en cada regeneración. La comparación estricta fría y sus
+el bootstrap frío en cada regeneración. La clave de las semillas incluye el
+contenido SHA-256 del mecanismo, no solo su ruta. Las semillas antiguas se
+conservan, pero esta actualización genera una clave nueva y exige un primer
+barrido sin ellas. La comparación estricta fría y sus
 limitaciones están documentadas en
 [`DECISIONES_DESCARTADAS.md`](DECISIONES_DESCARTADAS.md).

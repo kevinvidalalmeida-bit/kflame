@@ -20,7 +20,7 @@ except ImportError:
     raise ImportError("PyYAML is required.  Install with: pip install pyyaml")
 
 # ── physical constants (SI) ────────────────────────────────────────────────
-_MECHANISM_CACHE: dict[str, "MechanismData"] = {}
+_MECHANISM_CACHE: dict[tuple[str, int, int], "MechanismData"] = {}
 
 R_CGS    = 1.987  # cal/(mol·K)  – for Ea conversion
 R_UNIV   = 8314.46261815324  # J/(kmol·K)  – Cantera convention
@@ -28,6 +28,10 @@ R_SI     = 8.31446261815324  # J/(mol·K)
 AVOGADRO = 6.02214076e23
 BOLTZMANN = 1.380649e-23
 ONE_ATM  = 101325.0
+DEBYE_TO_CM = 1e-21 / 299792458.0
+# CODATA 2018 derived vacuum permittivity; no external library lookup.
+EPSILON_0 = 1.0 / (299792458.0 ** 2 * (
+    2.0 * 7.2973525693e-3 * 6.62607015e-34 / (1.602176634e-19 ** 2 * 299792458.0)))
 
 # ── atomic weights aligned with Cantera defaults ────────────────────────────
 _ATOMIC_WEIGHTS: dict[str, float] = {
@@ -87,6 +91,8 @@ class MechanismData:
     n_species: int
     molecular_weights: np.ndarray         # (n_sp,)  [kg/kmol]
     inv_molecular_weights: np.ndarray     # (n_sp,)  [kmol/kg]
+    element_names: list[str]
+    atom_matrix: np.ndarray               # (n_el, n_sp), atoms per molecule
 
     # thermodynamics – NASA-7
     nasa_low: np.ndarray                  # (n_sp, 7)
@@ -233,26 +239,24 @@ def _parse_equation(eq: str, sp_index: dict[str, int]):
 #  Main parser
 # ═══════════════════════════════════════════════════════════════════════════
 
-def load_mechanism(filepath: str | Path) -> MechanismData:
-    """Parse a Cantera YAML mechanism file into MechanismData."""
-    filepath = Path(filepath)
-    
-    # If the file doesn't exist, try to find it in common locations
-    if not filepath.exists():
-        candidates = [
-            filepath,
-            Path(__file__).parent.parent / "no_esencial" / "cantera-main" / "data" / filepath.name,
-            Path(__file__).parent / "data" / filepath.name,
-        ]
-        for candidate in candidates:
-            if candidate.exists():
-                filepath = candidate
-                break
-        else:
-            # If still not found, raise the original error
-            raise FileNotFoundError(f"[Errno 2] No such file or directory: '{filepath}'")
+def resolve_mechanism(filepath: str | Path) -> str:
+    """Resolve explicit paths or bundled mechanism names, without Cantera."""
+    filepath = Path(filepath).expanduser()
+    if filepath.is_file():
+        return str(filepath.resolve())
+    if not filepath.is_absolute() and filepath.parent == Path('.'):
+        bundled = Path(__file__).parent / 'data' / filepath.name
+        if bundled.is_file():
+            return str(bundled.resolve())
+    raise FileNotFoundError(f"Mechanism not found: {filepath}. Supply a local YAML path.")
 
-    cache_key = str(filepath.resolve())
+
+def load_mechanism(filepath: str | Path) -> MechanismData:
+    """Parse a local NASA-7 ideal-gas YAML mechanism into independent arrays."""
+    filepath = Path(resolve_mechanism(filepath))
+
+    stat = filepath.stat()
+    cache_key = (str(filepath), stat.st_mtime_ns, stat.st_size)
     cached = _MECHANISM_CACHE.get(cache_key)
     if cached is not None:
         return copy.deepcopy(cached)
@@ -269,6 +273,17 @@ def load_mechanism(filepath: str | Path) -> MechanismData:
 
     # ── species ────────────────────────────────────────────────────────
     sp_list = data["species"]
+    phase = data.get('phases', [{}])[0]
+    if phase.get('thermo', 'ideal-gas') != 'ideal-gas':
+        raise ValueError('The native backend supports the first ideal-gas phase only')
+    selected = phase.get('species', 'all')
+    if selected != 'all':
+        if not isinstance(selected, list) or any(not isinstance(s, (str, bool)) for s in selected):
+            raise ValueError('External species sections are not supported; use a self-contained YAML')
+        def yaml_name(name):
+            return {False: 'NO', True: 'ON'}[name] if isinstance(name, bool) else str(name)
+        by_name = {yaml_name(sp['name']): sp for sp in sp_list}
+        sp_list = [by_name[yaml_name(name)] for name in selected]
     n_sp = len(sp_list)
 
     # YAML interprets 'NO' and 'ON' as booleans (False/True).
@@ -284,6 +299,13 @@ def load_mechanism(filepath: str | Path) -> MechanismData:
     sp_index = {name: i for i, name in enumerate(species_names)}
 
     molecular_weights = np.zeros(n_sp)
+    element_names = list(phase.get('elements', []))
+    if not element_names:
+        element_names = list(dict.fromkeys(
+            element for sp in sp_list for element in sp["composition"]
+        ))
+    element_index = {name: i for i, name in enumerate(element_names)}
+    atom_matrix = np.zeros((len(element_names), n_sp))
     nasa_low  = np.zeros((n_sp, 7))
     nasa_high = np.zeros((n_sp, 7))
     nasa_Tmid = np.zeros(n_sp)
@@ -300,6 +322,8 @@ def load_mechanism(filepath: str | Path) -> MechanismData:
     for i, sp in enumerate(sp_list):
         # molecular weight
         comp = sp["composition"]
+        for element, count in comp.items():
+            atom_matrix[element_index[element], i] = float(count)
         mw = sum(count * _ATOMIC_WEIGHTS[elem] for elem, count in comp.items())
         molecular_weights[i] = mw
 
@@ -320,7 +344,7 @@ def load_mechanism(filepath: str | Path) -> MechanismData:
         geometry[i] = {"atom": 0, "linear": 1, "nonlinear": 2}.get(geom_str, 2)
         well_depth[i]    = tr.get("well-depth", 0.0)          # K
         diameter_arr[i]  = tr.get("diameter", 0.0) * 1e-10     # Å → m
-        dipole_arr[i]    = tr.get("dipole", 0.0) * 3.33564e-30  # Debye → C·m
+        dipole_arr[i]    = tr.get("dipole", 0.0) * DEBYE_TO_CM  # Debye → C·m
         polar_arr[i]     = tr.get("polarizability", 0.0) * 1e-30  # Å³ → m³
         rot_relax_arr[i] = tr.get("rotational-relaxation", 0.0)
 
@@ -425,6 +449,8 @@ def load_mechanism(filepath: str | Path) -> MechanismData:
         n_species=n_sp,
         molecular_weights=molecular_weights,
         inv_molecular_weights=inv_mw,
+        element_names=element_names,
+        atom_matrix=atom_matrix,
         nasa_low=nasa_low,
         nasa_high=nasa_high,
         nasa_Tmid=nasa_Tmid,

@@ -2165,6 +2165,25 @@ def _banded_jacobian_lapack_local(fun, x: np.ndarray, problem, eps: float = 1e-5
     return _profile_return(problem, "jacobian_build", t_profile, jmat)
 
 
+def _center_perturbation_states(x_r, rel_perturb, abs_perturb, eps):
+    """Build exact [u,T,Y...] perturbation batches without per-species Python loops.
+
+    Each point occupies nv columns. Repeat already allocates independent arrays;
+    no second full-sized dtype copy or persistent state-dependent cache is needed.
+    """
+    n_pts, nv = x_r.shape
+    dx = np.abs(x_r) * rel_perturb + abs_perturb
+    dx[dx <= 0.0] = max(abs(rel_perturb), abs(eps), 1e-10)
+    dx = np.where(x_r < 0.0, -dx, dx)
+    temperatures = np.repeat(x_r[:, C_T], nv)
+    compositions = np.repeat(x_r[:, C_Y:].T, nv, axis=1)
+    temperatures[C_T::nv] = x_r[:, C_T] + dx[:, C_T]
+    species = np.arange(nv - C_Y)[:, None]
+    columns = np.arange(n_pts)[None, :] * nv + C_Y + species
+    compositions[species, columns] = (x_r[:, C_Y:] + dx[:, C_Y:]).T
+    return temperatures, compositions
+
+
 def _precompute_block_tridiag_center_thermo(
     x: np.ndarray,
     problem,
@@ -2175,7 +2194,11 @@ def _precompute_block_tridiag_center_thermo(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None:
     """Evaluate center-node thermo/kinetics for all local perturbations."""
     backend = _jacobian_backend(problem)
-    eval_tk = getattr(backend, "eval_grid_thermo_kinetics_into", None)
+    # Native backends can reuse T-only factors across each [u,T,Y...] block.
+    # Other backends retain the existing evaluator and numerical contract.
+    eval_tk = getattr(backend, "eval_jacobian_thermo_kinetics_into", None)
+    if eval_tk is None:
+        eval_tk = getattr(backend, "eval_grid_thermo_kinetics_into", None)
     use_eval_grid = False
     if eval_tk is None:
         eval_tk = getattr(backend, "eval_grid_into", None)
@@ -2189,18 +2212,7 @@ def _precompute_block_tridiag_center_thermo(
     nv = int(cache["nv"])
     x_r = np.asarray(x, dtype=float).reshape(n_pts, nv)
 
-    T_all = np.repeat(x_r[:, C_T], nv).astype(float, copy=True)
-    Y_all = np.repeat(x_r[:, C_Y:].T, nv, axis=1).astype(float, copy=True)
-
-    for j in range(n_pts):
-        base = j * nv
-        xsave = x_r[j]
-        dx = np.abs(xsave) * rel_perturb + abs_perturb
-        dx[dx <= 0.0] = max(abs(rel_perturb), abs(eps), 1e-10)
-        dx = np.where(xsave < 0.0, -dx, dx)
-        T_all[base + C_T] = xsave[C_T] + dx[C_T]
-        for k in range(n_sp):
-            Y_all[k, base + C_Y + k] = xsave[C_Y + k] + dx[C_Y + k]
+    T_all, Y_all = _center_perturbation_states(x_r, rel_perturb, abs_perturb, eps)
 
     n_total = int(T_all.size)
     omega = np.empty((n_sp, n_total), dtype=float)

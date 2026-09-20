@@ -7,12 +7,15 @@ universal molecular collision data, not flame solutions or fitted Soret outputs.
 from __future__ import annotations
 
 import json
+import hashlib
+from collections import OrderedDict
 from pathlib import Path
 
 import numpy as np
 from numpy.polynomial.polynomial import polyfit, polyval
 
-from mechanism_data import AVOGADRO, BOLTZMANN
+from mechanism_data import AVOGADRO, BOLTZMANN, R_UNIV
+from thermo_native import NativeThermo
 
 
 class CollisionIntegrals:
@@ -60,7 +63,104 @@ class CollisionIntegrals:
         return np.sum(self.values(delta)[:, indices] * weights, axis=-1)
 
 
+_FIT_CACHE = OrderedDict()
+_CONDUCTIVITY_CACHE = OrderedDict()
+
+
+def _array_key(values):
+    digest = hashlib.sha256()
+    for value in values:
+        array = np.ascontiguousarray(value, dtype=np.float64)
+        digest.update(str(array.shape).encode('ascii'))
+        digest.update(array.tobytes())
+    return digest.digest()
+
+
+def native_conductivity_fits(mech, base):
+    """Fit pure-species conductivity from NASA and molecular collision data.
+
+    Parker rotational relaxation and internal-mode energy transport follow the
+    gas-transport formulation documented in GasTransport.cpp (BSD-3-Clause;
+    see CANTERA_TRANSPORT_LICENSE.txt). No exported property coefficients.
+    The cache includes thermodynamics as well as every molecular input used.
+    """
+    key = _array_key((mech.min_temperature, mech.max_temperature,
+                      mech.molecular_weights, mech.well_depth, mech.diameter,
+                      mech.geometry, mech.rot_relax, mech.nasa_low,
+                      mech.nasa_high, mech.nasa_Tmid, base._eps_pair,
+                      base._delta_pair, base._reduced_mass))
+    if key in _CONDUCTIVITY_CACHE:
+        _CONDUCTIVITY_CACHE.move_to_end(key)
+        return _CONDUCTIVITY_CACHE[key]
+    tmin, tmax = mech.min_temperature, mech.max_temperature
+    if not 0 < tmin < tmax:
+        raise ValueError('No common positive temperature interval for conductivity fitting.')
+    t = np.linspace(tmin, tmax, 50)
+    logt, sqrt_t = np.log(t), np.sqrt(t)
+    cp_r = NativeThermo(mech).cp_R(t)
+    eps = np.asarray(base._eps_pair)
+    integrals = CollisionIntegrals(float(np.min(tmin / eps)), float(np.max(tmax / eps)))
+    coefficients = np.empty((mech.n_species, 5))
+
+    def rotation_factor(tstar):
+        return (1.0 + np.pi ** 1.5 / np.sqrt(tstar) * (0.5 + 1.0 / tstar)
+                + (0.25 * np.pi ** 2 + 2.0) / tstar)
+
+    for k in range(mech.n_species):
+        tstar = t / mech.well_depth[k]
+        collision = integrals.evaluate(tstar, float(base._delta_pair[k, k]))
+        omega22, omega11 = collision[0], collision[0] / collision[1]
+        sigma, weight = mech.diameter[k], mech.molecular_weights[k]
+        mu = (5.0 / 16.0 * np.sqrt(np.pi * weight * BOLTZMANN * t / (1000.0 * AVOGADRO))
+              / (omega22 * np.pi * sigma ** 2))
+        self_diffusion = (3.0 / 16.0 * np.sqrt(2.0 * np.pi / base._reduced_mass[k, k])
+                          * (BOLTZMANN * t) ** 1.5 / (np.pi * sigma ** 2 * omega11))
+        fint = weight / (R_UNIV * t) * self_diffusion / mu
+        crot = 0.0 if mech.geometry[k] == 0 else (1.0 if mech.geometry[k] == 1 else 1.5)
+        relax = (mech.rot_relax[k] * rotation_factor(298.0 / mech.well_depth[k])
+                 / rotation_factor(tstar))
+        correction = 2.0 / np.pi * (2.5 - fint) / (relax + 2.0 / np.pi * (5.0 / 3.0 * crot + fint))
+        conductivity = mu / weight * R_UNIV * (
+            2.5 * (1.0 - correction * crot / 1.5) * 1.5
+            + fint * (1.0 + correction) * crot + fint * (cp_r[k] - 2.5 - crot))
+        target = conductivity / sqrt_t
+        if not np.all(np.isfinite(target)) or np.any(target <= 0.0):
+            raise ValueError(f'Nonpositive conductivity fit data for {mech.species_names[k]}')
+        coefficients[k] = polyfit(logt, target, 4, w=1.0 / target)
+    coefficients.setflags(write=False)
+    _CONDUCTIVITY_CACHE[key] = coefficients
+    if len(_CONDUCTIVITY_CACHE) > 8:
+        _CONDUCTIVITY_CACHE.popitem(last=False)
+    return coefficients
+
+
 def native_transport_fits(mech, base):
+    """Reuse immutable molecular fits across meshes and flames (eight entries).
+
+    Key all numerical inputs, not a filename or species count. Pressure and
+    composition enter evaluation, not the pressure-independent polynomial fits.
+    """
+    digest = hashlib.sha256()
+    for value in (mech.min_temperature, mech.max_temperature, mech.molecular_weights,
+                  mech.well_depth, mech.diameter, base._eps_pair,
+                  base._sigma_pair, base._delta_pair):
+        array = np.ascontiguousarray(value, dtype=np.float64)
+        digest.update(str(array.shape).encode('ascii'))
+        digest.update(array.tobytes())
+    key = digest.digest()
+    if key in _FIT_CACHE:
+        _FIT_CACHE.move_to_end(key)
+        return _FIT_CACHE[key]
+    fits = _build_transport_fits(mech, base)
+    for array in fits:
+        array.setflags(write=False)
+    _FIT_CACHE[key] = fits
+    if len(_FIT_CACHE) > 8:
+        _FIT_CACHE.popitem(last=False)
+    return fits
+
+
+def _build_transport_fits(mech, base):
     """Fit viscosity, binary diffusion and A*, B*, C* from molecular data.
 
     Fits use the common NASA temperature interval. Relative least squares is

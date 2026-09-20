@@ -1,0 +1,65 @@
+{
+  "protocol": "Paired whole-FGM ablation of vectorized Jacobian batch preparation.\n\nThe legacy loop is kept in a test oracle only, never a production CLI mode.\nEach run is a new process, no persistent flame seeds, native-only import guard.\n",
+  "pairs": [
+    {
+      "legacy": {
+        "process_s": 19.385762399993837,
+        "fgm_s": 18.43654450000031,
+        "accepted": true
+      },
+      "vectorized": {
+        "process_s": 16.395405999996,
+        "fgm_s": 15.428569999989122,
+        "accepted": true
+      },
+      "identical": true
+    },
+    {
+      "vectorized": {
+        "process_s": 16.81360960000893,
+        "fgm_s": 15.885967899987008,
+        "accepted": true
+      },
+      "legacy": {
+        "process_s": 16.545562000013888,
+        "fgm_s": 15.593016400001943,
+        "accepted": true
+      },
+      "identical": true
+    },
+    {
+      "legacy": {
+        "process_s": 21.353902800008655,
+        "fgm_s": 20.367774000013014,
+        "accepted": true
+      },
+      "vectorized": {
+        "process_s": 19.33948560000863,
+        "fgm_s": 18.350109399994835,
+        "accepted": true
+      },
+      "identical": true
+    }
+  ],
+  "warmups": {
+    "legacy": {
+      "process_s": 20.78965099999914,
+      "fgm_s": 19.69815949999611,
+      "accepted": true
+    },
+    "vectorized": {
+      "process_s": 17.508840099995723,
+      "fgm_s": 16.492282500024885,
+      "accepted": true
+    }
+  },
+  "threads": {
+    "numba": 4,
+    "blas": 1
+  },
+  "median_fgm_s": {
+    "legacy": 18.43654450000031,
+    "vectorized": 15.885967899987008
+  },
+  "reduction_percent": 13.834352744427015
+}

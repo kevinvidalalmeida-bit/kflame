@@ -26,6 +26,8 @@ except Exception:  # pragma: no cover - optional acceleration
     prange = range
 
 if njit is not None:
+    from thermochemical_jacobian_native import grouped_core as _eval_jacobian_grouped_core
+
     @njit(cache=True, parallel=True)
     def _eval_thermo_kinetics_sparse_numba_core(
         T_arr, Y, P, nasa_lo, nasa_hi, nasa_tmid, W, invW,
@@ -183,6 +185,7 @@ if njit is not None:
                     omega_out[k, m] += net_nu[r, ii] * q * W[k]
 else:
     _eval_thermo_kinetics_sparse_numba_core = None
+    _eval_jacobian_grouped_core = None
 
 
 class NativeSpeciesBackend:
@@ -230,8 +233,9 @@ class NativeSpeciesBackend:
 
         # Load mechanism if not provided
         if mech_data is None:
-            mech_path = problem.case.mech
-            mech_data = load_mechanism(mech_path)
+            mech_data = getattr(problem, 'mech_data', None)
+            if mech_data is None:
+                mech_data = load_mechanism(problem.case.mech)
 
         self.mech = mech_data
         self.mech.pressure = P
@@ -379,6 +383,21 @@ class NativeSpeciesBackend:
         Jacobian path. For local perturbations, only density, cp, enthalpy and
         production rates need to be refreshed.
         """
+        return self._eval_thermo_kinetics_into(T, Y, omega_out, hk_out)
+
+    def eval_jacobian_thermo_kinetics_into(self, T: np.ndarray, Y: np.ndarray,
+                                          omega_out: np.ndarray, hk_out: np.ndarray):
+        """Reuse exact thermal factors in node-major [u,T,Y...] perturbations.
+
+        Arbitrary batches, unavailable Numba, or a disabled fused kernel retain
+        the ordinary evaluator. No temperature rounding or persistent cache.
+        """
+        return self._eval_thermo_kinetics_into(
+            T, Y, omega_out, hk_out, reuse_temperature=True,
+        )
+
+    def _eval_thermo_kinetics_into(self, T, Y, omega_out, hk_out,
+                                  *, reuse_temperature=False):
         if (
             _eval_thermo_kinetics_sparse_numba_core is not None
             and bool(getattr(self.problem, "use_fused_numba_thermo_kinetics", True))
@@ -393,7 +412,16 @@ class NativeSpeciesBackend:
 
             rho = np.empty(T_work.size, dtype=np.float64)
             cp = np.empty(T_work.size, dtype=np.float64)
-            _eval_thermo_kinetics_sparse_numba_core(
+            kernel = _eval_thermo_kinetics_sparse_numba_core
+            nv = self.n_species + 2
+            if (reuse_temperature and _eval_jacobian_grouped_core is not None
+                    and T_work.size > 0 and T_work.size % nv == 0):
+                blocks = T_work.reshape(-1, nv)
+                # Only column 1 (temperature) may differ from the base T.
+                # Composition dependence is always recomputed per column.
+                if np.all(blocks[:, 2:] == blocks[:, :1]):
+                    kernel = _eval_jacobian_grouped_core
+            kernel(
                 T_work,
                 Y_work,
                 self._P_float,

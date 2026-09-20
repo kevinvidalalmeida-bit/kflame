@@ -18,10 +18,14 @@ colisión se distribuyen con atribución a Cantera (BSD-3-Clause); el código V2
 ajusta y evalúa esas tablas sin importar Cantera. Utilizar datos moleculares y
 tablas bibliográficas no equivale a consultar el solver de referencia.
 
-La infraestructura `FreeFlameProblem` aún utiliza Cantera para construir la mezcla
-y el equilibrio HP inicial; los comparadores y ciertos diagnósticos también lo
-usan. Por ello la independencia se atribuye al cierre Soret y a los kernels,
-no a toda la aplicación. No se utiliza una llama Cantera como semilla de V2.
+`FreeFlameProblem` construye la mezcla y resuelve el equilibrio HP inicial con
+el lector YAML y la termodinámica NASA--7 nativos. Cantera se usa únicamente en
+los comparadores y en diagnósticos explícitamente marcados como tales. No se
+utiliza una llama Cantera como semilla en el arranque nativo por defecto.
+La auditoría de septiembre de 2026 también retiró la dependencia del generador
+FGM y su posprocesado; véase `validation/NATIVE_INDEPENDENCE_20260919.md`.
+Las campañas históricas que siguen conservaron su configuración original y
+no se presentan como ejecuciones retrospectivamente independientes de Cantera.
 
 ## Método
 

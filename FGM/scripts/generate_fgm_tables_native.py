@@ -34,7 +34,6 @@ from typing import Any
 # Respect an explicit user setting for other hardware or workloads.
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 
-import cantera as ct
 import numpy as np
 
 from fgm_common import (
@@ -83,13 +82,13 @@ materials_dir = str(v2_path / "materiales")
 if materials_dir not in sys.path:
     sys.path.insert(0, materials_dir)
 
-from run_saved_comparison import FlameCase, _resolve_mechanism
+from config import FlameCase
 from solver import solve_free_flame, SolveOptions
 from problem import FreeFlameProblem
 from state import interpolate_state, pack_state, unpack_state
-from mechanism_data import load_mechanism
+from mechanism_data import load_mechanism, resolve_mechanism as _resolve_mechanism
+from initialization_native import NativeMixture
 from species_backend_native import NativeSpeciesBackend
-from species_backend import SpeciesBackend
 
 
 def configure_numba_kinetics_threads(count: int) -> int:
@@ -375,8 +374,15 @@ def seed_cache_stats(cache_dir: Path) -> tuple[int, float]:
 
 
 def seed_cache_key(args: argparse.Namespace, resolved_mech: str) -> str:
+    mechanism_path = Path(resolved_mech)
     payload = {
         "mech": str(Path(resolved_mech).resolve()) if Path(resolved_mech).exists() else str(resolved_mech),
+        # A filename is not a physical identity: users can edit NASA, reaction
+        # or transport data in place. Old seeds remain on disk, but no longer
+        # masquerade as exact-cache hits after a mechanism change.
+        "mechanism_sha256": hashlib.sha256(mechanism_path.read_bytes()).hexdigest()
+        if mechanism_path.is_file() else None,
+        "native_transport_fits": "molecular-nasa-mm-v1",
         "fuel": str(args.fuel),
         "oxidizer": str(args.oxidizer),
         "transport_model": str(args.transport_model),
@@ -502,6 +508,38 @@ def make_solve_options(args: argparse.Namespace) -> SolveOptions:
 # Resolución de flamelet con V2 / backend nativo CPU
 # ---------------------------------------------------------------------------
 
+def tabulated_properties(problem, T, Y, progress_weights):
+    """Evaluate table fields using the selected backend and transport model."""
+    backend = problem.backend
+    # Solver state columns are strided. Reuse the kernels' contiguous-T
+    # specialization instead of compiling another signature during export.
+    T = np.ascontiguousarray(T, dtype=float)
+    # Match the normalized, nonnegative TPY state used by reference diagnostics.
+    y = problem._sanitize_Y(Y)
+    weights = np.array([progress_weights.get(s, 0.0) for s in problem.species_names])
+    if backend.backend_kind == 'cantera':
+        gas = backend.gas
+        fields = np.empty((5, len(T)))
+        for j, temperature in enumerate(T):
+            gas.TPY = temperature, problem.P, y[:, j]
+            fields[:, j] = (gas.density, gas.cp_mass, gas.thermal_conductivity,
+                            gas.heat_release_rate,
+                            weights @ (gas.net_production_rates * gas.molecular_weights))
+        return tuple(fields)
+    rho, cp, omega, hk = backend.eval_grid_thermo_kinetics_native(T, y)
+    cp_r = backend.thermo.cp_R(T)
+    if backend.uses_multicomponent_flux:
+        _, conductivity, _, _, _ = backend.multicomponent_transport.eval_faces(
+            T, problem.P, y, cp_r
+        )
+    else:
+        conductivity = backend.transport.thermal_conductivity(
+            T, backend.thermo.Y_to_X(y), cp_r
+        )
+    qdot = -np.sum(hk * backend.invW[:, None] * omega, axis=0)
+    return rho, cp, conductivity, qdot, weights @ omega
+
+
 def solve_flame_native(
     phi: float,
     args: argparse.Namespace,
@@ -512,11 +550,7 @@ def solve_flame_native(
     prev_prev_solution: dict[str, np.ndarray] | None = None,
     continuation_trust_ratio: float | None = None,
 ) -> tuple[FlameRecord, dict[str, np.ndarray], dict[str, Any]]:
-    gas = ct.Solution(args.mech)
-    gas.transport_model = str(args.transport_model)
-    gas.TP = float(args.T_in), float(args.P)
-    gas.set_equivalence_ratio(float(phi), args.fuel, args.oxidizer)
-    Z = float(gas.mixture_fraction(args.fuel, args.oxidizer, basis="mass"))
+    Z = compute_bilger_Z(phi, args, NativeMixture(mech_data))
 
     flame_case = FlameCase(
         mech=_resolve_mechanism(args.mech),
@@ -558,10 +592,11 @@ def solve_flame_native(
     def run_once(jacobian_mode: str):
         nonlocal selected_prediction
         problem = FreeFlameProblem(
-            flame_case, n_points=max(2, int(args.initial_grid_points))
+            flame_case, n_points=max(2, int(args.initial_grid_points)), mech_data=mech_data
         )
         problem.assume_finite_y = True
         if str(args.transport_backend).strip().lower() == "cantera-reference":
+            from species_backend import SpeciesBackend
             # Exact multicomponent/Soret face closure used only to verify the
             # V2 discretisation. It intentionally remains separate from the
             # native performance route.
@@ -722,29 +757,14 @@ def solve_flame_native(
     Y = np.asarray(x_reshaped[:, 2:], dtype=float).T # Shape: (n_species, n_points)
     z = np.asarray(problem.z, dtype=float)
 
-    # Posprocesado común de los campos tabulados. Cantera no interviene en la
-    # convergencia V2; se usa aquí para evaluar todos los campos con la misma
-    # convención que la referencia.
-    rho = np.zeros_like(T)
-    cp_mass = np.zeros_like(T)
-    conductivity = np.zeros_like(T)
-    qdot = np.zeros_like(T)
-    omega_beta = np.zeros_like(T)
-    species_index = {name: k for k, name in enumerate(gas.species_names)}
-
-    for j in range(z.size):
-        gas.TPY = T[j], args.P, Y[:, j]
-        rho[j] = gas.density
-        cp_mass[j] = gas.cp_mass
-        conductivity[j] = gas.thermal_conductivity
-        qdot[j] = gas.heat_release_rate
-        net_rates_mass = gas.net_production_rates * gas.molecular_weights
-        for species, weight in progress_weights.items():
-            if species in species_index:
-                omega_beta[j] += float(weight) * net_rates_mass[species_index[species]]
+    postprocess_start = time.perf_counter()
+    rho, cp_mass, conductivity, qdot, omega_beta = tabulated_properties(
+        problem, T, Y, progress_weights
+    )
+    postprocess_time_s = time.perf_counter() - postprocess_start
 
     c, beta, _ = compute_progress_variable(
-        species_names=list(gas.species_names),
+        species_names=problem.species_names,
         Y=Y,
         T=T,
         progress_weights=progress_weights,
@@ -813,6 +833,7 @@ def solve_flame_native(
         "n_refine_passes": int(len(report.get("passes", []))),
         "n_domain_expansions": int(len(report.get("expansion_events", []))),
         "solve_time_s": float(dt),
+        "postprocess_time_s": float(postprocess_time_s),
         "final_accepted": bool(final_accepted),
         "residual_inf": residual_inf,
         "weighted_step_norm": weighted_step_norm,
@@ -831,7 +852,7 @@ def solve_flame_from_seed_cache_worker(payload: tuple[int, float, str, argparse.
     mech_data = load_mechanism(resolved_mech)
     opts = make_solve_options(args)
     progress_weights = parse_progress_weights(args.progress_species)
-    n_species = ct.Solution(resolved_mech).n_species
+    n_species = mech_data.n_species
     seed_solution = load_seed_profile_npz(
         Path(seed_path_text), n_species=n_species, source="raw"
     )
@@ -1019,6 +1040,14 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--n-phi",      type=int,   default=5)
     p.add_argument("--phi-values", type=str,   default="",
                    help="Lista manual separada por comas. Ignora phi-min/max/n-phi.")
+    p.add_argument(
+        "--phi-schedule-json", type=str, default="",
+        help=(
+            "Calendario JSON con phi_resolved y marcas requested/bridge. "
+            "Permite reproducir una malla paramétrica adaptativa y conserva "
+            "la trazabilidad de los flamelets puente."
+        ),
+    )
     p.add_argument("--use-z-grid", action="store_true",
                    help="Barrer por Z objetivo en lugar de phi.")
     p.add_argument("--z-min",      type=float, default=0.03)
@@ -1216,10 +1245,39 @@ def main() -> None:
     if int(args.local_jacobian_refresh_min_blocks) < 1:
         raise SystemExit("--local-jacobian-refresh-min-blocks debe ser al menos 1")
     t_global0 = time.perf_counter()
-    bilger_gas = ct.Solution(args.mech)
+    resolved_mech = _resolve_mechanism(args.mech)
+    mech_data = load_mechanism(resolved_mech)
+    bilger_gas = NativeMixture(mech_data)
+    cantera_version = None
+    if args.transport_backend == 'cantera-reference':
+        import cantera
+        cantera_version = cantera.__version__
 
+    schedule_path = str(args.phi_schedule_json).strip()
     z_mode = bool(args.use_z_grid or args.z_values.strip())
-    if z_mode:
+    requested_flags: np.ndarray | None = None
+    bridge_flags: np.ndarray | None = None
+    if schedule_path:
+        if z_mode:
+            raise SystemExit("--phi-schedule-json no se combina con una malla Z.")
+        payload = json.loads(Path(schedule_path).expanduser().read_text(encoding="utf-8"))
+        phi_vals = np.asarray(payload.get("phi_resolved", []), dtype=float)
+        if phi_vals.size < 2 or np.any(phi_vals <= 0.0) or np.any(np.diff(phi_vals) <= 0.0):
+            raise SystemExit("El calendario debe contener phi_resolved positivos y crecientes.")
+        requested_flags = np.asarray(
+            payload.get("requested", np.ones(phi_vals.size, dtype=bool)), dtype=bool
+        )
+        bridge_flags = np.asarray(
+            payload.get("bridge", np.zeros(phi_vals.size, dtype=bool)), dtype=bool
+        )
+        if requested_flags.shape != phi_vals.shape or bridge_flags.shape != phi_vals.shape:
+            raise SystemExit("Las marcas requested/bridge deben coincidir con phi_resolved.")
+        if np.any(requested_flags == bridge_flags):
+            raise SystemExit("Cada flamelet debe marcarse como requested o bridge, pero no ambos.")
+        z_targets = np.array(
+            [compute_bilger_Z(phi, args, bilger_gas) for phi in phi_vals], dtype=float
+        )
+    elif z_mode:
         z_targets = parse_z_values(args)
         phi_vals = np.array(
             [
@@ -1240,6 +1298,11 @@ def main() -> None:
             [compute_bilger_Z(phi, args, bilger_gas) for phi in phi_vals],
             dtype=float,
         )
+
+    if requested_flags is None:
+        requested_flags = np.ones(phi_vals.size, dtype=bool)
+    if bridge_flags is None:
+        bridge_flags = np.zeros(phi_vals.size, dtype=bool)
 
     if np.any(phi_vals <= 0.0) or np.any(np.diff(phi_vals) <= 0.0):
         raise SystemExit(
@@ -1269,7 +1332,7 @@ def main() -> None:
     print("=" * 70)
     print("FGM TABLE GENERATOR (V2 native CPU) - Z-C space")
     print("=" * 70)
-    print(f"Cantera version : {ct.__version__}")
+    print(f"Backend         : {args.transport_backend}")
     print(f"Reference flow  : {V2_REFERENCE_WORKFLOW}")
     print("External tool   : none (Streamline Flamelet Table Tool not invoked)")
     print(f"Output          : {out_dir.resolve()}")
@@ -1295,6 +1358,8 @@ def main() -> None:
         f"c_fine={args.c_fine}, bias={args.refine_bias:g}"
     )
     print(f"mode            : {'Z-grid' if z_mode else 'phi-grid'}")
+    if schedule_path:
+        print(f"phi schedule    : {Path(schedule_path).expanduser().resolve()}")
     print("continuation    : local secant with trust-region restart")
     print(f"phis            : {phi_vals}")
     if z_mode:
@@ -1309,8 +1374,6 @@ def main() -> None:
 
     # === V2 NATIVE BACKEND SETUP ===
     print("Inicializando backend nativo para el barrido...")
-    resolved_mech = _resolve_mechanism(args.mech)
-    mech_data = load_mechanism(resolved_mech)
     opts = make_solve_options(args)
     prev_solution: dict[str, np.ndarray] | None = None
     prev_prev_solution: dict[str, np.ndarray] | None = None
@@ -1350,7 +1413,7 @@ def main() -> None:
         seed_path = Path(args.seed_profile_npz).expanduser()
         prev_solution = load_seed_profile_npz(
             seed_path,
-            n_species=ct.Solution(resolved_mech).n_species,
+            n_species=mech_data.n_species,
             source=str(args.seed_profile_source),
         )
         print(f"seed profile    : {seed_path.resolve()} [{args.seed_profile_source}]")
@@ -1359,7 +1422,7 @@ def main() -> None:
             args,
             resolved_mech=resolved_mech,
             phi=float(phi_vals[0]),
-            n_species=ct.Solution(resolved_mech).n_species,
+            n_species=mech_data.n_species,
         )
         if cached_seed is not None and cached_path is not None:
             prev_solution = cached_seed
@@ -1418,16 +1481,18 @@ def main() -> None:
                         f"wstep={rec.weighted_step_norm:.3e}."
                     )
         records = [rec for rec in records_parallel if rec is not None]
-        species_names = list(ct.Solution(args.mech).species_names)
+        species_names = list(mech_data.species_names)
         for index, rec in enumerate(records):
+            rec.requested = bool(requested_flags[index])
+            rec.bridge = bool(bridge_flags[index])
             continuation_trace.append({
                 "mode": "cached-parallel",
                 "requested_index": int(index),
                 "phi_from": None,
                 "phi_target": float(rec.phi),
                 "phi_trial": float(rec.phi),
-                "requested": True,
-                "bridge": False,
+                "requested": bool(rec.requested),
+                "bridge": bool(rec.bridge),
                 "accepted": bool(rec.solve_ok and rec.final_accepted),
                 "predictor_kind": rec.predictor_kind,
                 "prediction_defect": rec.prediction_defect,
@@ -1460,7 +1525,7 @@ def main() -> None:
                     args,
                     resolved_mech=resolved_mech,
                     phi=float(phi),
-                    n_species=ct.Solution(resolved_mech).n_species,
+                    n_species=mech_data.n_species,
                 )
                 if seed_for_phi is not None and seed_path_for_phi is not None:
                     seed_path_text = str(seed_path_for_phi.resolve())
@@ -1484,6 +1549,8 @@ def main() -> None:
                     None if seed_for_phi is not None else prev_prev_solution
                 ),
             )
+            rec.requested = bool(requested_flags[i - 1])
+            rec.bridge = bool(bridge_flags[i - 1])
             records.append(rec)
             continuation_trace.append({
                 "mode": "fixed-secant",
@@ -1491,8 +1558,8 @@ def main() -> None:
                 "phi_from": None if prev_solution is None else float(np.asarray(prev_solution["phi"]).ravel()[0]),
                 "phi_target": float(phi),
                 "phi_trial": float(phi),
-                "requested": True,
-                "bridge": False,
+                "requested": bool(rec.requested),
+                "bridge": bool(rec.bridge),
                 "accepted": bool(rec.solve_ok and rec.final_accepted),
                 **solve_trace,
             })
@@ -1513,7 +1580,7 @@ def main() -> None:
                 )
 
             if species_names is None:
-                species_names = list(ct.Solution(args.mech).species_names)
+                species_names = list(mech_data.species_names)
             c_tmp, _, used = compute_progress_variable(
                 species_names=species_names, Y=rec.Y, T=rec.T,
                 progress_weights=progress_weights,
@@ -1558,7 +1625,11 @@ def main() -> None:
     )
     continuation_schedule = {
         "coordinate": "log(phi)",
-        "phi_requested": [float(value) for value in phi_vals],
+        "phi_requested": [
+            float(value) for value, requested in zip(
+                phi_vals, requested_flags, strict=True
+            ) if requested
+        ],
         "phi_resolved": [float(value) for value in tables["phi_grid"]],
         "requested": [bool(value) for value in tables["requested"]],
         "bridge": [bool(value) for value in tables["bridge"]],
@@ -1587,7 +1658,11 @@ def main() -> None:
             "V2 native solve plus configured continuation/cache/parallel policy; "
             "excludes any external Streamline Flamelet Table Tool execution"
         ),
-        "cantera_version": ct.__version__,
+        "cantera_version": cantera_version,
+        "initialization_backend": "native_nasa7_hp",
+        "postprocessing_backend": "native" if args.transport_backend == 'native' else 'cantera-reference',
+        "mixture_stream_basis": "mole",
+        "bilger_reference_stream_basis": "mass (historical convention)",
         "args": vars(args),
         "mode": "Z-grid" if z_mode else "phi-grid",
         "z_targets": [float(z) for z in z_targets],

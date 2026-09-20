@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
+import sys
 from typing import Any
 
-import cantera as ct
 import numpy as np
+
+_MATERIALS = Path(__file__).resolve().parents[2] / 'V2' / 'materiales'
+if str(_MATERIALS) not in sys.path:
+    sys.path.insert(0, str(_MATERIALS))
+from mechanism_data import load_mechanism
+from initialization_native import NativeMixture
 
 
 def parse_progress_weights(text: str) -> dict[str, float]:
@@ -58,7 +65,7 @@ def parse_z_values(args: argparse.Namespace) -> np.ndarray:
 
 
 def _bilger_z(
-    gas: ct.Solution,
+    gas: Any,
     phi: float,
     args: argparse.Namespace,
 ) -> float:
@@ -70,10 +77,10 @@ def _bilger_z(
 def compute_bilger_Z(
     phi: float,
     args: argparse.Namespace,
-    gas: ct.Solution | None = None,
+    gas: Any | None = None,
 ) -> float:
     """Return the Bilger mixture fraction for a premixed composition."""
-    return _bilger_z(gas or ct.Solution(args.mech), phi, args)
+    return _bilger_z(gas if gas is not None else NativeMixture(load_mechanism(args.mech)), phi, args)
 
 
 def invert_bilger_Z_to_phi(
@@ -84,7 +91,7 @@ def invert_bilger_Z_to_phi(
     phi_hi: float,
     tol: float = 1e-10,
     max_iter: int = 80,
-    gas: ct.Solution | None = None,
+    gas: Any | None = None,
 ) -> float:
     """Invert the monotone Bilger ``Z(phi)`` relation on a logarithmic bracket."""
     if not 0.0 <= Z_target <= 1.0:
@@ -94,7 +101,7 @@ def invert_bilger_Z_to_phi(
     lower = max(float(phi_lo), 1e-12)
     upper = max(float(phi_hi), lower * 1.001)
 
-    gas = gas or ct.Solution(args.mech)
+    gas = gas if gas is not None else NativeMixture(load_mechanism(args.mech))
     z_lower = _bilger_z(gas, lower, args)
     z_upper = _bilger_z(gas, upper, args)
     if not z_lower <= target <= z_upper:

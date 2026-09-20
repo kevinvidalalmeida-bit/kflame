@@ -4,7 +4,10 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-import cantera as ct
+try:
+    import cantera as ct
+except ImportError:
+    ct = None
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'V2' / 'materiales'))
@@ -14,6 +17,7 @@ from kinetics_native import _make_mass_action_plan, _mass_action_product_python
 
 
 class SignedKineticsTests(unittest.TestCase):
+    @unittest.skipIf(ct is None, 'Optional Cantera reference dependency not installed')
     def test_specialized_fused_rates_across_temperature_pressure_and_progress(self):
         for mech, fuel in (('gri30.yaml', 'CH4'), ('h2o2.yaml', 'H2')):
             path = str(Path(ct.get_data_directories()[-1]) / mech)
@@ -77,6 +81,7 @@ class SignedKineticsTests(unittest.TestCase):
             self.assertEqual(_negative_mass_action_factor_python(
                 np.array(c), np.arange(2), np.array(orders), 2), expected)
 
+    @unittest.skipIf(ct is None, 'Optional Cantera reference dependency not installed')
     def test_negative_trace_sources_match_reference_in_all_native_paths(self):
         for mech in ('h2o2.yaml', 'gri30.yaml'):
             for atm in (1, 10):

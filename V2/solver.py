@@ -30,7 +30,6 @@ from equations import (
     solve_linear,
     update_transient,
 )
-from species_backend import SpeciesBackend
 from state import build_transient_mask, interpolate_state, pack_state, unpack_state
 
 try:
@@ -195,7 +194,10 @@ def _make_backend(problem):
         cls = current.__class__
         return cls(problem)
 
-    return SpeciesBackend(problem)
+    # Native is the production default.  The Cantera backend remains available
+    # to comparison scripts through an explicit backend_factory.
+    from species_backend_native import NativeSpeciesBackend
+    return NativeSpeciesBackend(problem)
 
 
 def _refresh_backend(problem) -> None:

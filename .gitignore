@@ -2,6 +2,15 @@
 __pycache__/
 *.py[cod]
 .ruff_cache/
+.pytest_cache/
+*.egg-info/
+/build/
+/dist/
+
+# Local research manuscripts, results, maintenance backups and environments.
+/.local/
+/tmp/
+/runs/
 
 # Virtual environments
 .venv/

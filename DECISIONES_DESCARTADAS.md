@@ -476,3 +476,16 @@ guardas, tolerancias ni producción para obtener estos resultados.
 La compilación del recorrido completo de LU se prueba aparte: no es la
 disposición Fortran descartada ni reutilización de factores envejecidos.
 Se contabilizará también su compilación por proceso antes de adoptarla.
+
+## Reutilización térmica por bloque revisada (2026-09-20)
+
+La evaluación del 06/09 sobre reutilización térmica no se extrapola al kernel
+actual. La nueva implementación agrupa las perturbaciones [u,T,Y...] por nodo,
+evalúa dos conjuntos de factores térmicos y conserva toda la dependencia
+composicional de cinética/falloff. Tres parejas alternadas en cada uno de
+CH4/1 atm, CH4/10 atm, H2-Soret/1 atm y H2-Soret/10 atm redujeron las medianas
+totales un 11.6%, 8.7%, 6.6% y 7.9%, respectivamente. Las 24 corridas medidas
+fueron aceptadas y las 12 parejas conservaron perfiles bit a bit. Se activa
+en la precomputación nativa del Jacobiano, sin cambiar tolerancias ni física.
+La compilación inicial no está incluida en esas ganancias. Protocolo, alcance
+y evidencia: `validation/OPTIMIZATION_STAGES_20260920.md`.

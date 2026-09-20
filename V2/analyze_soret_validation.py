@@ -7,12 +7,13 @@ from pathlib import Path
 import sys
 from types import SimpleNamespace
 
-import cantera as ct
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent / "materiales"))
 from species_backend_native import NativeSpeciesBackend
 from equations import _multicomponent_flux
+from mechanism_data import load_mechanism, R_UNIV, _ATOMIC_WEIGHTS
+from initialization_native import fresh_mixture
 
 
 def elemental_flux_diagnostics(case, fields, solver):
@@ -22,20 +23,20 @@ def elemental_flux_diagnostics(case, fields, solver):
     identical to the nonuniform-grid upwind residual used by either solver.
     Its error must be assessed under mesh refinement.
     """
-    gas = ct.Solution(case["mech"], transport_model="multicomponent")
-    gas.TP = case["T_in"], case["P"]
-    gas.set_equivalence_ratio(case["phi"], case["fuel"], case["oxidizer"])
-    element_mass = np.array([[gas.n_atoms(k, e) * gas.atomic_weight(e) / gas.molecular_weights[k]
-                              for k in range(gas.n_species)] for e in range(gas.n_elements)])
-    fresh_element = element_mass @ gas.Y
+    mech = load_mechanism(case['mech'])
+    atomic_weights = np.array([_ATOMIC_WEIGHTS[e] for e in mech.element_names])
+    element_mass = mech.atom_matrix * atomic_weights[:, None] / mech.molecular_weights[None, :]
+    fresh_element = element_mass @ fresh_mixture(mech, case['phi'], case['fuel'], case['oxidizer'])
     z, t, y, u = (fields[k] for k in ("z", "T", "Y", "u"))
-    w = gas.molecular_weights
-    rho = case["P"] / (ct.gas_constant * t * np.sum(y / w[:, None], axis=0))
+    w = mech.molecular_weights
+    rho = case["P"] / (R_UNIV * t * np.sum(y / w[:, None], axis=0))
     tf, yf = .5 * (t[:-1] + t[1:]), .5 * (y[:, :-1] + y[:, 1:])
     if solver == "native":
         native = NativeSpeciesBackend(SimpleNamespace(case=SimpleNamespace(**case), P=case["P"]))
         rf, _lf, wf, dm, dt = native.eval_multicomponent_face_transport(tf, yf)
     else:
+        import cantera as ct  # Explicit reference diagnostics only.
+        gas = ct.Solution(case['mech'], transport_model='multicomponent')
         rf, wf = np.empty(tf.size), np.empty(tf.size)
         dm, dt = np.empty((w.size, w.size, tf.size)), np.empty((w.size, tf.size))
         for j in range(tf.size):
@@ -53,10 +54,10 @@ def elemental_flux_diagnostics(case, fields, solver):
         convention="Midpoint reconstructed convective + diffusive elemental flux; mesh-sensitive diagnostic",
         max_diffusive_mass_sum=float(np.max(np.abs(flux.sum(axis=0)))),
         min_mass_fraction=float(y.min()),
-        elements={gas.element_names[e]: dict(inlet_flux=float(expected[e]),
+        elements={mech.element_names[e]: dict(inlet_flux=float(expected[e]),
                    max_absolute_deviation=float(discrepancy[e]),
                    relative_deviation=float(discrepancy[e] / abs(expected[e])) if abs(expected[e]) > 1e-12 else None)
-                  for e in range(gas.n_elements)},
+                  for e in range(len(mech.element_names))},
     )
 
 
@@ -69,6 +70,7 @@ def crossing(z, t, target):
 
 
 def main():
+    import cantera as ct  # This entry point compares native and Cantera runs.
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory", type=Path)
     args = parser.parse_args()

@@ -7,21 +7,22 @@ Implements the same model as Cantera's MixTransport / GasTransport:
   - Eucken correlation for pure-species conductivity
   - Mixture-averaged diffusion coefficients
 
-Uses Neufeld et al. (1972) correlations for collision integrals Ω^(1,1)*
-and Ω^(2,2)* instead of tabulated Monchick-Mason data.  Accuracy: <0.5%.
+Fits viscosity, conductivity and binary diffusion natively from molecular
+parameters, NASA thermodynamics and local Monchick-Mason collision tables.
+No mechanism-specific exported property fits are read. Neufeld correlations
+remain only in explicit legacy analytical helper methods.
 
 NO Cantera dependency. CPU NumPy arrays.
 """
 from __future__ import annotations
 import math
 import numpy as np
-from mechanism_data import MechanismData, R_UNIV, BOLTZMANN, AVOGADRO
-import json
-from pathlib import Path
+from mechanism_data import MechanismData, R_UNIV, BOLTZMANN, AVOGADRO, EPSILON_0
+from collision_integrals_native import native_transport_fits, native_conductivity_fits, _array_key
+from collections import OrderedDict
 
 # Physical constants
 PI = math.pi
-EPSILON_0 = 8.854187817e-12  # vacuum permittivity [F/m]
 
 try:
     from numba import njit
@@ -130,14 +131,86 @@ def _host_array(arr):
         return arr.get()
     return np.asarray(arr)
 
-# Load pre-exported Cantera transport polynomials (ln(T) basis)
-_TRANSPORT_POLY_FILE = Path(__file__).parent / "cantera_transport_poly_coeffs.json"
-try:
-    with open(_TRANSPORT_POLY_FILE, "r", encoding="utf-8") as f:
-        _CANTERA_TRANSPORT_POLY = json.load(f)
-except FileNotFoundError:
-    _CANTERA_TRANSPORT_POLY = None
-    print(f"Warning: Cantera transport polynomial file not found at {_TRANSPORT_POLY_FILE}")
+
+_PAIR_CACHE = OrderedDict()
+
+
+def _build_pair_data(mech):
+    """Pressure/temperature-independent molecular data; NumPy CPU only."""
+    n = mech.n_species
+    # Pre-compute pair parameters (symmetric)
+    _red_mass = np.zeros((n, n))
+    _eps_p = np.zeros((n, n))
+    _sig_p = np.zeros((n, n))
+    _del_p = np.zeros((n, n))
+
+    # Perform the pair mixing rules in NumPy (it's one-time init)
+    eps_cpu = np.asarray(_host_array(mech.well_depth), dtype=float)
+    sig_cpu = np.asarray(_host_array(mech.diameter), dtype=float)
+    dip_cpu = np.asarray(_host_array(mech.dipole), dtype=float)
+    alp_cpu = np.asarray(_host_array(mech.polarizability), dtype=float)
+    pol_cpu = dip_cpu > 0.0
+    mw_cpu = np.asarray(_host_array(mech.molecular_weights), dtype=float)
+
+    for i in range(n):
+        for j in range(i, n):
+            mi = mw_cpu[i] / AVOGADRO / 1000.0
+            mj = mw_cpu[j] / AVOGADRO / 1000.0
+            _red_mass[i, j] = _red_mass[j, i] = mi * mj / (mi + mj)
+
+            sigma_ij = 0.5 * (sig_cpu[i] + sig_cpu[j])
+            eps_ij   = math.sqrt(eps_cpu[i] * eps_cpu[j])
+
+            # polar correction
+            f_eps, f_sigma = 1.0, 1.0
+            if pol_cpu[i] != pol_cpu[j]:
+                kp  = i if pol_cpu[i] else j
+                knp = j if kp == i else i
+                d3np = sig_cpu[knp] ** 3
+                d3p  = sig_cpu[kp] ** 3
+                if d3np > 1e-100 and d3p > 1e-100 and eps_cpu[kp] > 1e-100 and eps_cpu[knp] > 1e-100:
+                    alpha_star = alp_cpu[knp] / d3np
+                    mu_p_star = dip_cpu[kp] / math.sqrt(4 * PI * EPSILON_0 * d3p * eps_cpu[kp] * BOLTZMANN)
+                    xi = 1.0 + 0.25 * alpha_star * mu_p_star**2 * math.sqrt(eps_cpu[kp] / eps_cpu[knp])
+                    f_sigma = xi ** (-1.0 / 6.0)
+                    f_eps = xi * xi
+
+            _sig_p[i, j] = _sig_p[j, i] = sigma_ij * f_sigma
+            _eps_p[i, j] = _eps_p[j, i] = eps_ij * f_eps
+
+            # reduced dipole moment
+            di = dip_cpu[i]
+            dj = dip_cpu[j]
+            d_ij = math.sqrt(di * dj) if di > 0 and dj > 0 else 0.0
+            if eps_ij > 1e-100 and sigma_ij > 1e-100:
+                _del_p[i, j] = _del_p[j, i] = (0.5 * d_ij**2
+                    / (4 * PI * EPSILON_0 * eps_ij * BOLTZMANN * sigma_ij**3))
+
+
+    # Pre-compute Wilke mixing rule weight ratios
+    _wratjk = np.zeros((n, n))
+    for j in range(n):
+        for k in range(j, n):
+            _wratjk[j, k] = math.sqrt(mw_cpu[j] / mw_cpu[k])
+            _wratjk[k, j] = math.sqrt(_wratjk[j, k])
+
+    return _red_mass, _eps_p, _sig_p, _del_p, _wratjk
+
+
+def _pair_data(mech):
+    key = _array_key((mech.molecular_weights, mech.well_depth, mech.diameter,
+                      mech.dipole, mech.polarizability))
+    if key in _PAIR_CACHE:
+        _PAIR_CACHE.move_to_end(key)
+        return _PAIR_CACHE[key]
+    result = _build_pair_data(mech)
+    for array in result:
+        array.setflags(write=False)
+    _PAIR_CACHE[key] = result
+    if len(_PAIR_CACHE) > 8:
+        _PAIR_CACHE.popitem(last=False)
+    return result
+
 
 class NativeTransport:
     """
@@ -166,136 +239,34 @@ class NativeTransport:
         self.crot = self.xp.where(self.geometry == 0, 0.0,
                     self.xp.where(self.geometry == 1, 1.0, 1.5))
 
-        # Pre-compute pair parameters (symmetric)
-        _red_mass = np.zeros((n, n))
-        _eps_p = np.zeros((n, n))
-        _sig_p = np.zeros((n, n))
-        _del_p = np.zeros((n, n))
-
-        # Perform the pair mixing rules in NumPy (it's one-time init)
-        eps_cpu = np.asarray(_host_array(mech.well_depth), dtype=float)
-        sig_cpu = np.asarray(_host_array(mech.diameter), dtype=float)
-        dip_cpu = np.asarray(_host_array(mech.dipole), dtype=float)
-        alp_cpu = np.asarray(_host_array(mech.polarizability), dtype=float)
-        pol_cpu = dip_cpu > 0.0
-        mw_cpu = np.asarray(_host_array(mech.molecular_weights), dtype=float)
-
-        for i in range(n):
-            for j in range(i, n):
-                mi = mw_cpu[i] / AVOGADRO / 1000.0
-                mj = mw_cpu[j] / AVOGADRO / 1000.0
-                _red_mass[i, j] = _red_mass[j, i] = mi * mj / (mi + mj)
-
-                sigma_ij = 0.5 * (sig_cpu[i] + sig_cpu[j])
-                eps_ij   = math.sqrt(eps_cpu[i] * eps_cpu[j])
-
-                # polar correction
-                f_eps, f_sigma = 1.0, 1.0
-                if pol_cpu[i] != pol_cpu[j]:
-                    kp  = i if pol_cpu[i] else j
-                    knp = j if kp == i else i
-                    d3np = sig_cpu[knp] ** 3
-                    d3p  = sig_cpu[kp] ** 3
-                    if d3np > 1e-100 and d3p > 1e-100 and eps_cpu[kp] > 1e-100 and eps_cpu[knp] > 1e-100:
-                        alpha_star = alp_cpu[knp] / d3np
-                        mu_p_star = dip_cpu[kp] / math.sqrt(4 * PI * EPSILON_0 * d3p * eps_cpu[kp] * BOLTZMANN)
-                        xi = 1.0 + 0.25 * alpha_star * mu_p_star**2 * math.sqrt(eps_cpu[kp] / eps_cpu[knp])
-                        f_sigma = xi ** (-1.0 / 6.0)
-                        f_eps = xi * xi
-
-                _sig_p[i, j] = _sig_p[j, i] = sigma_ij * f_sigma
-                _eps_p[i, j] = _eps_p[j, i] = eps_ij * f_eps
-                
-                # reduced dipole moment
-                di = dip_cpu[i]
-                dj = dip_cpu[j]
-                d_ij = math.sqrt(di * dj) if di > 0 and dj > 0 else 0.0
-                if eps_ij > 1e-100 and sigma_ij > 1e-100:
-                    _del_p[i, j] = _del_p[j, i] = (0.5 * d_ij**2
-                        / (4 * PI * EPSILON_0 * eps_ij * BOLTZMANN * sigma_ij**3))
-
-        # Pair coefficients stored as contiguous NumPy arrays.
-        self._reduced_mass = self.xp.asarray(_red_mass)
-        self._eps_pair = self.xp.asarray(_eps_p)
-        self._sigma_pair = self.xp.asarray(_sig_p)
-        self._delta_pair = self.xp.asarray(_del_p)
-
-        # Pre-compute Wilke mixing rule weight ratios
-        _wratjk = np.zeros((n, n))
-        for j in range(n):
-            for k in range(j, n):
-                _wratjk[j, k] = math.sqrt(mw_cpu[j] / mw_cpu[k])
-                _wratjk[k, j] = math.sqrt(_wratjk[j, k])
-        self._wratjk = self.xp.asarray(_wratjk)
+        (self._reduced_mass, self._eps_pair, self._sigma_pair,
+         self._delta_pair, self._wratjk) = tuple(
+            self.xp.asarray(value) for value in _pair_data(mech)
+        )
 
         self._tiny = 1e-300
-        self._has_transport_poly = _CANTERA_TRANSPORT_POLY is not None
-        self._init_cantera_transport_poly()
+        self._init_native_transport_poly()
 
-    def _init_cantera_transport_poly(self):
-        """Load Cantera transport polynomial coefficients (ln(T) basis) if available."""
-        n = self.n_sp
-        visc_cpu = np.zeros((n, 5), dtype=float)
-        cond_cpu = np.zeros((n, 5), dtype=float)
-        diff_cpu = np.zeros((n, n, 5), dtype=float)
-        has_visc = np.zeros(n, dtype=bool)
-        has_cond = np.zeros(n, dtype=bool)
-        has_diff = np.zeros((n, n), dtype=bool)
-
-        if self._has_transport_poly:
-            species_data = _CANTERA_TRANSPORT_POLY.get("species", {})
-            for i, name in enumerate(self.mech.species_names):
-                entry = species_data.get(name, None)
-                if entry is None:
-                    continue
-
-                vc = entry.get("visc_coeffs", None)
-                cc = entry.get("cond_coeffs", None)
-
-                if vc is not None and len(vc) >= 5:
-                    visc_cpu[i, :] = np.asarray(vc[:5], dtype=float)
-                    has_visc[i] = True
-                if cc is not None and len(cc) >= 5:
-                    cond_cpu[i, :] = np.asarray(cc[:5], dtype=float)
-                    has_cond[i] = True
-
-            diff_data = _CANTERA_TRANSPORT_POLY.get("binary_diff_coeffs", None)
-            if diff_data is not None:
-                try:
-                    diff_arr = np.asarray(diff_data, dtype=float)
-                    # The archive stores its own species order. A reduced or
-                    # reordered mechanism must map by name, not take [:n,:n].
-                    for i, name_i in enumerate(self.mech.species_names):
-                        index_i = species_data.get(name_i, {}).get("index")
-                        for j, name_j in enumerate(self.mech.species_names):
-                            index_j = species_data.get(name_j, {}).get("index")
-                            if (index_i is not None and index_j is not None
-                                    and 0 <= index_i < diff_arr.shape[0]
-                                    and 0 <= index_j < diff_arr.shape[1]
-                                    and diff_arr.shape[2] >= 5):
-                                diff_cpu[i, j] = diff_arr[index_i, index_j, :5]
-                                has_diff[i, j] = True
-                except (TypeError, ValueError, IndexError):
-                    has_diff[:, :] = False
-
-        self._visc_poly = self.xp.asarray(visc_cpu)
-        self._cond_poly = self.xp.asarray(cond_cpu)
-        self._diff_poly = self.xp.asarray(diff_cpu)
-        self._has_visc_poly_cpu = has_visc
-        self._has_cond_poly_cpu = has_cond
-        self._has_diff_poly_cpu = has_diff
-        self._has_visc_poly = self.xp.asarray(has_visc)
-        self._has_cond_poly = self.xp.asarray(has_cond)
-        self._has_diff_poly = self.xp.asarray(has_diff)
+    def _init_native_transport_poly(self):
+        """Build all fits from this mechanism, never from a species-name archive."""
+        _, viscosity, diffusion = native_transport_fits(self.mech, self)
+        conductivity = native_conductivity_fits(self.mech, self)
+        self._visc_poly = self.xp.asarray(viscosity)
+        self._cond_poly = self.xp.asarray(conductivity)
+        self._diff_poly = self.xp.asarray(diffusion)
+        self._has_visc_poly_cpu = np.ones(self.n_sp, dtype=bool)
+        self._has_cond_poly_cpu = np.ones(self.n_sp, dtype=bool)
+        self._has_diff_poly_cpu = np.ones((self.n_sp, self.n_sp), dtype=bool)
+        self._has_visc_poly = self.xp.asarray(self._has_visc_poly_cpu)
+        self._has_cond_poly = self.xp.asarray(self._has_cond_poly_cpu)
+        self._has_diff_poly = self.xp.asarray(self._has_diff_poly_cpu)
         self._fast_poly_available = (
             _eval_faces_poly_numba_core is not None
             and getattr(self.xp, "__name__", "") == "numpy"
-            and bool(has_cond.all())
-            and bool(has_diff.all())
         )
 
     def eval_faces_poly_fast(self, T, P: float, Y: np.ndarray, invW: np.ndarray):
-        """Fast CPU path for face transport using Cantera polynomial fits."""
+        """Fast CPU path for face transport using native polynomial fits."""
         if not self._fast_poly_available:
             return None
         return _eval_faces_poly_numba_core(
@@ -430,7 +401,7 @@ class NativeTransport:
             return self.xp.sum((Xsafe * visc_k) / self.xp.maximum(denom, self._tiny))
 
     # ------------------------------------------------------------------
-    #  Pure-species thermal conductivity (Empirical Cantera polynomials)
+    #  Pure-species thermal conductivity (native molecular/NASA fits)
     # ------------------------------------------------------------------
     def _species_conductivities_eucken(self, T, cp_R: np.ndarray) -> np.ndarray:
         """Fallback Eucken/Mathur pure-species conductivity model [W/(m?K)]."""
@@ -508,7 +479,7 @@ class NativeTransport:
             return cond if is_grid else cond[:, 0]
 
         if cp_R is None:
-            raise ValueError('cp_R is required when Cantera conductivity polynomials are unavailable.')
+            raise ValueError('cp_R is required for the legacy analytical conductivity helper.')
 
         cond = self._species_conductivities_eucken(T, cp_R)
         if bool(self._has_cond_poly_cpu.any()):

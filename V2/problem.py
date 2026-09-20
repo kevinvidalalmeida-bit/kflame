@@ -12,10 +12,18 @@ los reemplaza correctamente).
 from __future__ import annotations
 
 import numpy as np
-import cantera as ct
+from pathlib import Path
+import sys
 
 from solver import initial_grid
 from state import pack_state, C_Y
+
+_MATERIALS = Path(__file__).resolve().parent / "materiales"
+if str(_MATERIALS) not in sys.path:
+    sys.path.insert(0, str(_MATERIALS))
+from mechanism_data import load_mechanism
+from thermo_native import NativeThermo
+from initialization_native import fresh_mixture, hp_equilibrium
 
 
 def _transition_profile(z, width, left, right, locs=(0.0, 0.3, 0.5, 1.0)):
@@ -30,32 +38,27 @@ def _transition_profile(z, width, left, right, locs=(0.0, 0.3, 0.5, 1.0)):
 
 
 class FreeFlameProblem:
-    def __init__(self, case, n_points: int = 8, locs=(0.0, 0.3, 0.5, 1.0)):
+    def __init__(self, case, n_points: int = 8, locs=(0.0, 0.3, 0.5, 1.0), *, mech_data=None):
         self.case = case
         self.locs = tuple(locs)
 
         # ---- Termodinámica de referencia ----
-        gas = ct.Solution(case.mech)
-        gas.TP = case.T_in, case.P
-        gas.set_equivalence_ratio(case.phi, case.fuel, case.oxidizer)
-
-        self.species_names = list(gas.species_names)
-        self.n_species = gas.n_species
+        self.mech_data = mech_data if mech_data is not None else load_mechanism(case.mech)
+        self._thermo = NativeThermo(self.mech_data)
+        self.species_names = list(self.mech_data.species_names)
+        self.n_species = self.mech_data.n_species
         self.jacobian_mode = "numba_local"
         self.n_vars_per_point = 2 + self.n_species   # U, T, Y0..YK
 
         self.P = case.P
         self.T_in = case.T_in
-        self.Y_in = gas.Y.copy()
+        self.Y_in = fresh_mixture(self.mech_data, case.phi, case.fuel, case.oxidizer)
 
         # Equilibrio adiabático (para conjetura inicial)
-        gas_eq = ct.Solution(case.mech)
-        gas_eq.TPY = case.T_in, case.P, self.Y_in
-        gas_eq.equilibrate("HP")
-        self.T_ad = gas_eq.T
-        self.Y_eq = gas_eq.Y.copy()
-        self.rho_in = gas.density
-        self.rho_eq = gas_eq.density
+        self.rho_in = float(self._thermo.density(self.T_in, self.P, self.Y_in))
+        self.T_ad, self.Y_eq, self.rho_eq = hp_equilibrium(
+            self.mech_data, self.T_in, self.P, self.Y_in
+        )
 
         # ---- Malla ----
         cluster_sigma = None
@@ -122,12 +125,8 @@ class FreeFlameProblem:
 
         # Bounds por componente (C_U=0, C_T=1, C_Y=2..)
         self.T_lower_bound = 200.0
-        self.T_upper_bound = 2.0 * float(gas.max_temp)
+        self.T_upper_bound = 2.0 * float(self.mech_data.max_temperature)
         self.Y_lower_bound = -1e-7  # Cantera: lo=-1e-7 para todas las especies
-
-        # Gas auxiliar para normalización
-        self._reset_gas = ct.Solution(case.mech)
-        self._reset_gas.TP = case.T_in, case.P
 
     # ------------------------------------------------------------------
     #  Saneado de estado (Domain1D::resetBadValues)
@@ -139,8 +138,7 @@ class FreeFlameProblem:
         s = float(Y_col.sum())
         if s <= 0.0:
             return self.Y_in.copy()
-        self._reset_gas.Y = Y_col
-        return self._reset_gas.Y.copy()
+        return Y_col / s
 
     def _sanitize_Y(self, Y: np.ndarray) -> np.ndarray:
         """Y (n_sp, n_pts) -> normalizada por columna."""
