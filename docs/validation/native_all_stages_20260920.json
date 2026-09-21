@@ -1,0 +1,334 @@
+{
+  "python": "3.11.0 (main, Oct 24 2022, 18:26:48) [MSC v.1933 64 bit (AMD64)]",
+  "versions": {
+    "numpy": "2.4.6",
+    "scipy": "1.17.1",
+    "numba": "0.65.1",
+    "PyYAML": "6.0.3",
+    "cantera": null
+  },
+  "integration": {
+    "content_key_cold": {
+      "all_final_accepted": true,
+      "initialization_backend": "native_nasa7_hp",
+      "postprocessing_backend": "native",
+      "parallel_used": false,
+      "parallel_workers_resolved": 1,
+      "seed_cache_used": "",
+      "runtime_s": 14.771558800013736,
+      "n_phi_table": 5,
+      "Su": [
+        0.19408598168662888,
+        0.338525394399161,
+        0.3782542336470941,
+        0.38154587602835316,
+        0.13993756019475584
+      ],
+      "n_points": [
+        271,
+        254,
+        264,
+        274,
+        259
+      ],
+      "phi": [
+        0.7,
+        0.9,
+        1.0,
+        1.1,
+        1.4
+      ]
+    },
+    "content_key_parallel": {
+      "all_final_accepted": true,
+      "initialization_backend": "native_nasa7_hp",
+      "postprocessing_backend": "native",
+      "parallel_used": true,
+      "parallel_workers_resolved": 2,
+      "seed_cache_used": "C:\\Users\\lidia\\OneDrive\\Desktop\\TFM\\tmp\\native_all_stages_20260920\\_v2_seed_cache\\e0a370a1f8a5e8ec_phi_0p700000.npz;C:\\Users\\lidia\\OneDrive\\Desktop\\TFM\\tmp\\native_all_stages_20260920\\_v2_seed_cache\\e0a370a1f8a5e8ec_phi_0p900000.npz;C:\\Users\\lidia\\OneDrive\\Desktop\\TFM\\tmp\\native_all_stages_20260920\\_v2_seed_cache\\e0a370a1f8a5e8ec_phi_1p000000.npz;C:\\Users\\lidia\\OneDrive\\Desktop\\TFM\\tmp\\native_all_stages_20260920\\_v2_seed_cache\\e0a370a1f8a5e8ec_phi_1p100000.npz;C:\\Users\\lidia\\OneDrive\\Desktop\\TFM\\tmp\\native_all_stages_20260920\\_v2_seed_cache\\e0a370a1f8a5e8ec_phi_1p400000.npz",
+      "runtime_s": 3.1156371000106446,
+      "n_phi_table": 5,
+      "Su": [
+        0.19411999307906883,
+        0.3385349412849497,
+        0.3782930908078911,
+        0.38154212619170547,
+        0.13995112599159076
+      ],
+      "n_points": [
+        271,
+        254,
+        264,
+        274,
+        259
+      ],
+      "phi": [
+        0.7,
+        0.9,
+        1.0,
+        1.1,
+        1.4
+      ]
+    }
+  },
+  "old_fit_comparison": {
+    "T": {
+      "max_absolute": 6.42885424895212e-08,
+      "relative_to_reference_peak": 2.8874461412369016e-11,
+      "identical": false
+    },
+    "u": {
+      "max_absolute": 2.801439080712953e-10,
+      "relative_to_reference_peak": 9.76396813074467e-11,
+      "identical": false
+    },
+    "Y": {
+      "max_absolute": 1.4938411618814484e-11,
+      "relative_to_reference_peak": 2.020872714226307e-11,
+      "identical": false
+    },
+    "rho": {
+      "max_absolute": 3.5418334931591744e-11,
+      "relative_to_reference_peak": 3.116856467708987e-11,
+      "identical": false
+    },
+    "cp_mass": {
+      "max_absolute": 2.873275661841035e-08,
+      "relative_to_reference_peak": 1.830766033107253e-11,
+      "identical": false
+    },
+    "conductivity": {
+      "max_absolute": 4.963474076191687e-12,
+      "relative_to_reference_peak": 3.0628754748423415e-11,
+      "identical": false
+    },
+    "qdot": {
+      "max_absolute": 1.0187067985534668,
+      "relative_to_reference_peak": 2.218478209372864e-10,
+      "identical": false
+    },
+    "omega_c": {
+      "max_absolute": 4.1114412852039095e-07,
+      "relative_to_reference_peak": 2.0408835132772056e-10,
+      "identical": false
+    },
+    "beta": {
+      "max_absolute": 1.1114609232976136e-11,
+      "relative_to_reference_peak": 3.853313067347029e-11,
+      "identical": false
+    },
+    "c_grid": {
+      "max_absolute": 3.5568881173730915e-11,
+      "relative_to_reference_peak": 3.5568881173730915e-11,
+      "identical": false
+    },
+    "Z_grid": {
+      "max_absolute": 0.0,
+      "relative_to_reference_peak": 0.0,
+      "identical": true
+    },
+    "phi_grid": {
+      "max_absolute": 0.0,
+      "relative_to_reference_peak": 0.0,
+      "identical": true
+    },
+    "Su": {
+      "max_absolute": 2.8187729927964256e-11,
+      "relative_to_reference_peak": 7.387769518550075e-11,
+      "identical": false
+    },
+    "n_points": {
+      "max_absolute": 0.0,
+      "relative_to_reference_peak": 0.0,
+      "identical": true
+    }
+  },
+  "old_fit_raw_profiles": {
+    "phi_0p700000.npz": {
+      "z": {
+        "max_absolute": 0.0,
+        "relative_to_reference_peak": 0.0,
+        "identical": true
+      },
+      "u": {
+        "max_absolute": 3.554956329310244e-11,
+        "relative_to_reference_peak": 2.9811663921592295e-11,
+        "identical": false
+      },
+      "T": {
+        "max_absolute": 1.052217157848645e-08,
+        "relative_to_reference_peak": 5.71128077133903e-12,
+        "identical": false
+      },
+      "Y": {
+        "max_absolute": 6.425832088652328e-13,
+        "relative_to_reference_peak": 8.692883572081629e-13,
+        "identical": false
+      }
+    },
+    "phi_0p900000.npz": {
+      "z": {
+        "max_absolute": 0.0,
+        "relative_to_reference_peak": 0.0,
+        "identical": true
+      },
+      "u": {
+        "max_absolute": 2.4637181184061774e-11,
+        "relative_to_reference_peak": 1.017477665643864e-11,
+        "identical": false
+      },
+      "T": {
+        "max_absolute": 5.636820787913166e-09,
+        "relative_to_reference_peak": 2.6345666228596215e-12,
+        "identical": false
+      },
+      "Y": {
+        "max_absolute": 1.0029754804463664e-12,
+        "relative_to_reference_peak": 1.3719791170655233e-12,
+        "identical": false
+      }
+    },
+    "phi_1p000000.npz": {
+      "z": {
+        "max_absolute": 0.0,
+        "relative_to_reference_peak": 0.0,
+        "identical": true
+      },
+      "u": {
+        "max_absolute": 2.803157705955073e-10,
+        "relative_to_reference_peak": 9.90500895676066e-11,
+        "identical": false
+      },
+      "T": {
+        "max_absolute": 6.173468136694282e-08,
+        "relative_to_reference_peak": 2.7727423984222958e-11,
+        "identical": false
+      },
+      "Y": {
+        "max_absolute": 1.4947307280799293e-11,
+        "relative_to_reference_peak": 2.056249904888244e-11,
+        "identical": false
+      }
+    },
+    "phi_1p100000.npz": {
+      "z": {
+        "max_absolute": 0.0,
+        "relative_to_reference_peak": 0.0,
+        "identical": true
+      },
+      "u": {
+        "max_absolute": 5.702238681237759e-11,
+        "relative_to_reference_peak": 1.9874241471281356e-11,
+        "identical": false
+      },
+      "T": {
+        "max_absolute": 4.411276677274145e-09,
+        "relative_to_reference_peak": 1.99721552574921e-12,
+        "identical": false
+      },
+      "Y": {
+        "max_absolute": 8.574391197058162e-13,
+        "relative_to_reference_peak": 1.1863441718942655e-12,
+        "identical": false
+      }
+    },
+    "phi_1p400000.npz": {
+      "z": {
+        "max_absolute": 0.0,
+        "relative_to_reference_peak": 0.0,
+        "identical": true
+      },
+      "u": {
+        "max_absolute": 3.1419089552287005e-11,
+        "relative_to_reference_peak": 3.1669097621986566e-11,
+        "identical": false
+      },
+      "T": {
+        "max_absolute": 2.5995404939749278e-08,
+        "relative_to_reference_peak": 1.3137144027147892e-11,
+        "identical": false
+      },
+      "Y": {
+        "max_absolute": 3.4466249299036633e-12,
+        "relative_to_reference_peak": 4.854941748051085e-12,
+        "identical": false
+      }
+    }
+  },
+  "soret_10atm": {
+    "accepted": true,
+    "Su": 1.3484847717269999,
+    "n_points": 241,
+    "Finf": 1416.0145226164248,
+    "species_sum_error": 2.8784752359456434e-12,
+    "mass_flow_error": 9.431204816234567e-11,
+    "elemental_flux": {
+      "convention": "Midpoint reconstructed convective + diffusive elemental flux; mesh-sensitive diagnostic",
+      "max_diffusive_mass_sum": 8.770270511397728e-12,
+      "min_mass_fraction": -1.708873546949279e-13,
+      "elements": {
+        "O": {
+          "inlet_flux": 2.592885607967684,
+          "max_absolute_deviation": 0.004962269333222746,
+          "relative_deviation": 0.0019138018730846349
+        },
+        "H": {
+          "inlet_flux": 0.32672400685435654,
+          "max_absolute_deviation": 0.006500586107928807,
+          "relative_deviation": 0.019896260977316452
+        },
+        "C": {
+          "inlet_flux": 0.0,
+          "max_absolute_deviation": 9.424959188816059e-12,
+          "relative_deviation": null
+        },
+        "N": {
+          "inlet_flux": 8.535392409064354,
+          "max_absolute_deviation": 0.0032082223698548518,
+          "relative_deviation": 0.0003758728616211959
+        },
+        "Ar": {
+          "inlet_flux": 0.0,
+          "max_absolute_deviation": 2.702783443877779e-12,
+          "relative_deviation": null
+        }
+      }
+    }
+  },
+  "cantera_imported": false,
+  "source_sha256": {
+    "V2\\analyze_soret_validation.py": "853233c8afddae44f886564bc5d133a52ef3909cd9859420ea4c2ce34a8ef799",
+    "V2\\benchmark_soret_native.py": "70a9350607f0dd88e987ae4363f20f1ea28d2671899ba5c0105058a253337941",
+    "V2\\config.py": "b17d7c363f5619499888aa9953d8b043d4096f39dad2b6aa3a4f4a366d062c35",
+    "V2\\equations.py": "26cb62f3d15598afab44237fda75650118707e5e35490a496b9b6896cc08fb47",
+    "V2\\materiales\\collision_integrals_native.py": "9116fe92260e33e84960c1772d5e358e4d8b134d580d7fea6066ac542d868b74",
+    "V2\\materiales\\initialization_native.py": "0dcdce3821cd0348c5f03fac935ec661ea34e8d7f11278938e04494a3c130688",
+    "V2\\materiales\\kinetics_native.py": "520908e5408b0fe1828fa94be0ea629016eb5fc3428f7048695067ffc9df45e3",
+    "V2\\materiales\\mechanism_data.py": "935132d6a78b3678b8dd546bee67513c1f64ef4081b56b276a4128b0eee6bde0",
+    "V2\\materiales\\species_backend_native.py": "f799f5b98b1aebb22e06324c9dc4d77be17ce49f8f45e8ff794b5395ef9b00c5",
+    "V2\\materiales\\thermo_native.py": "6afbbe05bc1404b8ca12cd122e88da2d3b72a6a30011dccfabbe0e7fbea584f0",
+    "V2\\materiales\\thermochemical_jacobian_native.py": "64bb9249687e227354d22e4449372eb124d34381a924bc0e8cb6dace3c9a29d3",
+    "V2\\materiales\\transport_multicomponent_kernels.py": "537844f3cf03998281638115db867fbb3df0088ef3afbe39076cca394713c5f6",
+    "V2\\materiales\\transport_multicomponent_native.py": "c09ef5e4a01199926d854e1a1c6a6fe94abd607834efb156e7619d5352f359dc",
+    "V2\\materiales\\transport_native.py": "753dd2105a32ac34f9c44f017d0516a436a9d55bbd84b4ed7246491a31381831",
+    "V2\\plot_saved_comparison.py": "c765e343a6f2b2f0f1d390d2e17809c9fac6def32fe2c0e1d974ecf54853a1df",
+    "V2\\problem.py": "8ed4715d49c41f5eca127fd744fba9f8ff0d2b9d18588c7bd05cbaba6b80864d",
+    "V2\\refine_soret_validation.py": "ccf3b427ea7526c69d80b3f6eba0f41021369fa39b282c5531fd9cf9f5038e76",
+    "V2\\run_saved_comparison.py": "cc7747863e54a70ffc2a77add3755a749bbdbc6e08b0603a072e4fc5458de685",
+    "V2\\solver.py": "f40237e748f30fb8af4c2b7eab1950a343be500a15e0a5b9160411374180f10d",
+    "V2\\species_backend.py": "daeacfd193afb942ba9ed555c915074809ad62d5c6a05426fd0bd8331416e62f",
+    "V2\\state.py": "7f151533c07d5332fac60bcaeeb8d27c412743559f2dfe08ed4fcd2cc71aab00",
+    "V2\\trace_cantera_soret.py": "1f1e9932787b70bb9243bbf6fd72797ef1baba0b8aeb2c434e7dee1c252cd3fb",
+    "FGM\\scripts\\analyze_linear_solver_ablation.py": "d8cea2ca6457321d4f24a75a55f71bd6bd4c19d25f3f17a0589a72451590a8fe",
+    "FGM\\scripts\\analyze_predictor_corrector_ablation.py": "66419113ce3967877eb31d068f32c6d2f5a6ecf4fc1971efb203f91a3238822a",
+    "FGM\\scripts\\analyze_tfm_evidence.py": "87ed0f19db4474244806727ed79991b38b401e2f5c8e38b6967997ef8431f586",
+    "FGM\\scripts\\export_fgm_to_flamelet.py": "a8d9597783ddc22444770906c5f1fb1ffdb6a446e6f91a9f85d50c44b1750d88",
+    "FGM\\scripts\\fgm_common.py": "979e672243b5deee99f5a63282030abd4070ca4e1107330acf466a08782e7a65",
+    "FGM\\scripts\\generate_fgm_tables_cantera.py": "02abc63929f81770f7a1f39a8f5b22f6d17a9769fdc8737de44ed80ff49973fb",
+    "FGM\\scripts\\generate_fgm_tables_native.py": "adcbb17fc6c92b6d711a30f979743ce2103c761ad7928aee561b9190c067d4f3",
+    "FGM\\scripts\\plot_fgm_figures.py": "b7d7c0d961611c35916e3469c2077ec3384047da4aade8b9c52aac3d942ec166",
+    "FGM\\scripts\\plot_thesis_results.py": "83bee3b0cb6f31ce740143608add76924cccb812a5c5de18de656dcfc0aca150",
+    "FGM\\scripts\\refine_fgm_schedule.py": "1621bf01e1badf6c8244678fec3b88c2bd3885993aa9650ce9d7d3b54bb95b60",
+    "FGM\\scripts\\validate_fgm_holdouts.py": "5717687c27bbcd02870975facf2aeba9c02c90152a5ce95890af54473e6da3b5"
+  }
+}
