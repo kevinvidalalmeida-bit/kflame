@@ -429,6 +429,20 @@ def residual(
         problem.last_residual_error = str(exc)
         return _profile_return(problem, "residual_full", t_profile, np.full(x.size, 1.0e20))
 
+    # OPT-3: Cache nodal properties for the Jacobian cache builder.
+    # build_local_jacobian_cache() evaluates the exact same thermo/kinetics at
+    # the same state.  Storing these here avoids that redundant evaluation.
+    # Only thermo/kinetics (the expensive part) is cached; face transport
+    # varies across code paths and is re-evaluated by the Jacobian builder.
+    problem._residual_props_cache = {
+        "x_checksum": float(x[0]) + float(x[-1]) + float(x[x.size // 2]),
+        "n_pts": n_pts,
+        "rho": rho,
+        "cp_n": cp_n,
+        "omega": omega,
+        "hk_n": hk_n,
+    }
+
     if _assemble_residual_numba_core is not None and bool(
         getattr(problem, "use_numba_residual", True)
     ):
@@ -654,7 +668,26 @@ def build_local_jacobian_cache(x: np.ndarray, problem) -> dict:
     omega = np.empty((n_sp, n_pts), dtype=float)
     hk_n = np.empty((n_sp, n_pts), dtype=float)
 
-    if hasattr(backend, "eval_grid_thermo_kinetics_into"):
+    # OPT-3: Attempt to reuse nodal properties from the last residual().
+    # The residual's base thermo/kinetics call is identical to this one;
+    # reusing it avoids a full O(n_pts * n_rxn) evaluation pass.
+    _props_cache = getattr(problem, "_residual_props_cache", None)
+    _cache_hit = (
+        _props_cache is not None
+        and int(_props_cache.get("n_pts", -1)) == n_pts
+        # Cheap checksum: first + last + middle values must match.
+        and abs(
+            _props_cache.get("x_checksum", float("nan"))
+            - (float(x[0]) + float(x[-1]) + float(x[x.size // 2]))
+        ) < 1.0e-14
+    )
+    if _cache_hit:
+        rho[:] = _props_cache["rho"]
+        cp_n[:] = _props_cache["cp_n"]
+        omega[:] = _props_cache["omega"]
+        hk_n[:] = _props_cache["hk_n"]
+        lam_n.fill(0.0)
+    elif hasattr(backend, "eval_grid_thermo_kinetics_into"):
         rho_g, cp_g = backend.eval_grid_thermo_kinetics_into(T, Y, omega, hk_n)
         rho[:] = _to_numpy(rho_g)
         cp_n[:] = _to_numpy(cp_g)

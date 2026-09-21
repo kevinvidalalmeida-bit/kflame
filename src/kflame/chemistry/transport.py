@@ -58,16 +58,17 @@ def _mix_soret_coefficients(T, P, Y, X, wmix, mw, viscosity, binary, diffusion, 
 PI = math.pi
 
 try:
-    from numba import njit
+    from numba import njit, prange
 except ImportError:  # pragma: no cover - optional acceleration
     njit = None
+    prange = range
 
 if njit is not None:
     _mix_soret_coefficients = njit(cache=True)(_mix_soret_coefficients)
 
 
 if njit is not None:
-    @njit(cache=True)
+    @njit(cache=True, parallel=True)
     def _eval_faces_poly_numba_core(T, Y, P, invW, mw, cond_poly, diff_poly):
         n_sp = Y.shape[0]
         n_faces = Y.shape[1]
@@ -75,10 +76,8 @@ if njit is not None:
         Dm = np.empty((n_sp, n_faces), dtype=np.float64)
         lam = np.empty(n_faces, dtype=np.float64)
         Wmix = np.empty(n_faces, dtype=np.float64)
-        X = np.empty(n_sp, dtype=np.float64)
-        cond = np.empty(n_sp, dtype=np.float64)
 
-        for m in range(n_faces):
+        for m in prange(n_faces):
             inv_wmix = 0.0
             for k in range(n_sp):
                 inv_wmix += Y[k, m] * invW[k]
@@ -86,6 +85,7 @@ if njit is not None:
             Wmix[m] = wm
             rho[m] = P * wm / (R_UNIV * T[m])
 
+            X = np.empty(n_sp, dtype=np.float64)
             for k in range(n_sp):
                 X[k] = Y[k, m] * wm * invW[k]
 
@@ -109,18 +109,15 @@ if njit is not None:
                     )
                 )
                 ck = sqrtT * poly
-                cond[k] = ck
                 xk = max(X[k], 1.0e-300)
                 sum1 += xk * ck
                 sum2 += xk / max(ck, 1.0e-300)
 
             lam[m] = 0.5 * (sum1 + 1.0 / max(sum2, 1.0e-300))
 
+            inv_bdiff = np.empty((n_sp, n_sp), dtype=np.float64)
             for k in range(n_sp):
-                sumd = 0.0
-                for j in range(n_sp):
-                    if j == k:
-                        continue
+                for j in range(k + 1, n_sp):
                     poly = (
                         diff_poly[k, j, 0]
                         + logT * (
@@ -134,22 +131,30 @@ if njit is not None:
                         )
                     )
                     bdiff = TsqrtT * poly
-                    sumd += max(X[j], 1.0e-300) / max(bdiff, 1.0e-300)
+                    inv_b = 1.0 / max(bdiff, 1.0e-300)
+                    inv_bdiff[k, j] = inv_b
+                    inv_bdiff[j, k] = inv_b
 
-                poly_diag = (
-                    diff_poly[k, k, 0]
-                    + logT * (
-                        diff_poly[k, k, 1]
+            for k in range(n_sp):
+                sumd = 0.0
+                for j in range(n_sp):
+                    if j != k:
+                        sumd += max(X[j], 1.0e-300) * inv_bdiff[k, j]
+
+                if sumd <= 0.0:
+                    poly_diag = (
+                        diff_poly[k, k, 0]
                         + logT * (
-                            diff_poly[k, k, 2]
+                            diff_poly[k, k, 1]
                             + logT * (
-                                diff_poly[k, k, 3] + logT * diff_poly[k, k, 4]
+                                diff_poly[k, k, 2]
+                                + logT * (
+                                    diff_poly[k, k, 3] + logT * diff_poly[k, k, 4]
+                                )
                             )
                         )
                     )
-                )
-                diag_bdiff = TsqrtT * poly_diag
-                if sumd <= 0.0:
+                    diag_bdiff = TsqrtT * poly_diag
                     Dm[k, m] = diag_bdiff / P
                 else:
                     Dm[k, m] = (

@@ -494,3 +494,25 @@ fueron aceptadas y las 12 parejas conservaron perfiles bit a bit. Se activa
 en la precomputación nativa del Jacobiano, sin cambiar tolerancias ni física.
 La compilación inicial no está incluida en esas ganancias. Protocolo, alcance
 y evidencia: `validation/OPTIMIZATION_STAGES_20260920.md`.
+
+## Auditoría de la campaña de optimización numérica aislada (2026-09-21)
+
+Se evaluaron individualmente las propuestas de la campaña aislada sobre el
+código real de KFlame (`src/kflame/`):
+
+| Propuesta | Evidencia en KFlame real | Decisión |
+| --- | --- | --- |
+| **Factorización Numba Block-Thomas** | Probada en `CH4_1`: 369 factorizaciones tardaron 1.861 s de tiempo propio con Numba frente a 0.661 s con SciPy/LAPACK `dgetrf/dgetrs`. El solve medido empeoró de 3.46 s a 4.68 s (1.35× más lento). | **Descartada / Eliminada**. Se reconfirma el descarte histórico: LAPACK multihilo/vectorizado es superior para bloques densos de tamaño 11 a 55. |
+| **Factorización LAPACK banded vs Block-Thomas** | La representación banded sintética ignora el coste de ensamblado y formato banda en cada Jacobiano. La prueba end-to-end histórica tardó 48.9 s frente a 20.6 s. | **Descartada**. Conservar `BlockTridiagJacobian` con SciPy LAPACK. |
+| **`fastmath=True` indiscriminado** | Puede romper monotonía de normas, alterar redondeos numéricos y desestabilizar la cuenca de atracción de Newton. | **Descartado**. No usar `fastmath` globalmente. |
+| **Transposición de flujo por llamada** | Reorganizar `C` de `(k,i,f)` a `(f,k,i)` en cada evaluación añade sobrecarga de memoria que anula la ganancia aislada. KFlame ya procesa en batch en `_assemble_local_batch_numba_core`. | **Descartado**. Evitar transposiciones ad-hoc en el residual. |
+| **Reutilización de residual de Newton (`f_try` carry)** | Al aceptar un paso amortiguado, `f_try = full_fun(x1)` ya fue evaluado. Transportarlo como `f_carry` evita una evaluación redundante por iteración de Newton. Pasa 67/67 tests con perfiles bit a bit idénticos. | **Validado e incorporado**. Reduce llamadas al residual sin alterar la solución física. |
+| **Simetría y paralelización en transporte (`_eval_faces_poly_numba_core`)** | En `src/kflame/chemistry/transport.py`, explotación de simetría $D_{kj}=D_{jk}$ evaluando solo el triángulo superior más `prange` sobre caras. Microbenchmark aceleró $5.8\times$ (1.09 ms a 0.188 ms). En llama real `CH4_10` bajó de 0.606 s a 0.198 s ($3.05\times$ más rápido en el kernel) y redujo el tiempo total de la llama de 11.02 s a 9.77 s (-11.3%). Solución bit-exacta (malla, Su y perfiles idénticos). | **Validado e incorporado**. |
+| **Preasignación 3D de arrays de trabajo en `grouped_core`** | Preasignar buffers `(n_nodes, 2, n_sp)` compartidos entre hilos de Numba causó contención/falso compartir en líneas de caché L1/L2, empeorando el tiempo de ejecución de 1.513 s a 1.983 s. | **Descartada / Eliminada**. La asignación local por hilo en Numba aprovecha mejor la memoria privada de cada núcleo. |
+| **Simetría en `evaluate_faces` de `multicomponent_kernels.py`** | Las escrituras no contiguas dispersas en columnas (`a[j, k] = aa`) rompen la localidad de caché L1; en H2_10 el tiempo fue neutro/ligeramente superior (0.880 s vs 0.866 s). | **Descartada / Eliminada**. Se conserva la evaluación por fila contigua original. |
+| **Fusión de llenado de bloques / vectorización en `_block_tridiag_jacobian_local`** | Microbenchmark en 128 nodos: 83.60 ms (original) vs 84.23 ms (fusionado/vectorizado), speedup 0.99x (ruido). El llenado de bloques representa <1% del tiempo del Jacobiano, dominado por cinética y ensamblado. | **Descartada / Eliminada**. |
+| **Numba JIT para `_corrected_flux_frozen`** | Microbenchmark con dimensiones de GRI-30: 403.15 ms en NumPy (C ufuncs vectorizadas) vs 433.24 ms en Numba (0.93x speedup, 7% más lento). NumPy aprovecha mejor SIMD/AVX2 para estas matrices. | **Descartada / Eliminada**. Conservar NumPy C vectorizado. |
+| **`fastmath=True` en `weighted_norm` y `bound_step_limit`** | `_weighted_norm_numba_core` toma menos de 0.008 s en total en toda una llama (<0.05% del tiempo global). `fastmath` no aporta ganancia medible y arriesga alterar el redondeo de normas en la cuenca de atracción de Newton. | **Descartada / Eliminada**. |
+| **Alteración de edad o refresco adaptativo del Jacobiano (`max_jac_age` o ratio de contracción)** | Instrucción explícita del usuario ("la edad del jacobiano no te metas con eso"). Se respeta estrictamente la política validada tipo Cantera y no se modifica la lógica de envejecimiento ni refresco. | **Descartada / Retirada**. Política intacta. |
+
+

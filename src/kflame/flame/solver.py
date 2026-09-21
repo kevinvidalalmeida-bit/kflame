@@ -53,8 +53,7 @@ if _NUMBA_AVAILABLE:
         for v in range(nv):
             esum = 0.0
             for j in range(n_pts):
-                xv = x[j * nv + v]
-                esum += abs(xv)
+                esum += abs(x[j * nv + v])
             ewt = rtol * esum / n_pts + atol
             if ewt < 1.0e-300:
                 ewt = 1.0e-300
@@ -838,7 +837,7 @@ def newton_solve(
     -------
     x_out, converged, history, jac_state
     """
-    x = np.asarray(x0, dtype=float)
+    x = np.array(x0, dtype=float, copy=True)
     history: list[dict] = []
 
     if jac_state is None:
@@ -865,6 +864,11 @@ def newton_solve(
     force_new_jac = jac_state.J is None or jac_state.lu is None
     n_jac_reeval = 0
     status = -1
+    # OPT-2: Reuse residual from previous accepted damping step.
+    # When a damped step is accepted, f_try is exactly the residual at the
+    # new x.  Carrying it forward avoids one full residual evaluation per
+    # successful Newton iteration.
+    f_carry: np.ndarray | None = None
     for it in range(max_iter):
         if deadline is not None and time.perf_counter() > deadline:
             history.append({"iter": it, "status": "timeout"})
@@ -884,6 +888,7 @@ def newton_solve(
                 jac_state.n_evals += 1
                 jac_state.last_rdt = rdt_curr
                 force_new_jac = False
+                f_carry = None  # Jacobian build uses its own f0; invalidate stale carry.
             except Exception as exc:
                 history.append({"iter": it, "status": "jac_fail", "error": str(exc)})
                 status = -4
@@ -903,7 +908,12 @@ def newton_solve(
             rdt_changed = False
 
         # MultiNewton::step equivalent
-        f = full_fun(x)
+        # OPT-2: reuse the residual from the previous accepted trial.
+        if f_carry is not None:
+            f = f_carry
+            f_carry = None
+        else:
+            f = full_fun(x)
         if not np.all(np.isfinite(f)):
             history.append({"iter": it, "status": "nonfinite_F"})
             status = -5
@@ -1069,10 +1079,14 @@ def newton_solve(
 
         if damp_ok:
             x = x1
+            # OPT-2: carry the trial residual forward to the next iteration.
+            if f_try is not None and np.all(np.isfinite(f_try)):
+                f_carry = f_try
             if residual_damping:
                 converged = bool(alpha >= 1.0 - 1.0e-14 and s1 < tol)
             else:
                 converged = bool(s1 < tol)
+
             record: dict[str, Any] = {
                 "iter": it,
                 "status": "ok" if converged else "step",
