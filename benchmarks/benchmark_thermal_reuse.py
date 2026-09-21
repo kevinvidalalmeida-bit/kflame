@@ -12,11 +12,16 @@ import os
 import platform
 import time
 
-from profile_native_stages import ROOT, native_solve, json_safe, options, compact, FlameCase
+from kflame.benchmarks.soret import benchmark_options, compact_result, json_safe, native_solve
 import numpy as np
 import numba
-from kava.flame.problem import FreeFlameProblem
-from kava.chemistry.backend import NativeSpeciesBackend
+from kflame.flame.config import FlameCase
+from kflame.flame.problem import FreeFlameProblem
+from kflame.chemistry.backend import NativeSpeciesBackend
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
 def local_check():
     results = []
     for mechanism in ('gri30.yaml', 'h2o2.yaml'):
@@ -67,13 +72,13 @@ def main():
         pools = threadpool_info()
     except ImportError:
         pools = None
-    output = dict(protocol=__doc__, options=asdict(options(False)), local=local_check(), cases={},
+    output = dict(protocol=__doc__, options=asdict(benchmark_options(False)), local=local_check(), cases={},
                   mode='production', platform=platform.platform(),
                   threads=dict(numba=numba.get_num_threads(), blas=pools,
                                env={k:os.environ.get(k) for k in ('OPENBLAS_NUM_THREADS', 'NUMBA_NUM_THREADS', 'MKL_NUM_THREADS')}),
                   source_sha256={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest()
-                                 for p in (ROOT / 'src/kava/flame/equations.py', ROOT / 'src/kava/chemistry/backend.py',
-                                           ROOT / 'src/kava/chemistry/jacobian.py')})
+                                 for p in (ROOT / 'src/kflame/flame/equations.py', ROOT / 'src/kflame/chemistry/backend.py',
+                                           ROOT / 'src/kflame/chemistry/jacobian.py')})
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
     def save():
@@ -93,11 +98,11 @@ def main():
                 NativeSpeciesBackend.eval_jacobian_thermo_kinetics_into = NativeSpeciesBackend.eval_grid_thermo_kinetics_into
             try:
                 start = time.perf_counter()
-                result = native_solve(case, options(False), bootstrap=multi, bootstrap_mesh_factor=2.)
+                result = native_solve(case, benchmark_options(False), bootstrap=multi, bootstrap_mesh_factor=2.)
                 wall = time.perf_counter() - start
             finally:
                 NativeSpeciesBackend.eval_jacobian_thermo_kinetics_into = original_method
-            summary = compact(result)
+            summary = compact_result(result)
             summary.pop('stages')
             summary['wall_s'] = wall
             print(name, mode, json.dumps(summary), flush=True)

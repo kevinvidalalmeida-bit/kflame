@@ -5,7 +5,7 @@ import unittest
 
 import numpy as np
 
-from kava.flame.equations import _center_perturbation_states
+from kflame.flame.equations import _center_perturbation_states
 
 
 def legacy_perturbation_states(x_r, rel, absolute, eps):

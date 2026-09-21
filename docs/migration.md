@@ -2,25 +2,25 @@
 
 Install with `python -m pip install .` (or `-e .` for development). No source
 directory needs to be added to PYTHONPATH. The numerical solver retains its
-V2 lineage in output metadata; the import namespace is now `kava`.
+KFLAME lineage in output metadata; the import namespace is now `kflame`.
 
 | Previous entry point | Replacement |
 |---|---|
-| FGM/scripts/generate_fgm_tables_native.py | `python -m kava fgm` |
-| FGM/scripts/export_fgm_to_flamelet.py | `python -m kava export` |
-| FGM/scripts/plot_fgm_figures.py | `python -m kava plot` |
-| FGM/scripts/refine_fgm_schedule.py | `python -m kava refine-table` |
-| FGM/scripts/validate_fgm_holdouts.py | `python -m kava validate-table` |
-| V2/benchmark_soret_native.py | `python -m kava soret` |
-| V2/run_saved_comparison.py | `python -m kava compare` |
-| FGM/scripts/generate_fgm_tables_cantera.py | `python -m kava reference-fgm` |
-| V2/config.py, problem.py, solver.py | `kava.flame.config`, `.problem`, `.solver` |
-| V2/materiales/*.py | `kava.chemistry.*` (short names without `_native`) |
+| FGM/scripts/generate_fgm_tables_native.py | `python -m kflame fgm` |
+| FGM/scripts/export_fgm_to_flamelet.py | `python -m kflame export` |
+| FGM/scripts/plot_fgm_figures.py | `python -m kflame plot` |
+| FGM/scripts/refine_fgm_schedule.py | `python -m kflame refine-table` |
+| FGM/scripts/validate_fgm_holdouts.py | `python -m kflame validate-table` |
+| Legacy `V2/benchmark_soret_native.py` | `python -m kflame soret` |
+| Legacy `V2/run_saved_comparison.py` | `python -m kflame compare` |
+| FGM/scripts/generate_fgm_tables_cantera.py | `python -m kflame reference-fgm` |
+| Legacy `V2/config.py`, `problem.py`, `solver.py` | `kflame.flame.config`, `.problem`, `.solver` |
+| Legacy `V2/materiales/*.py` | `kflame.chemistry.*` (short names without `_native`) |
 | validation/*.py benchmarks | `benchmarks/` |
 | validation/*.md and *.json | `docs/validation/` |
-| V2/PIPELINE.md | `docs/architecture.md` |
+| Legacy `V2/PIPELINE.md` | `docs/architecture.md` |
 
-Historical reports retain their dated measurements, old path strings and source
+Historical reports may retain the former `V2` label, dated path strings and source
 hashes; those describe the experiment's snapshot, not the renamed files. Use
 the installed commands above for new runs. Some historical raw campaigns were
 already local-only; compact public summaries are not replacements for raw data.

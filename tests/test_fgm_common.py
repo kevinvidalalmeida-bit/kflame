@@ -11,18 +11,18 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 
-from kava.fgm.common import (
+from kflame.fgm.common import (
     build_adaptive_c_grid,
     build_global_indicator,
     validate_fgm_table,
 )
-from kava.fgm.generate import (
+from kflame.fgm.generate import (
     bound_continuation_seed_mesh,
     build_argparser,
     _is_local_phi_step,
     build_continuation_seed,
 )
-from kava.flame.state import pack_state, unpack_state
+from kflame.flame.state import pack_state, unpack_state
 
 
 class ContinuationTrustRegionTests(unittest.TestCase):

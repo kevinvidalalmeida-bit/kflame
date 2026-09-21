@@ -9,8 +9,8 @@ os.environ.setdefault('NUMBA_NUM_THREADS', '4')
 os.environ.setdefault('OPENBLAS_NUM_THREADS', '1')
 ROOT = Path(__file__).resolve().parents[1]
 import numpy as np
-from kava.chemistry.mechanism import load_mechanism, resolve_mechanism
-from kava.chemistry.transport import NativeTransport
+from kflame.chemistry.mechanism import load_mechanism, resolve_mechanism
+from kflame.chemistry.transport import NativeTransport
 
 try:
     import cantera as ct

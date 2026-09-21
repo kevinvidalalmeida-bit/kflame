@@ -2,13 +2,13 @@
 
 ## Alcance y criterio
 
-Revisión estática de todos los módulos de `src/kava` y benchmarks, búsqueda de
+Revisión estática de todos los módulos de `src/kflame` y benchmarks, búsqueda de
 referencias en producción, tests y scripts locales de investigación, y revisión
 manual de los candidatos. Se prioriza preservar comportamiento e interfaces;
 una coincidencia de código «sin uso» no autoriza borrar una API pública.
 
 La reorganización previa, solicitada por separado, sustituye los antiguos
-scripts sueltos por el paquete `kava`; sus equivalencias están en
+scripts sueltos por el paquete `kflame`; sus equivalencias están en
 `../migration.md`. Esta simplificación conserva las 184 firmas de funciones,
 métodos públicos y constructores comprobadas contra el paquete anterior.
 
@@ -27,7 +27,7 @@ métodos públicos y constructores comprobadas contra el paquete anterior.
   de trabajo sigue siendo independiente del estado de entrada.
 - Simplificados empaquetado de estado y máscara transitoria mediante asignación
   a vistas, sin aritmética nueva ni cambios de tipo.
-- Defaults de hilos centralizados al importar `kava`, manteniendo los valores
+- Defaults de hilos centralizados al importar `kflame`, manteniendo los valores
   explícitos del usuario y la aplicación del tamaño de pool de Numba.
 - `row_stack` sustituido por su equivalente `vstack`: causa de los cuatro
   avisos de deprecación corregida, no ocultada.

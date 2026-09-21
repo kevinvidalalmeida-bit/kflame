@@ -150,8 +150,8 @@ de tiempo en este solver. No se añadió dependencia de KINSOL ni de Cantera.
 ## Reproducción
 
 ```powershell
-python validation/profile_native_stages.py --output tmp/stages.json
-python validation/benchmark_thermal_reuse.py --output tmp/thermal_pairs.json --pairs 3
+python benchmarks/profile_native_stages.py --output tmp/stages.json
+python benchmarks/benchmark_thermal_reuse.py --output tmp/thermal_pairs.json --pairs 3
 python -m pytest tests -q
 ```
 

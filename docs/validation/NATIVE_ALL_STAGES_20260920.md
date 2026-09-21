@@ -69,7 +69,7 @@ clave. Cambiar el mecanismo en la misma ruta evita reutilizarlo como un acierto
 de caché exacto. Las semillas antiguas permanecen, sin borrar; la nueva clave
 requiere un primer barrido que regenere las necesarias.
 
-`benchmark_transport_cache.py` compara caché activada frente a recalcular los
+`benchmark_transport_data_cache.py` compara caché activada frente a recalcular los
 mismos datos nativos. Un calentamiento excluido por modo, tres parejas
 alternadas por combustible, ambas cachés nuevas vacías al comenzar cada llama.
 Los ajustes existentes de viscosidad/difusión y la compilación están calientes.

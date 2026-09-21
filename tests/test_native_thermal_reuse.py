@@ -10,12 +10,12 @@ os.environ.setdefault('NUMBA_NUM_THREADS', '4')
 ROOT = Path(__file__).resolve().parents[1]
 
 import numpy as np
-from kava.flame.config import FlameCase
-from kava.flame.problem import FreeFlameProblem
-from kava.chemistry.backend import NativeSpeciesBackend
-import kava.chemistry.backend as native
-from kava.flame.equations import build_jacobian_steady, residual
-from kava.flame.state import pack_state
+from kflame.flame.config import FlameCase
+from kflame.flame.problem import FreeFlameProblem
+from kflame.chemistry.backend import NativeSpeciesBackend
+import kflame.chemistry.backend as native
+from kflame.flame.equations import build_jacobian_steady, residual
+from kflame.flame.state import pack_state
 
 
 def inputs(backend):

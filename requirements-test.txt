@@ -1,2 +1,0 @@
-# Install the package with optional reference and test dependencies.
-.[reference,test]

@@ -2,7 +2,7 @@
 
 Warm each case before cProfile; measured times include profiling overhead and
 must not be presented as uninstrumented production timings. Subtimers overlap.
-Run: python validation/profile_native_stages.py --output validation/stages.json
+Run: python benchmarks/profile_native_stages.py --output tmp/stages.json
 """
 from pathlib import Path
 import argparse
@@ -26,25 +26,9 @@ class NoCantera(importlib.abc.MetaPathFinder):
 
 
 sys.meta_path.insert(0, NoCantera())
-from kava.benchmarks.soret import native_solve, json_safe
-from kava.flame.config import FlameCase
-from kava.flame.solver import SolveOptions
+from kflame.benchmarks.soret import benchmark_options, compact_result, json_safe, native_solve
+from kflame.flame.config import FlameCase
 import numpy as np
-
-
-def options(profile=True):
-    return SolveOptions(
-        verbose=False, profile=profile, max_total_time_s=180,
-        max_refine_passes=12, require_grid_convergence=True,
-        refine_max_points=1600, refine_ratio=2.5, refine_slope=.04,
-        refine_curve=.08, refine_prune=.003, acceptance_criterion='cantera',
-        residual_guard_inf=1e4, final_Finf_limit=1e4, refine_Finf_limit=1e4,
-        jacobian_mode='block_tridiag', auto_bootstrap_grids=False,
-    )
-
-
-def compact(result):
-    return {k: v for k, v in result.items() if k not in ('z', 'u', 'T', 'Y')}
 
 
 def main():
@@ -57,9 +41,9 @@ def main():
         protocol='One excluded warmup per case, then cProfile; cold flame seed; '
                  'cached mechanism/molecular fits; four Numba and one BLAS thread '
                  'unless environment overrides; inclusive subtimers must not be summed.',
-        options=asdict(options()), python=sys.version, platform=platform.platform(),
+        options=asdict(benchmark_options()), python=sys.version, platform=platform.platform(),
         source_sha256={str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest()
-                       for p in sorted((ROOT / 'src/kava').rglob('*.py'))}, cases={},
+                       for p in sorted((ROOT / 'src/kflame').rglob('*.py'))}, cases={},
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     for name in args.cases:
@@ -68,12 +52,12 @@ def main():
         case = FlameCase(fuel=fuel, P=101325. * float(pressure),
                          transport_model='multicomponent' if multi else 'mixture-averaged',
                          soret_enabled=multi, ratio=2.5, slope=.04, curve=.08, prune=.003)
-        warm = native_solve(case, options(False), bootstrap=multi, bootstrap_mesh_factor=2.)
-        print(name, 'warmup', json.dumps({k:v for k,v in compact(warm).items() if k != 'stages'}), flush=True)
+        warm = native_solve(case, benchmark_options(False), bootstrap=multi, bootstrap_mesh_factor=2.)
+        print(name, 'warmup', json.dumps({k:v for k,v in compact_result(warm).items() if k != 'stages'}), flush=True)
         profiler = cProfile.Profile()
         start = time.perf_counter()
         profiler.enable()
-        result = native_solve(case, options(), bootstrap=multi, bootstrap_mesh_factor=2.)
+        result = native_solve(case, benchmark_options(), bootstrap=multi, bootstrap_mesh_factor=2.)
         profiler.disable()
         wall = time.perf_counter() - start
         stats = pstats.Stats(profiler)
@@ -82,12 +66,12 @@ def main():
             rows.append(dict(file=filename, line=line, function=function, calls=calls,
                              primitive_calls=primitive, own_s=own, inclusive_s=cumulative))
         rows.sort(key=lambda row: row['own_s'], reverse=True)
-        record = dict(case=asdict(case), warmup=compact(warm), measured=compact(result),
+        record = dict(case=asdict(case), warmup=compact_result(warm), measured=compact_result(result),
                       wall_s=wall, functions=rows,
                       profiles_identical=all(np.array_equal(warm[k], result[k]) for k in ('z', 'u', 'T', 'Y')))
         output['cases'][name] = record
         args.output.write_text(json.dumps(json_safe(output), indent=2), encoding='utf-8')
-        print(name, 'measured', json.dumps({k:v for k,v in compact(result).items() if k != 'stages'}), flush=True)
+        print(name, 'measured', json.dumps({k:v for k,v in compact_result(result).items() if k != 'stages'}), flush=True)
         print('top own times', json.dumps(rows[:12]), flush=True)
     output['cantera_imported'] = any(k == 'cantera' or k.startswith('cantera.') for k in sys.modules)
     args.output.write_text(json.dumps(json_safe(output), indent=2), encoding='utf-8')

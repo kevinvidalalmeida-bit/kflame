@@ -1,7 +1,7 @@
-# Pipeline productivo de V2
+# Pipeline productivo de KFLAME
 
-El núcleo V2 se distribuye ahora como `kava.flame` y `kava.chemistry`; la
-generación FGM reside en `kava.fgm`. Entrada: `python -m kava fgm`.
+El núcleo KFLAME se distribuye ahora como `kflame.flame` y `kflame.chemistry`; la
+generación FGM reside en `kflame.fgm`. Entrada: `python -m kflame fgm`.
 Las equivalencias de rutas anteriores están en [migration.md](migration.md).
 
 Este documento describe únicamente la ruta mantenida. Las campañas, prototipos
@@ -61,7 +61,8 @@ de caché anteriores, sin borrar las semillas históricas.
 
 ## Transporte Soret
 
-El caso Soret usa transporte multicomponente nativo. Para el arranque frío, una
+Soret admite transporte promediado por mezcla y multicomponente nativos, con
+cierres térmicos distintos. Para el arranque frío, una
 etapa preliminar promediada por mezcla construye una semilla y el corrector final
 reactiva transporte multicomponente y termodifusión con los criterios estrictos.
 La aceptación reevalúa el transporte exacto; no acepta coeficientes de cara

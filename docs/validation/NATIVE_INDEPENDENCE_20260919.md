@@ -111,7 +111,7 @@ parámetros moleculares.
 La ablación se reproduce con:
 
 ```powershell
-python validation/benchmark_native_dependencies.py --pairs 3 --output validation/native_fit_ablation_20260919.json
+python benchmarks/benchmark_molecular_fit_cache.py --pairs 3 --output tmp/native_fit_ablation.json
 ```
 
 H2/aire, GRI30, phi=1, 300 K, 1 atm, multicomponente con Soret; arranque por

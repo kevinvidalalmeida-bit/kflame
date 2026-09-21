@@ -10,9 +10,9 @@ except ImportError:
     ct = None
 import numpy as np
 
-from kava.chemistry.backend import NativeSpeciesBackend
-from kava.chemistry.kinetics import _negative_mass_action_factor_python
-from kava.chemistry.kinetics import _make_mass_action_plan, _mass_action_product_python
+from kflame.chemistry.backend import NativeSpeciesBackend
+from kflame.chemistry.kinetics import _negative_mass_action_factor_python
+from kflame.chemistry.kinetics import _make_mass_action_plan, _mass_action_product_python
 
 
 class SignedKineticsTests(unittest.TestCase):

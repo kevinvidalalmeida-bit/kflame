@@ -5,7 +5,7 @@ indicada abajo, pendiente de generalización. La variante con transporte
 promediado por mezcla permanece por defecto. Soret se solicita explícitamente
 con multicomponente y gradientes molares.
 
-Esta es una limitación de la implementación V2, no de Cantera 3.2: la referencia
+Esta es una limitación de la implementación KFLAME, no de Cantera 3.2: la referencia
 también dispone de un cierre Soret promediado por mezcla. Su formulación es
 distinta de Dixon--Lewis y no se mezclan los modelos al comparar tiempos.
 Fuente: [MixTransport.cpp, Cantera 3.2](https://github.com/Cantera/cantera/blob/v3.2.0/src/transport/MixTransport.cpp).
@@ -14,7 +14,7 @@ Fuente: [MixTransport.cpp, Cantera 3.2](https://github.com/Cantera/cantera/blob/
 
 La preparación de coeficientes y el cálculo de transporte multicomponente,
 termodifusión, cinética y termoquímica son nativos. Las tablas universales de
-colisión se distribuyen con atribución a Cantera (BSD-3-Clause); el código V2
+colisión se distribuyen con atribución a Cantera (BSD-3-Clause); el código KFLAME
 ajusta y evalúa esas tablas sin importar Cantera. Utilizar datos moleculares y
 tablas bibliográficas no equivale a consultar el solver de referencia.
 
@@ -57,11 +57,11 @@ Desde la raíz, con `OPENBLAS_NUM_THREADS=1` y `NUMBA_NUM_THREADS=4`:
 
 ```powershell
 python -m unittest discover -s tests -v
-python V2/benchmark_soret_native.py --bootstrap --bootstrap-mesh-factor 2 --lag --repeat 7
-python V2/analyze_soret_validation.py resultados/soret_native_validation/benchmark_20260904_180651
+python KFLAME/benchmark_soret_native.py --bootstrap --bootstrap-mesh-factor 2 --lag --repeat 7
+python KFLAME/analyze_soret_validation.py resultados/soret_native_validation/benchmark_20260904_180651
 ```
 
-El benchmark alterna el orden V2/Cantera. Guarda cada resumen y los perfiles,
+El benchmark alterna el orden KFLAME/Cantera. Guarda cada resumen y los perfiles,
 también si la ejecución falla. No se tabula un estado rechazado. El modo
 `--native-only` es diagnóstico y no establece una comparación temporal.
 Se registran por separado preparación, resolución y extremo a extremo. La
@@ -82,7 +82,7 @@ H2/aire, GRI30, 300 K, 1 atm; dominio 0.03 m; ratio 2.5, slope 0.04,
 curve 0.08, prune 0.003. Aceptación por corrección ponderada y guarda residual
 10000, con refinamiento obligatorio. Caché de perfiles ausente; JIT ya preparado.
 
-| Magnitud | V2 | Cantera |
+| Magnitud | KFLAME | Cantera |
 |---|---:|---:|
 | Mediana de resolución | 8.1535 s | 10.4920 s |
 | Cuartiles Q1/Q3 | 7.8790 / 9.2849 s | 10.2683 / 10.7651 s |
@@ -91,14 +91,14 @@ curve 0.08, prune 0.003. Aceptación por corrección ponderada y guarda residual
 | Temperatura quemada | 2372.518 K | 2371.884 K |
 
 Reducción temporal: 22.29%. IC bootstrap pareado 95% del cociente de medianas
-V2/Cantera: [0.7463, 0.9501], 20000 remuestreos, semilla fija. Todos los siete
+KFLAME/Cantera: [0.7463, 0.9501], 20000 remuestreos, semilla fija. Todos los siete
 pares se conservaron. Estos intervalos describen la campaña de esta máquina;
 no son una garantía de rendimiento universal.
 
 Perfiles alineados en una temperatura interior común e integrados sobre la unión
 de las mallas: E2(T)=0.03850%, E2(qdot)=0.08465%; máximo E2 de especies
 activas (pico Y >= 1e-5): 0.54055%, para H2O2. Diferencia de Su=0.01071%.
-Residual exacto V2=6.7233; error de suma de Y=1.01e-12; variación relativa de
+Residual exacto KFLAME=6.7233; error de suma de Y=1.01e-12; variación relativa de
 flujo másico=2.15e-10. El calor se reconstruyó con Cantera sobre ambos perfiles
 exclusivamente para diagnóstico, fuera del tiempo medido.
 
@@ -107,23 +107,23 @@ exclusivamente para diagnóstico, fuera del tiempo medido.
 ### Sensibilidad espacial independiente
 
 Se ejecutaron dos comprobaciones adicionales, de una pareja cada una (no una
-campaña estadística). Con slope/curve=0.02/0.04, V2 obtuvo 390 nodos,
+campaña estadística). Con slope/curve=0.02/0.04, KFLAME obtuvo 390 nodos,
 Su=2.10921829 m/s y 14.2893 s; Cantera, 386 nodos, Su=2.10995877 m/s y
 20.6451 s (`benchmark_20260904_182321`). La discrepancia entre solvers fue
 0.03509%; E2(T)=0.00699% y E2(qdot)=0.05449%. Frente a la malla base, Su
-cambió aproximadamente 0.126% en V2 y 0.172% en Cantera: dos niveles no bastan
+cambió aproximadamente 0.126% en KFLAME y 0.172% en Cantera: dos niveles no bastan
 para declarar independencia espacial a una tolerancia arbitrariamente pequeña.
 
-Al iniciar con 0.06 m (`benchmark_20260904_182234`), V2 expandió a 0.12 m y
+Al iniciar con 0.06 m (`benchmark_20260904_182234`), KFLAME expandió a 0.12 m y
 tardó 29.7251 s, frente a 14.5869 s y 0.06 m de Cantera. Las velocidades fueron
 2.10655660 y 2.10633448 m/s, respectivamente. La sensibilidad de Su al dominio
-fue muy pequeña, pero la temperatura quemada V2 cambió de 2372.518 a 2376.778 K.
+fue muy pequeña, pero la temperatura quemada KFLAME cambió de 2372.518 a 2376.778 K.
 Esta prueba NO acredita una ventaja temporal: la expansión y su coste adicional
 se conservan como límite observado.
 
 El diagnóstico elemental ahora reconstruye en caras el flujo total convectivo
 más difusivo. Su mayor desviación relativa respecto a la entrada correspondió
-al hidrógeno: V2 1.644% y Cantera 1.617% en la malla base; V2 0.958% y Cantera
+al hidrógeno: KFLAME 1.644% y Cantera 1.617% en la malla base; KFLAME 0.958% y Cantera
 0.903% en la fina. La reconstrucción convectiva de punto medio no es el
 operador upwind del solver: es una prueba del balance continuo sensible a malla,
 no un residual algebraico. La suma del flujo difusivo base fue inferior a
@@ -149,10 +149,10 @@ automática de Cantera, no se presenta como identidad de flujo de control.
 
 Después de las correcciones, tres nuevas parejas H2/Soret
 (`benchmark_20260904_195104`) conservaron exactamente Su, 207 nodos y residual
-6.7233; tiempos V2 [10.0207, 9.3404, 7.5285] s y Cantera
+6.7233; tiempos KFLAME [10.0207, 9.3404, 7.5285] s y Cantera
 [10.3937, 11.3022, 9.9384] s. En tres parejas CH4 sin Soret
 (`benchmark_20260904_195205`) se conservaron 261 nodos y Su=0.3788377359;
-V2 [8.9134, 9.0090, 8.8620] s y Cantera [21.0367, 20.2327, 19.3277] s.
+KFLAME [8.9134, 9.0090, 8.8620] s y Cantera [21.0367, 20.2327, 19.3277] s.
 No hay regresión de solución en estos controles; la variabilidad impide
 atribuir cambios pequeños de tiempo a la corrección de control.
 
@@ -173,11 +173,11 @@ automática de Cantera, volvió a fallar en 60 s
 política específica para una presión ni se reduce el certificado.
 
 Comprobación de control sin Soret: CH4/aire, 1 atm, tres pares con los mismos
-umbrales estrictos, ambos dominios finales de 0.06 m. V2: mediana 9.5051 s,
+umbrales estrictos, ambos dominios finales de 0.06 m. KFLAME: mediana 9.5051 s,
 261 nodos, Su=0.37883774 m/s; Cantera: mediana 21.3492 s, 275 nodos,
-Su=0.37881368 m/s. V2 sigue siendo más rápido en este control. Es una
+Su=0.37881368 m/s. KFLAME sigue siendo más rápido en este control. Es una
 comparación actual frente a Cantera; no demuestra igualdad temporal frente a
-una revisión anterior de V2. Datos: `benchmark_20260904_180933`.
+una revisión anterior de KFLAME. Datos: `benchmark_20260904_180933`.
 
 Ensayo adicional H2 a 10 atm (`benchmark_20260904_181152`): el arranque intermedio
 promediado por mezcla agotó 180 s sin convergencia espacial y expandió el dominio
@@ -219,27 +219,27 @@ criterios finales. Ahora pasan 49 pruebas, incluidas fuentes y derivadas cerca
 de cero para GRI30/h2o2 a 1/10 atm.
 
 La primera pareja de diagnóstico a 10 atm con PTC-SER normal convergió en
-27,7425 s (V2) frente a 32,1764 s (Cantera). Esto reemplaza la afirmación de
+27,7425 s (KFLAME) frente a 32,1764 s (Cantera). Esto reemplaza la afirmación de
 que ese caso no puede converger, pero no demuestra todavía superioridad
 estadística ni independencia espacial: la discrepancia de Su en esa malla
 sigue siendo 1,1711%. Se exige comprobar el coste a menor error.
 
 La campaña posterior de siete pares a 10 atm con slope=0.01 y curve=0.02
-aceptó las 14 soluciones: mediana V2 45.8734 s frente a Cantera 78.6656 s,
-reducción 41.69%; IC95 bootstrap pareado de la razón V2/Cantera
+aceptó las 14 soluciones: mediana KFLAME 45.8734 s frente a Cantera 78.6656 s,
+reducción 41.69%; IC95 bootstrap pareado de la razón KFLAME/Cantera
 [0.56495,0.66745]. Las mallas propias tienen 854/868 nodos, dominio 0.06 m
 y diferencia de Su=0.09605%. E2(T)=0.004055%, E2(calor)=0.14283% y máximo
-E2 de especies activas=0.43261%. El residual final V2 es 0.35918.
+E2 de especies activas=0.43261%. El residual final KFLAME es 0.35918.
 No se cambió la guarda de 1e4. Son arranques sin perfiles guardados, con
 caché de compilación conservada; no se publican como JIT completamente frío.
 
-Los controles de tres pares a 1 atm dan medianas V2/Cantera de
+Los controles de tres pares a 1 atm dan medianas KFLAME/Cantera de
 5.1935/9.5995 s con H2/Soret y 3.7951/18.9234 s con CH4 sin Soret. Las
-soluciones V2 conservan su malla y velocidad anteriores. La comparación
+soluciones KFLAME conservan su malla y velocidad anteriores. La comparación
 entre revisiones no fue alternada y no sustituye una ablación causal.
 
 Advertencia espacial: respecto a la malla intermedia, Su cambia todavía
-aproximadamente 1.18% en V2 y 0.84% en Cantera. La concordancia entre solvers
+aproximadamente 1.18% en KFLAME y 0.84% en Cantera. La concordancia entre solvers
 al 0.096% NO demuestra independencia de malla al 0.1%. El siguiente control
 debe cerrar esa sensibilidad y el dominio antes de ampliar conclusiones.
 
@@ -256,7 +256,7 @@ hasta una llama aceptada. No se presenta Soret ni Schur como descubrimientos nue
 Se eliminaron PTC-auto/PTC-rescue, BE exclusivo, pesos Newton congelados,
 su selección desde CLI y la mezcla de convección centrada/upwind. Se conservan
 PTC-SER con BE interno, LU exacta, transporte nativo y verificación independiente.
-Las trazas y resultados históricos no se borraron. Detalles en `V2/PIPELINE.md`.
+Las trazas y resultados históricos no se borraron. Detalles en `KFLAME/PIPELINE.md`.
 La limpieza no cambia la guarda residual de 1e4 ni relaja el refinamiento.
 
 ## Optimización adicional de productos químicos y despacho LU
@@ -271,7 +271,7 @@ analítico anterior.
 
 La ablación con el orden anterior de evaluación química restituido midió
 7 pares por caso a 1 atm y 3 pares a 10 atm, todos aceptados y con mallas
-idénticas. Medianas V2 anterior/combinación nueva: CH4 sin Soret a 1 atm,
+idénticas. Medianas KFLAME anterior/combinación nueva: CH4 sin Soret a 1 atm,
 4.9522/4.5983 s; H2/Soret a 1 atm, 6.9245/6.5162 s; H2/Soret a 10 atm con
 slope=.01 y curve=.02, 53.9952/48.0511 s. Reducciones: 7.15%, 5.90% y
 11.01%. No se suman a las aceleraciones de otras revisiones ni se interpretan
@@ -285,7 +285,7 @@ con otra agrupación de productos logarítmicos permanece separado y no se
 usa como confirmación de la revisión previa exacta. La repetición a 10 atm
 sigue siendo exploratoria: faltan más pares y cerrar independencia espacial.
 
-Control directo posterior de esa combinación: H2/Soret a 10 atm, V2
+Control directo posterior de esa combinación: H2/Soret a 10 atm, KFLAME
 46.8486 s frente a Cantera 81.7868 s; ambos aceptados, 854/868 nodos y
 diferencia de Su=0.09605%. Una sola pareja, sin inferencia estadística nueva,
 guardada en `validation/kernel_optimized_cantera_20260905.json`.

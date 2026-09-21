@@ -1,18 +1,27 @@
-# KAVA — native free flames and FGM tables
+# KFLAME — native free flames and FGM tables
 
-KAVA solves one-dimensional premixed free flames and builds flamelet-generated
+KFLAME solves one-dimensional premixed free flames and builds flamelet-generated
 manifold (FGM) tables in mixture-fraction/progress-variable coordinates (Z, c).
 The production solver is CPU-native: **Cantera is not a runtime dependency**.
 Initialization, NASA thermodynamics, reaction rates, molecular transport,
 multicomponent/Soret transport and tabulation run locally.
 
+Start with [examples/example.py](examples/example.py) for one flame or
+[examples/example_fgm.py](examples/example_fgm.py) for adaptive FGM tables and
+figures. The [public Python API](docs/api.md) exposes physical inputs and mesh
+criteria through `kflame.solve_flame` and `kflame.generate_fgm`.
+CPU/Numba is the production implementation; the rejected GPU strategy is
+recorded in `DECISIONES_DESCARTADAS.md`.
+
 ## Install and run
 
-Python 3.11 or later is required. From a clone of this repository:
+Python 3.11 or later is required. Python 3.13 is recommended for new setups;
+the supported CPU dependency matrix is recorded in
+[compatibility](docs/compatibility.md). From a clone of this repository:
 
 ```sh
 python -m pip install .
-python -m kava fgm --phi-values 0.7,0.9,1,1.1,1.4 --save-raw-profiles
+python -m kflame fgm --phi-values 0.7,0.9,1,1.1,1.4 --save-raw-profiles
 ```
 
 The first execution compiles Numba kernels and can take noticeably longer.
@@ -20,16 +29,16 @@ Outputs go to `runs/fgm/`, never into the installed package.
 
 ```sh
 # Force a cold sweep without saved profile seeds
-python -m kava fgm --phi-values 0.9,1,1.1 --disable-seed-cache --parallel-workers 1
+python -m kflame fgm --phi-values 0.9,1,1.1 --disable-seed-cache --parallel-workers 1
 
 # Native H2/Soret benchmark with native mixture-averaged bootstrap
-python -m kava soret --bootstrap --bootstrap-mesh-factor 2 --pressure-atm 10
+python -m kflame soret --bootstrap --bootstrap-mesh-factor 2 --pressure-atm 10
 
 # Export a generated table
-python -m kava export --npz runs/fgm/RUN_NAME/fgm_table.npz --all-species --single-flamelets
+python -m kflame export --npz runs/fgm/RUN_NAME/fgm_table.npz --all-species --single-flamelets
 ```
 
-Use `python -m kava COMMAND --help` for the full options. The installed `kava`
+Use `python -m kflame COMMAND --help` for the full options. The installed `kflame`
 console command is equivalent. Other commands are `refine-table`,
 `validate-table`, `plot`, `compare` and `reference-fgm`.
 
@@ -37,10 +46,10 @@ Plotting and reference comparisons are separate optional installations:
 
 ```sh
 python -m pip install ".[plot]"
-python -m kava plot --run-dir runs/fgm/RUN_NAME
+python -m kflame plot --run-dir runs/fgm/RUN_NAME
 
 python -m pip install ".[reference]"
-python -m kava compare --loglevel 1
+python -m kflame compare --loglevel 1
 ```
 
 `compare`, `reference-fgm`, `--transport-backend cantera-reference` and
@@ -50,7 +59,7 @@ They are not silent fallback paths.
 ## Repository layout
 
 ```text
-src/kava/
+src/kflame/
   flame/        equations, nonlinear solver and adaptive mesh
   chemistry/    native thermodynamics, kinetics, transport and bundled data
   fgm/          generation, tabulation, export, plotting and validation
@@ -58,6 +67,8 @@ src/kava/
   benchmarks/   standalone Soret benchmark
 tests/          regression tests and no-Cantera audit guard
 benchmarks/     reproducible performance experiments, outside production
+tools/          audit utilities for supplied outputs, outside production
+examples/       ready-to-edit single-flame and FGM input files
 docs/           architecture, migration and dated validation evidence
 DECISIONES_DESCARTADAS.md   retained negative results and design decisions
 ```
@@ -65,8 +76,8 @@ DECISIONES_DESCARTADAS.md   retained negative results and design decisions
 Manuscripts, thesis figures, research-only scripts, archived experiments and
 their data are kept locally under `.local/research/`, excluded from Git and
 from the package. Generated `runs/`, `tmp/` and caches are also excluded.
-The old `V2/` and `FGM/scripts/` entry points have been replaced by installed
-package imports and commands; see [migration](docs/migration.md).
+The legacy loose-script entry points have been replaced by installed package
+imports and commands; see [migration](docs/migration.md).
 
 ## Performance and numerical scope
 
@@ -110,5 +121,5 @@ The [refactoring audit](docs/validation/REFACTOR_AUDIT_20260920.md) records
 preserved interfaces, exact before/after comparisons and remaining warnings.
 
 Bundled mechanisms, collision data and adapted formulations retain their
-[third-party attribution](src/kava/chemistry/data/README.md).
+[third-party attribution](src/kflame/chemistry/data/README.md).
 An original-code redistribution license has not yet been selected.

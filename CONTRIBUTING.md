@@ -2,8 +2,10 @@
 
 Install the package in editable mode with `python -m pip install -e ".[reference,test]"`.
 Run `python -m unittest discover -s tests -v` or `python -m pytest -q`.
-Use fully qualified `kava` imports: do not mutate sys.path inside production code.
+Use fully qualified `kflame` imports: do not mutate sys.path inside production code.
 Runtime dependencies and optional extras are declared in `pyproject.toml`.
+User scripts should import `kflame.solve_flame` or `kflame.generate_fgm`; see
+`examples/` and `docs/api.md`. Developer solver tuning stays out of examples.
 
 Keep Cantera in explicit reference tools. For an independence check, install
 only `python -m pip install .` in a fresh virtual environment and set PYTHONPATH

@@ -28,12 +28,12 @@ def main():
                                          ('tests/no_cantera', 'tests', 'src')))
     runner = """
 import sys
-import kava.flame.equations as equations
+import kflame.flame.equations as equations
 from test_perturbation_batches import legacy_perturbation_states
 mode = sys.argv.pop(1)
 if mode == 'legacy':
     equations._center_perturbation_states = legacy_perturbation_states
-import kava.fgm.generate as generate_fgm_tables_native
+import kflame.fgm.generate as generate_fgm_tables_native
 generate_fgm_tables_native.main()
 """
     result = dict(protocol=__doc__, pairs=[], warmups={}, threads=dict(numba=4, blas=1))

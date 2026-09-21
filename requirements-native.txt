@@ -1,3 +1,0 @@
-# Compatibility entry point; install from the repository root.
-# Runtime dependencies have one source of truth: pyproject.toml.
-.

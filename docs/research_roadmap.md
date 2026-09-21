@@ -18,9 +18,9 @@ Véase `validation/SORET_SIGNED_KINETICS_DIAGNOSIS.md`.
 
 Para el artículo siguen pendientes: ampliar independencia de malla/dominio,
 incertidumbre experimental, rango paramétrico FGM/Soret y ablaciones causales.
-Los coeficientes, flujos y química ya se evalúan nativamente; la construcción
-del problema todavía usa Cantera para mezcla/equilibrio inicial. Por tanto no
-se afirma que toda la aplicación sea independiente de Cantera.
+Los coeficientes, flujos, química, mezcla y equilibrio de inicialización se
+evalúan nativamente. Cantera queda como referencia opcional; la independencia
+de software no sustituye la validación de malla, dominio o datos físicos.
 
 ## Estado de implementación: predictor--corrector y refresco local certificado
 
@@ -69,7 +69,7 @@ sin alterar silenciosamente la comparación física solicitada.
 Comparar, en al menos siete réplicas pareadas, `cold`, `fixed`, puentes de paso
 fijo y `adaptive-pc`. Promover `adaptive-pc` solo si el intervalo pareado de
 coste favorece la reducción, no disminuye la tasa de certificación y, frente al
-baseline V2 en la misma configuración, satisface
+baseline KFLAME en la misma configuración, satisface
 \(\Delta S_u\le0.1\%\), \(E_2(T)\le0.5\%\),
 \(E_2(Y_k)\le2\%\) para especies activas y
 \(E_2(\dot q)\le5\%\). Si falla cualquiera, conservar `fixed` y publicar el
@@ -108,12 +108,12 @@ metadatos y hashes durante la preparación del artículo.
 ### Bloqueadores antes de enviar
 
 1. **Estadística temporal:** aún faltan, en un paquete versionado y citado, los
-   siete pares alternados V2--Cantera para los casos principales, con tiempos
+   siete pares alternados KFLAME--Cantera para los casos principales, con tiempos
    individuales, IQR e intervalo bootstrap. Una única corrida de barrido no es
    resultado de revista.
 2. **Generalidad P1:** documentar toda la matriz de \(T_{\rm in}\), presión,
    \(\phi\) y al menos un combustible/mecanismo adicional. Los resultados a
-   alta presión deben aparecer también cuando V2 no gane: el refresco local
+   alta presión deben aparecer también cuando KFLAME no gane: el refresco local
    mejora transiciones, pero no prueba una ventaja fría a 10 atm.
 3. **Tabla FGM P2:** insertar filas hasta superar una tolerancia fijada antes
    de mirar los resultados, y validarla con flamelets de retención. La actual
@@ -130,7 +130,7 @@ metadatos y hashes durante la preparación del artículo.
 
 ### Prioridad P0: sostener las afirmaciones actuales
 
-- Ejecutar al menos siete pares alternados V2--Cantera y siete pares
+- Ejecutar al menos siete pares alternados KFLAME--Cantera y siete pares
   sustitución-LAPACK--sustitución-fusionada.
 - Reportar mediana, rango intercuartílico e intervalo de confianza pareado por
   bootstrap; publicar también todos los tiempos individuales.
@@ -168,8 +168,8 @@ El transporte multicomponente/Soret ya se prepara y evalúa sin importar Cantera
 Los ajustes de viscosidad, difusión binaria y A*, B*, C* se calculan desde los
 parámetros moleculares y las tablas universales Monchick--Mason incluidas con su
 licencia. El cierre implementa el sistema Dixon--Lewis y conserva el término
-`-D^T grad(log T)`. La inicialización global del problema todavía usa Cantera
-para mezcla/equilibrio; no se declara independencia completa de esa infraestructura.
+`-D^T grad(log T)`. La inicialización global de mezcla/equilibrio también es
+nativa; Cantera solo se importa en las rutas de referencia explícitas.
 
 Optimización implementada y probada:
 - eliminación exacta mediante complemento de Schur: sistema térmico K en vez de 3K;
@@ -188,11 +188,11 @@ comparación Schur--sistema completo, coeficientes en estados reactivos a 1/10 a
 y columnas del Jacobiano compiladas frente a evaluación escalar y Python.
 
 Evidencia medida el 2026-09-04 (siete pares alternados, H2/aire, GRI30, 300 K,
-1 atm; sin semillas persistentes): mediana V2 8.1535 s, Cantera 10.4920 s.
-Reducción 22.29%; IC bootstrap pareado del cociente V2/Cantera [0.7463, 0.9501].
+1 atm; sin semillas persistentes): mediana KFLAME 8.1535 s, Cantera 10.4920 s.
+Reducción 22.29%; IC bootstrap pareado del cociente KFLAME/Cantera [0.7463, 0.9501].
 Todas las corridas fueron aceptadas, con 207/203 nodos y 0.03 m respectivamente.
 Diferencia de Su 0.01071%; E2(T) 0.03850%, E2(qdot) 0.08465%, máximo E2
-entre especies activas 0.54055%. El residual exacto V2 fue 6.7233, cierre
+entre especies activas 0.54055%. El residual exacto KFLAME fue 6.7233, cierre
 de composición 1.01e-12 y variación relativa de flujo másico 2.15e-10.
 Los E2 usan perfiles alineados e integración espacial. El postprocesado de calor
 usa Cantera sobre ambos perfiles y no forma parte del tiempo de resolución.
@@ -200,7 +200,7 @@ usa Cantera sobre ambos perfiles y no forma parte del tiempo de resolución.
 Datos: `resultados/soret_native_validation/benchmark_20260904_180651/`.
 La primera corrida se conserva; esta campaña usa cachés JIT ya preparadas por las
 pruebas y no mide la instalación ni una compilación inicial sin caché.
-El tiempo V2 incluye la etapa preliminar y el corrector final; la preparación
+El tiempo KFLAME incluye la etapa preliminar y el corrector final; la preparación
 externa se registra aparte. Estos resultados no demuestran superioridad para
 otros mecanismos, presiones o toda la cadena FGM.
 
@@ -217,7 +217,7 @@ pareadas de cada optimización y validación FGM. Ver
 - Verificar positividad, suma de masa, conservación elemental y error de los
   términos fuente después de interpolar.
 - Medir por separado generación fría, regeneración cacheada y consulta de tabla.
-- Para toda comparación V2--Cantera, congelar y repetir la misma secuencia final
+- Para toda comparación KFLAME--Cantera, congelar y repetir la misma secuencia final
   de \(\phi\), incluidas las filas puente.
 - No presentar la tabla de cinco filas como cierre CFD: el error observado de
   liberación de calor muestra que su resolución paramétrica es insuficiente.

@@ -11,9 +11,9 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 
-import kava.flame.equations as equations
-from kava.flame.equations import BlockTridiagJacobian, factorize, refresh_block_tridiag_jacobian_columns, solve_linear
-from kava.flame.solver import (
+import kflame.flame.equations as equations
+from kflame.flame.equations import BlockTridiagJacobian, factorize, refresh_block_tridiag_jacobian_columns, solve_linear
+from kflame.flame.solver import (
     _local_linearisation_defect_blocks,
 )
 

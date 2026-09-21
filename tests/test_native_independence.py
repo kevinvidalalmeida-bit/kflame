@@ -11,16 +11,16 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 
-from kava.flame.config import FlameCase
-from kava.flame.problem import FreeFlameProblem
-from kava.chemistry.mechanism import load_mechanism, resolve_mechanism
-from kava.chemistry.initialization import fresh_mixture, NativeMixture
-from kava.chemistry.thermo import NativeThermo
-from kava.chemistry.transport import NativeTransport
-from kava.chemistry.backend import NativeSpeciesBackend
-from kava.chemistry.collision_integrals import native_transport_fits
-from kava.fgm.common import compute_bilger_Z, invert_bilger_Z_to_phi
-from kava.fgm.generate import build_argparser, tabulated_properties, seed_cache_key
+from kflame.flame.config import FlameCase
+from kflame.flame.problem import FreeFlameProblem
+from kflame.chemistry.mechanism import load_mechanism, resolve_mechanism
+from kflame.chemistry.initialization import fresh_mixture, NativeMixture
+from kflame.chemistry.thermo import NativeThermo
+from kflame.chemistry.transport import NativeTransport
+from kflame.chemistry.backend import NativeSpeciesBackend
+from kflame.chemistry.collision_integrals import native_transport_fits
+from kflame.fgm.common import compute_bilger_Z, invert_bilger_Z_to_phi
+from kflame.fgm.generate import build_argparser, tabulated_properties, seed_cache_key
 
 try:
     import cantera as ct
@@ -45,10 +45,10 @@ class NativeContracts(unittest.TestCase):
         code = '''
 import sys
 from pathlib import Path
-from kava.flame.config import FlameCase
-from kava.flame.problem import FreeFlameProblem
-from kava.flame.solver import _make_backend
-from kava.fgm.generate import build_argparser
+from kflame.flame.config import FlameCase
+from kflame.flame.problem import FreeFlameProblem
+from kflame.flame.solver import _make_backend
+from kflame.fgm.generate import build_argparser
 p = FreeFlameProblem(FlameCase())
 assert _make_backend(p).backend_kind == 'native'
 assert build_argparser().parse_args([]).transport_backend == 'native'
