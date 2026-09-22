@@ -29,6 +29,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from matplotlib.lines import Line2D
+from scipy.interpolate import RegularGridInterpolator
 
 matplotlib.rcParams.update(
     {
@@ -390,6 +391,111 @@ def plot_c_vs_Z_domain(run_dir: Path, dpi: int, normalize_z: bool = False) -> No
     plt.close(fig)
 
 
+def _normalised_axis(values: np.ndarray) -> np.ndarray:
+    values = np.asarray(values, dtype=float)
+    if values.ndim != 1 or values.size < 2 or np.any(np.diff(values) <= 0.0):
+        raise ValueError("Z_grid must be a strictly increasing one-dimensional array")
+    return (values - values[0]) / max(float(values[-1] - values[0]), np.finfo(float).tiny)
+
+
+def _display_interpolant(
+    z_star: np.ndarray, c_grid: np.ndarray, values: np.ndarray, points: int = 401,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Evaluate the table's bilinear interpolant only for visual rendering."""
+    z_display = np.linspace(float(z_star[0]), float(z_star[-1]), points)
+    c_display = np.linspace(float(c_grid[0]), float(c_grid[-1]), points)
+    zz, cc = np.meshgrid(z_display, c_display, indexing="ij")
+    interpolant = RegularGridInterpolator(
+        (z_star, c_grid), np.asarray(values, dtype=float), method="linear"
+    )
+    displayed = interpolant(np.column_stack((zz.ravel(), cc.ravel()))).reshape(zz.shape)
+    return z_display, c_display, displayed
+
+
+def _draw_flamelet_rows(ax: plt.Axes, z_star: np.ndarray) -> None:
+    for z_value in z_star:
+        ax.axvline(z_value, color="white", lw=0.45, ls=":", alpha=0.45)
+    ax.set(xlim=(0.0, 1.0), ylim=(0.0, 1.0))
+
+
+def plot_adaptive_fgm_map(run_dir: Path, dpi: int, out_name: str = "fgm_mapa_adaptativo.pdf") -> None:
+    """Reproduce the thesis FGM map from the generated table alone.
+
+    Curves at left are the actually solved flamelet rows. The two heat maps
+    evaluate only the table's bilinear interpolant; dotted vertical lines mark
+    the solved rows so rendered continuity is not mistaken for new flamelets.
+    """
+    table = load_table(run_dir)
+    required = {"Z_grid", "c_grid", "qdot", "omega_c", "Y", "species_names"}
+    missing = sorted(required.difference(table))
+    if missing:
+        raise KeyError(f"Adaptive FGM map requires table fields: {', '.join(missing)}")
+
+    names = [str(name) for name in np.asarray(table["species_names"], dtype=object)]
+    missing_species = [name for name in ("CO", "CO2") if name not in names]
+    if missing_species:
+        raise KeyError(f"Adaptive FGM map requires species: {', '.join(missing_species)}")
+
+    z_star = _normalised_axis(table["Z_grid"])
+    c_grid = np.asarray(table["c_grid"], dtype=float)
+    qdot = np.clip(np.asarray(table["qdot"], dtype=float), 0.0, None)
+    omega_c = np.abs(np.asarray(table["omega_c"], dtype=float))
+    y_table = np.asarray(table["Y"], dtype=float)
+    expected_shape = (z_star.size, c_grid.size)
+    if qdot.shape != expected_shape or omega_c.shape != expected_shape:
+        raise ValueError("qdot and omega_c must have shape (n_Z, n_c)")
+    if y_table.ndim != 3 or y_table.shape[0] != z_star.size or y_table.shape[2] != c_grid.size:
+        raise ValueError("Y must have shape (n_Z, n_species, n_c)")
+
+    co2 = np.clip(y_table[:, names.index("CO2"), :], 0.0, None)
+    co = np.clip(y_table[:, names.index("CO"), :], 0.0, None)
+    curve_map = plt.get_cmap("turbo")
+
+    fig, axes = plt.subplots(2, 2, figsize=(7.0, 5.25), constrained_layout=True)
+    for color, profile in zip(curve_map(z_star), co2, strict=True):
+        axes[0, 0].plot(c_grid, profile, color=color, lw=1.05)
+    axes[0, 0].set(
+        title=r"Familia de perfiles de $\mathrm{CO_2}$",
+        xlabel=r"$c$", ylabel=r"$Y_{\mathrm{CO_2}}$", xlim=(0.0, 1.0),
+    )
+    for color, profile in zip(curve_map(z_star), co, strict=True):
+        axes[1, 0].plot(c_grid, profile, color=color, lw=1.05)
+    axes[1, 0].set(
+        title=r"Familia de perfiles de $\mathrm{CO}$",
+        xlabel=r"$c$", ylabel=r"$Y_{\mathrm{CO}}$", xlim=(0.0, 1.0),
+    )
+    color_bar = fig.colorbar(
+        plt.cm.ScalarMappable(cmap=curve_map, norm=mcolors.Normalize(0.0, 1.0)),
+        ax=[axes[0, 0], axes[1, 0]], pad=0.02,
+    )
+    color_bar.set_label(r"Fila de la tabla: $Z^\star$")
+
+    for ax, values, title, label in (
+        (axes[0, 1], qdot, "Liberación de calor tabulada", r"$\dot q$ [W m$^{-3}$]"),
+        (axes[1, 1], omega_c, "Fuente de progreso tabulada", r"$|\dot\omega_c|$ [kg m$^{-3}$ s$^{-1}$]"),
+    ):
+        z_display, c_display, displayed = _display_interpolant(z_star, c_grid, values)
+        vmax = max(float(np.max(displayed)), np.finfo(float).tiny)
+        mesh = ax.pcolormesh(
+            z_display, c_display, displayed.T, shading="auto", cmap="jet",
+            norm=mcolors.Normalize(vmin=0.0, vmax=vmax),
+        )
+        fig.colorbar(mesh, ax=ax, label=label)
+        ax.set(title=title, xlabel=r"$Z^\star$", ylabel=r"$c$")
+        _draw_flamelet_rows(ax, z_star)
+
+    for index, (ax, panel) in enumerate(zip(axes.flat, ("(a)", "(b)", "(c)", "(d)"))):
+        ax.text(
+            0.03, 0.95, panel, transform=ax.transAxes, va="top", ha="left",
+            color="white" if index in (1, 3) else "black", fontweight="bold",
+        )
+
+    out_path = run_dir / out_name
+    fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
+    print(f"Mapa FGM adaptativo guardado: {out_path.resolve()}")
+    plt.close(fig)
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -409,6 +515,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--out", type=str, default="fig8_ZC.pdf")
     p.add_argument("--dpi", type=int, default=200)
     p.add_argument("--no-extras", action="store_true")
+    p.add_argument("--adaptive-map", action="store_true",
+                   help="Genera el mapa de tesis (CO2, CO, qdot y omega_c).")
+    p.add_argument("--adaptive-map-out", default="fgm_mapa_adaptativo.pdf")
     return p
 
 
@@ -423,6 +532,8 @@ def main(argv=None) -> None:
         plot_su_Z(run_dir, args.dpi, normalize_z=args.normalize_z)
         plot_c_grid(run_dir, args.dpi)
         plot_c_vs_Z_domain(run_dir, args.dpi, normalize_z=args.normalize_z)
+    if args.adaptive_map:
+        plot_adaptive_fgm_map(run_dir, args.dpi, out_name=args.adaptive_map_out)
 
 
 if __name__ == "__main__":

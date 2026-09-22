@@ -83,16 +83,10 @@ combustible/presion. La evidencia motiva estudiar control global del esfuerzo
 no lineal basado en progreso/defecto. El usuario solicito expresamente una
 estrategia general beneficiosa para ambos combustibles.
 
-## Fuentes primarias y reproduccion
+## Estado de la campa?a
 
-- [Cantera 3.2 SteadyStateSystem.cpp](https://github.com/Cantera/cantera/blob/v3.2.0/src/numerics/SteadyStateSystem.cpp): bucle de pseudo-tiempo, Newton, crecimiento del paso y limite.
-- [Cantera 3.2 _onedim.pyx](https://github.com/Cantera/cantera/blob/v3.2.0/interfaces/cython/cantera/_onedim.pyx): etapas automaticas de mezcla, energia, refinamiento y Soret.
-- [Cantera 3.2 onedim.py](https://github.com/Cantera/cantera/blob/v3.2.0/interfaces/cython/cantera/onedim.py): semilla HP y rampa; se contrasto con el archivo instalado.
-
-`benchmarks/audit_cantera_startup.py` produce logs, arrays y JSON diagnosticos.
-`benchmarks/benchmark_residual_lu.py --candidate backward_euler --pairs 3
---output runs/new/be.json` reproduce las parejas. El candidato es una copia
-aislada del metodo hibrido con una sustitucion comprobada; no cambia el
-solver instalado. Los datos completos estan en `runs/cantera_startup_audit/`
-y `runs/residual_lu_experiments/backward_euler.json`. Resumen versionable:
-`cantera_startup_audit_20260921.json` y `backward_euler_screening_20260921.json`.
+La comparaci?n y sus cifras se conservan como diagn?stico hist?rico. Las
+variantes de Euler impl?cito y el benchmark de sustituci?n se retiraron porque
+no eran una pol?tica global para CH4 y H2. `benchmarks/audit_cantera_startup.py`
+contin?a siendo la herramienta de auditor?a nativa/Cantera sin rutas de
+arranque alternativas.

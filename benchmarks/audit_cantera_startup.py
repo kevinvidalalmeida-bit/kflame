@@ -24,9 +24,6 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--backend', choices=['native', 'cantera'], required=True)
     ap.add_argument('--output', type=Path, required=True)
-    ap.add_argument('--linear-seed', action='store_true')
-    ap.add_argument('--backward-euler', action='store_true')
-    ap.add_argument('--steps', type=int, default=20)
     args = ap.parse_args()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     case = FlameCase(fuel='H2', P=1013250., transport_model='multicomponent',
@@ -71,11 +68,7 @@ def main():
         np.savez_compressed(args.output.with_suffix('.npz'), z=f.grid, T=f.T, u=f.velocity, Y=f.Y)
     else:
         import kflame.flame.solver as solver
-        import kflame.flame.problem as problem_module
         original = solver._hybrid_newton
-        if args.backward_euler:
-            from residual_lu_candidates import backward_euler_hybrid
-            original = backward_euler_hybrid()
         phases = []
         def hybrid(problem, *a, **kw):
             profile = getattr(problem, '_profile', {})
@@ -98,19 +91,11 @@ def main():
                     for metric,value in v.items()} for k,v in getattr(problem,'_profile',{}).items()}
                 print(entry['label'], entry['n_points'], round(entry['wall_s'],3), entry.get('ok'),
                       entry.get('interrupted'), flush=True)
-        def linear(z, width, left, right, locs=(0.,.3,.5,1.)):
-            return np.interp(np.asarray(z)/width, locs, [left,left,right,right])
         opts = benchmark_options(True)
-        opts.time_step_sequence = (args.steps,)
         out['options'] = asdict(opts)
         with patch.object(solver, '_hybrid_newton', hybrid):
-            if args.linear_seed:
-                with patch.object(problem_module, '_transition_profile', linear):
-                    result = native_solve(case, opts, bootstrap=True, bootstrap_mesh_factor=2.)
-            else:
-                result = native_solve(case, opts, bootstrap=True, bootstrap_mesh_factor=2.)
-        out.update(result=compact_result(result), phases=phases, linear_seed=args.linear_seed,
-                   backward_euler=args.backward_euler)
+            result = native_solve(case, opts, bootstrap=True, bootstrap_mesh_factor=2.)
+        out.update(result=compact_result(result), phases=phases)
         np.savez_compressed(args.output.with_suffix('.npz'), **{k:result[k] for k in ('z','T','u','Y')})
     args.output.write_text(json.dumps(json_safe(out), indent=2), encoding='utf-8')
     print(args.output, flush=True)

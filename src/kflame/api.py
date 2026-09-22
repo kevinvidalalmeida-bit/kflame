@@ -203,5 +203,10 @@ def generate_fgm(*, phis=(0.7, 0.9, 1.0, 1.1, 1.4), mechanism='gri30.yaml',
                       '--mech', str(mechanism), '--fuel', _stream(fuel), '--oxidizer', _stream(oxidizer),
                       '--pressure', str(pressure), '--T-in', str(temperature)])
     if plots:
-        plot(['--run-dir', str(folder), '--sp1', species[0], '--sp2', species[1]])
+        plot_args = ['--run-dir', str(folder), '--sp1', species[0], '--sp2', species[1]]
+        # Preserve the thesis-ready adaptive map when the required products
+        # are available in the chosen mechanism.
+        if {'CO', 'CO2'}.issubset(mech.species_names):
+            plot_args.append('--adaptive-map')
+        plot(plot_args)
     return folder

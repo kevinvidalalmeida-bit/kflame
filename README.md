@@ -7,8 +7,9 @@ Initialization, NASA thermodynamics, reaction rates, molecular transport,
 multicomponent/Soret transport and tabulation run locally.
 
 Start with [examples/example.py](examples/example.py) for one flame or
-[examples/example_fgm.py](examples/example_fgm.py) for adaptive FGM tables and
-figures. The [public Python API](docs/api.md) exposes physical inputs and mesh
+[examples/example_fgm.py](examples/example_fgm.py) for a quick adaptive FGM table, or
+[examples/example_fgm_adaptive_map.py](examples/example_fgm_adaptive_map.py) to reproduce
+the thesis adaptive FGM map with its validated 44-flamelet schedule. The [public Python API](docs/api.md) exposes physical inputs and mesh
 criteria through `kflame.solve_flame` and `kflame.generate_fgm`.
 CPU/Numba is the production implementation; the rejected GPU strategy is
 recorded in `DECISIONES_DESCARTADAS.md`.

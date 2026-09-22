@@ -1240,40 +1240,6 @@ class SolveOptions:
     bootstrap_max_grid_points: int = 1000
     restart_insert_anchor: bool = False
 
-    # --- Experimental: adaptive Newton corrections during PTC (Exp. A) ---
-    # When enabled, PTC steps that show poor stationary progress and large
-    # linearisation defect may receive additional Newton corrections reusing
-    # the existing LU factorisation. The steady-state and acceptance criteria
-    # are never modified.
-    adaptive_newton_corrections: bool = False
-    max_ptc_corrections: int = 3
-    # Linearisation defect threshold: d_n > this triggers an extra correction.
-    anc_defect_threshold: float = 0.1
-    # Stationary progress threshold: r_n > this means poor progress.
-    anc_progress_threshold: float = 0.5
-    # Each extra correction must reduce ||F|| by at least this factor.
-    anc_reduction_factor: float = 0.5
-
-    # --- Experimental: early mesh refinement on PTC stall (Exp. B) ---
-    # When enabled, a sliding window monitors PTC progress and triggers early
-    # mesh refinement when the solver stalls on a coarse grid.
-    early_refinement: bool = False
-    stall_window: int = 40
-    # Stall := ||F|| reduced by less than this factor over the window.
-    stall_reduction_threshold: float = 0.5
-    max_early_refinements: int = 2
-
-    # --- Experimental: combined strategy (Exp. C) ---
-    combined_startup_strategy: bool = False
-
-    # --- Transient solver mode campaign ---
-    # "ptc_ser": standard production (1-step PTC-SER, 1-step BE fallback on rejection)
-    # "full_backward_euler": full multi-iteration Backward Euler on every step
-    # "persistent_backward_euler": PTC-SER with persistent BE switching on stall/rejection
-    transient_solver_mode: str = "ptc_ser"
-    persistent_be_steps: int = 5
-    persistent_be_stall_threshold: float = 0.8
-
     max_total_time_s: float = 300.0
     verbose: bool = True
     profile: bool = False
@@ -1415,13 +1381,6 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
 
     attempt = 0
 
-    # --- Transient solver mode state (persists across attempt cycles) ---
-    ts_mode = str(getattr(opts, "transient_solver_mode", "ptc_ser")).strip().lower()
-    in_be_persistent = False
-    be_persistent_successes = 0
-    min_be_steps = int(getattr(opts, "persistent_be_steps", 5))
-    stall_thr = float(getattr(opts, "persistent_be_stall_threshold", 0.8))
-
     if opts.verbose:
         print(f"\n{'-'*60}\n{label or 'Newton hibrido'}\n{'-'*60}")
 
@@ -1548,25 +1507,6 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
         n_done = 0
         successive_failures = 0
 
-        # --- Exp. A: adaptive Newton corrections state ---
-        anc_enabled = bool(getattr(opts, "adaptive_newton_corrections", False)) or bool(
-            getattr(opts, "combined_startup_strategy", False)
-        )
-        anc_max_corr = int(max(1, getattr(opts, "max_ptc_corrections", 3)))
-        anc_defect_thr = float(getattr(opts, "anc_defect_threshold", 0.1))
-        anc_progress_thr = float(getattr(opts, "anc_progress_threshold", 0.5))
-        anc_reduction = float(getattr(opts, "anc_reduction_factor", 0.5))
-
-        # --- Exp. B: early refinement state ---
-        er_enabled = bool(getattr(opts, "early_refinement", False)) or bool(
-            getattr(opts, "combined_startup_strategy", False)
-        )
-        er_window = int(max(5, getattr(opts, "stall_window", 40)))
-        er_reduction_thr = float(getattr(opts, "stall_reduction_threshold", 0.5))
-        er_max_refs = int(max(0, getattr(opts, "max_early_refinements", 2)))
-        er_norm_history: list[float] = []  # Sliding window of steady norms
-        er_refinements_done = 0
-
         while n_done < nsteps:
             if deadline is not None and time.perf_counter() > deadline:
                 history.append({
@@ -1583,20 +1523,10 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
 
             rdt = 1.0 / dt_try
 
-            # Determine solver scheme for current step
-            if ts_mode == "full_backward_euler":
-                use_ptc = False
-                scheme = "BE-full"
-            elif ts_mode == "persistent_backward_euler":
-                if in_be_persistent:
-                    use_ptc = False
-                    scheme = "BE-persistent"
-                else:
-                    use_ptc = successive_failures == 0
-                    scheme = "PTC-SER" if use_ptc else "BE-fallback"
-            else:
-                use_ptc = successive_failures == 0
-                scheme = "PTC-SER" if use_ptc else "BE-fallback"
+            # One linearly implicit PTC-SER correction. A rejected step
+            # falls back to a fully converged Backward Euler subproblem.
+            use_ptc = successive_failures == 0
+            scheme = "PTC-SER" if use_ptc else "BE-fallback"
 
             jac_evals_before = int(jac.n_evals) if jac is not None else 0
 
@@ -1650,116 +1580,6 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
             if not use_ptc:
                 steady_norm_after = _residual_inf(problem, x_ts) if (step_ok and np.all(np.isfinite(x_ts))) else float("nan")
 
-            # --- Exp. A: adaptive Newton corrections after accepted PTC ---
-            anc_corrections_used = 0
-            anc_defect_value = float("nan")
-            if ptc_step_ok and anc_enabled and np.isfinite(steady_norm_after):
-                progress_ratio = steady_norm_after / max(steady_norm_before, 1.0e-300)
-                poor_progress = progress_ratio > anc_progress_thr
-
-                if poor_progress and jac is not None and jac.lu is not None:
-                    f_old_steady = residual(x_old, problem)
-                    f_new_steady = residual(x_ts, problem)
-                    step_vec = x_ts - x_old
-                    if (
-                        np.all(np.isfinite(f_old_steady))
-                        and np.all(np.isfinite(f_new_steady))
-                        and np.all(np.isfinite(step_vec))
-                        and isinstance(jac.J, BlockTridiagJacobian)
-                    ):
-                        # Transient mask: differential equations have 1, algebraic have 0
-                        mask = build_transient_mask(
-                            problem.n_points,
-                            problem.n_species,
-                            solve_energy=bool(problem.solve_energy),
-                        )
-                        # Exact stationary Jacobian prediction: J_F*step = J_G*step + rdt*(mask*step)
-                        predicted_change_steady = jac.J.matvec(step_vec) + rdt * (mask * step_vec)
-                        defect_vec = f_new_steady - f_old_steady - predicted_change_steady
-                        defect_norm = float(np.linalg.norm(defect_vec, ord=np.inf))
-                        ref_norm = max(
-                            float(np.linalg.norm(f_old_steady, ord=np.inf)),
-                            1.0e-300,
-                        )
-                        anc_defect_value = defect_norm / ref_norm
-
-                        if anc_defect_value > anc_defect_thr:
-                            x_corr = x_ts.copy()
-                            norm_corr = steady_norm_after
-                            alpha_min = float(getattr(opts, "alpha_min", 1e-10))
-                            for _ic in range(anc_max_corr - 1):
-                                if deadline is not None and time.perf_counter() > deadline:
-                                    break
-                                f_trans = residual(
-                                    x_corr, problem, rdt=rdt, x_old=x_old
-                                )
-                                if not np.all(np.isfinite(f_trans)):
-                                    break
-                                try:
-                                    step_extra = solve_linear(jac.lu, -f_trans)
-                                except Exception:
-                                    break
-                                if not np.all(np.isfinite(step_extra)):
-                                    break
-
-                                # Unpack fbound factor and check alpha_min
-                                fbound, _fbound_reason = bound_step_limit(x_corr, step_extra, problem)
-                                if fbound < alpha_min:
-                                    break
-                                alpha = min(float(fbound), 1.0)
-
-                                # Damped line search consistent with newton_solve
-                                damp_ok = False
-                                for _idamp in range(int(getattr(opts, "max_damp_iter", 7))):
-                                    if alpha < alpha_min:
-                                        break
-                                    x_try = x_corr + alpha * step_extra
-                                    f_try_steady = residual(x_try, problem)
-                                    if not np.all(np.isfinite(f_try_steady)):
-                                        alpha /= damp_factor
-                                        continue
-                                    norm_try = float(
-                                        np.linalg.norm(f_try_steady, ord=np.inf)
-                                    )
-                                    if norm_try < anc_reduction * norm_corr:
-                                        damp_ok = True
-                                        break
-                                    alpha /= damp_factor
-
-                                if damp_ok:
-                                    x_corr = x_try
-                                    norm_corr = norm_try
-                                    anc_corrections_used += 1
-                                else:
-                                    break
-
-                            if anc_corrections_used > 0:
-                                x_ts = x_corr
-                                steady_norm_after = norm_corr
-                                jac.age += anc_corrections_used
-
-
-            # --- Update Persistent Backward Euler state machine ---
-            if ts_mode == "persistent_backward_euler":
-                if step_ok:
-                    prog_r = (
-                        steady_norm_after / max(steady_norm_before, 1.0e-300)
-                        if (np.isfinite(steady_norm_after) and np.isfinite(steady_norm_before) and steady_norm_before > 0)
-                        else 1.0
-                    )
-                    if not in_be_persistent:
-                        if use_ptc and prog_r > stall_thr:
-                            in_be_persistent = True
-                            be_persistent_successes = 0
-                    else:
-                        be_persistent_successes += 1
-                        if be_persistent_successes >= min_be_steps and prog_r < 0.5:
-                            in_be_persistent = False
-                            be_persistent_successes = 0
-                else:
-                    in_be_persistent = True
-                    be_persistent_successes = 0
-
             history.append(
                 {
                     "cycle": attempt,
@@ -1775,8 +1595,6 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                     "newton_Finf": newton_Finf,
                     "steady_norm_before": steady_norm_before,
                     "steady_norm_after": steady_norm_after,
-                    "anc_corrections": anc_corrections_used,
-                    "anc_defect": anc_defect_value,
                 }
             )
             if trace_enabled:
@@ -1810,8 +1628,7 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
 
                 if opts.verbose:
                     Finf = float(np.linalg.norm(residual(x, problem), ord=np.inf))
-                    extra = f" +{anc_corrections_used}corr" if anc_corrections_used else ""
-                    print(f"    ts {scheme} OK  dt={dt:.2e}  ||F||inf={Finf:.4e}{extra}")
+                    print(f"    ts {scheme} OK  dt={dt:.2e}  ||F||inf={Finf:.4e}")
 
                 if bool(getattr(opts, "accept_residual_converged", False)):
                     Finf = _residual_inf(problem, x)
@@ -1849,39 +1666,6 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                         )
                     return x, False, history
 
-                # --- Exp. B: stall detection for early refinement ---
-                if er_enabled and np.isfinite(steady_norm_after):
-                    er_norm_history.append(steady_norm_after)
-                    if len(er_norm_history) > er_window:
-                        er_norm_history.pop(0)
-                    if (
-                        len(er_norm_history) >= er_window
-                        and er_refinements_done < er_max_refs
-                    ):
-                        # Check if norm reduced sufficiently over the window
-                        oldest = er_norm_history[0]
-                        newest = er_norm_history[-1]
-                        if oldest > 1.0e-300 and newest / oldest > er_reduction_thr:
-                            # Stall detected. Try early refinement.
-                            _early_ref_ok = _try_early_refinement(
-                                problem, x, opts, history, attempt,
-                                nsteps_total, steady_callback, deadline,
-                            )
-                            if _early_ref_ok is not None:
-                                # Refinement changed the grid: restart
-                                x, x_old = _early_ref_ok, _early_ref_ok.copy()
-                                er_refinements_done += 1
-                                er_norm_history.clear()
-                                # Force new Jacobian on the new grid
-                                jac = JacobianState()
-                                dt = float(opts.time_step)
-                                if opts.verbose:
-                                    print(
-                                        f"  Early refinement #{er_refinements_done}: "
-                                        f"n_pts={problem.n_points}"
-                                    )
-                                # Continue PTC on the new mesh
-                                continue
             else:
                 successive_failures += 1
                 reset_bad = False
@@ -1930,108 +1714,6 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
         attempt += 1
 
 
-def _try_early_refinement(
-    problem,
-    x: np.ndarray,
-    opts: SolveOptions,
-    history: list[dict],
-    attempt: int,
-    nsteps_total: int,
-    steady_callback,
-    deadline: float | None,
-) -> np.ndarray | None:
-    """Try early mesh refinement during a PTC stall.
-
-    Returns the new state on the refined grid, or None if refinement was not
-    appropriate or did not produce new grid points.
-
-    This function does NOT change any acceptance criterion, tolerance, or
-    boundary condition. It only refines the mesh, interpolates the current
-    solution, and refreshes the backend.
-    """
-    t_start = _profile_start(problem)
-
-    # 1. Check physical admissibility of the current state.
-    _, T, Y = unpack_state(x, problem.n_points, problem.n_species)
-    t_lo = float(getattr(problem, "T_lower_bound", 200.0))
-    t_hi = float(getattr(problem, "T_upper_bound", 6000.0))
-    if float(np.min(T)) < t_lo * 0.5 or float(np.max(T)) > t_hi * 1.5:
-        history.append({
-            "cycle": attempt, "phase": "early_refine_skip",
-            "reason": "temperature_out_of_range",
-            "T_min": float(np.min(T)), "T_max": float(np.max(T)),
-        })
-        return None
-
-    # 2. Check if domain needs expansion first.
-    slope_tol = float(getattr(opts, "domain_edge_slope_tol", 0.02))
-    narrow, metrics = _domain_too_narrow(
-        problem, x, slope_tol=slope_tol,
-        strict_mode=bool(getattr(opts, "domain_edge_strict_mode", True)),
-    )
-    if narrow:
-        history.append({
-            "cycle": attempt, "phase": "early_refine_skip",
-            "reason": "domain_too_narrow",
-            "metrics": dict(metrics),
-        })
-        return None
-
-    # 3. Evaluate refinement indicators.
-    u, T, Y = unpack_state(x, problem.n_points, problem.n_species)
-    profiles = build_freeflame_refiner_profiles(problem, u, T, Y)
-    refiner = AdaptiveRefiner(
-        ratio=opts.refine_ratio,
-        slope=opts.refine_slope,
-        curve=opts.refine_curve,
-        prune=opts.refine_prune,
-        grid_min=opts.refine_grid_min,
-        max_points=opts.refine_max_points,
-    )
-
-    z_old = problem.z.copy()
-    z_new, changed, n_ins, n_rem = refiner.refine(
-        z_old, profiles, all_Y=Y, j_fixed=problem.j_fixed,
-    )
-
-    if not changed or n_ins == 0:
-        history.append({
-            "cycle": attempt, "phase": "early_refine_skip",
-            "reason": "no_new_points",
-            "n_points": int(z_old.size),
-        })
-        return None
-
-    # 4. Interpolate and apply.
-    x_new = interpolate_state(x, z_old, z_new, problem.n_species)
-    _assign_grid(problem, z_new)
-    x_new = problem.reset_bad_values(x_new)
-
-    _, T_new, Y_new = unpack_state(x_new, problem.n_points, problem.n_species)
-    Y_new = problem._sanitize_Y(Y_new)
-    u_new, _, _ = unpack_state(x_new, problem.n_points, problem.n_species)
-    x_new = pack_state(u_new, T_new, Y_new)
-
-    problem.solve_energy = True
-    problem.setup_fixed_temperature(T_profile=T_new)
-
-    _profile_record(problem, "early_refinement", t_start)
-    history.append({
-        "cycle": attempt,
-        "phase": "early_refine",
-        "ok": True,
-        "n_old": int(z_old.size),
-        "n_new": int(z_new.size),
-        "n_ins": int(n_ins),
-        "n_rem": int(n_rem),
-        "nsteps_total": int(nsteps_total),
-    })
-    return x_new
-
-
-# ---------------------------------------------------------------------------
-#  Refinamiento (Sim1D::refine)
-# ---------------------------------------------------------------------------
 def _residual_inf(
     problem, x: np.ndarray, *, force_exact_transport: bool = True
 ) -> float:
@@ -2731,6 +2413,7 @@ def _solve_transport_bootstrap(problem, opts, started):
             n_points_final=problem.n_points,
             total_time_s=time.perf_counter() - started,
         )
+
     final_options = replace(opts, multicomponent_bootstrap=False,
         max_total_time_s=max(0.01, opts.max_total_time_s - (time.perf_counter() - started)))
     x, ok, final = solve_free_flame(problem, x0=x, options=final_options)

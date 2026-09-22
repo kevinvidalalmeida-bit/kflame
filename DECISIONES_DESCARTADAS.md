@@ -538,55 +538,33 @@ siendo valido para aquella version, no para esta nueva ruta verificada.
 Evidencia y limites: `docs/validation/ANALYTIC_SPATIAL_20260921.md`.
 
 
-## Campaña de optimización global del arranque no lineal (2026-09-22)
+## Campa?as de arranque retiradas (2026-09-22)
 
-Se implementó y evaluó experimentalmente una campaña de optimización global del arranque no lineal del solver híbrido de KFlame (`src/kflame/flame/solver.py`). Se probaron tres estrategias paramétricas en `SolveOptions`:
+Las campa?as A/B/C de arranque y los modos alternativos de Euler impl?cito se
+midieron en cuatro llamas, pero no dieron una mejora reproducible para CH4 y
+H2 a 1 y 10 atm. Se retiraron del solver, de `SolveOptions`, de las pruebas y
+de los benchmarks. La ruta instalada queda reducida a PTC-SER con el rescate
+BE ya integrado cuando se rechaza un paso.
 
-| Propuesta | Evidencia en KFlame real (4 casos × 4 variantes) | Decisión / Causa raíz |
+| Variante retirada | Resultado | Motivo |
 | --- | --- | --- |
-| **Exp. A: PTC adaptativo con correcciones Newton (ANC)** (`adaptive_newton_corrections=True`) | `CH4_1`: 2.47s vs 1.91s baseline (-29.3% vel.)<br>`CH4_10`: 6.08s vs 5.20s baseline (-16.9% vel.)<br>`H2_1`: 3.22s vs 2.65s baseline (-21.5% vel.)<br>`H2_10`: 13.10s vs 11.72s baseline (-11.8% vel., eval. residual +39.1%: 21,098 vs 15,164). | **Descartada / Desactivada**. Las correcciones Newton intermedias con LU congelada en mallas gruesas o frentes transitorios no aceleran la convergencia hacia el estado estacionario. Añaden miles de evaluaciones redundantes de residual sin reducir reconstrucciones de Jacobiano ni time-steps globales. |
-| **Exp. B: Refinamiento anticipado de malla por estancamiento (ER)** (`early_refinement=True`) | `CH4_1`: 2.05s vs 1.91s baseline (-7.3% vel.)<br>`CH4_10`: 5.65s vs 5.20s baseline (-8.7% vel.)<br>`H2_10`: 11.62s (neutro/ruido, la ventana de 40 pasos no se alcanza antes del cambio de etapa A->B). | **Descartada / Desactivada**. Refinar la malla sobre un perfil transitorio no convergido coloca nodos en regiones reactivas espurias, aumentando los puntos de malla y el coste de los solves posteriores. La arquitectura de etapas (Stage A->B->C) de KFlame ya resuelve el estancamiento de forma más limpia. |
-| **Exp. C: Estrategia combinada (ANC + ER)** (`combined_startup_strategy=True`) | `CH4_1`: 2.34s vs 1.91s baseline<br>`CH4_10`: 6.77s vs 5.20s baseline (-30.2% vel.)<br>`H2_10`: 13.22s vs 11.72s baseline (-12.8% vel.). | **Descartada / Desactivada**. Acumula las sobrecargas de ANC y ER. |
+| Correcciones Newton durante PTC | A?adieron evaluaciones de residual en los cuatro casos. | No redujeron el n?mero total de pasos. |
+| Refinamiento anticipado durante PTC | Refin? perfiles todav?a transitorios y aument? el coste posterior. | No preserv? una mejora global. |
+| Combinaci?n de ambas | Acumul? ambos costes. | No aporta una trayectoria mejor. |
+| BE completo o persistente | Aceler? H2/10 en algunos pares y empeor? CH4. | No se selecciona por combustible o presi?n. |
 
+## Arranque global y continuaci?n f?sica descartada (2026-09-22)
 
-## Campaña de Recuperación por Euler Implícito Persistente (2026-09-22)
+| Variante | Evidencia | Decisi?n |
+| --- | --- | --- |
+| L?mite transitorio global de 250 | Tres parejas alternadas multicomponente/Soret: H2/10 mejor? 20.53 %, pero CH4/10 empeor? 9.36 %; CH4/1 fue neutro y H2/1 mejor? 2.05 %. | Mantener 500 por defecto. No es una mejora global ni un cambio de inicializaci?n matem?tica. |
+| Selector adaptativo PTC ? BE | El primer rechazo PTC favoreci? H2 pero perjudic? CH4; endurecer el gatillo quit? la ganancia de H2. | Retirado. No seleccionar por combustible, presi?n ni se?al no robusta. |
+| Dominio inicial ampliado y jerarqu?a de grids existente | El dominio de 0.06 m llev? H2/10 a 45.55 s. La jerarqu?a actual de solves independientes llev? H2/10 a 56.00 s. | Retirados como valores globales. La jerarqu?a no es FAS. |
+| Jacobiano completo de transporte | El producto direccional del Jacobiano con transporte congelado difiri? 0.30--0.39 % del residual completo en H2/10. | No implementar derivadas de transporte completas antes de demostrar que eliminan iteraciones. |
+| Continuaci?n mezcla ? multicomponente sin Soret ? Soret | H2/10: 14.95 s frente a 14.27 s de bootstrap y no equivalencia estricta de perfil. | Retirada. |
+| Perfil inicial con mesetas lineales de Cantera | H2/10: 6.59 s frente a 12.35 s, pero `?Su=0.64 %`, malla distinta y campos no equivalentes. | Retirado. Un tiempo menor que cambia la soluci?n no es un speedup v?lido. |
 
-Tras auditar minuciosamente las variantes A/B/C y mantenerlas desactivadas, se diseñó e implementó la **conmutación persistente a Euler Implícito (Backward Euler)** en `SolveOptions(transient_solver_mode="persistent_backward_euler")`. Al estancarse el avance de la norma estacionaria ($r_n > 0.8$) o fallar un paso PTC, el solver conmuta a Newton totalmente implícito (`max_iter=transient_max_iter`) y **permanece en dicho modo durante al menos 5 pasos exitosos consecutivos**, retornando a PTC-SER solo cuando la reducción de residual es fuerte ($r_n < 0.5$).
-
-### Evidencia Cuantitativa Detallada y Desglose por Operación (3 Comparaciones Emparejadas × 4 Casos)
-
-Valores medianos de 3 parejas de ejecuciones (`runs/nonlinear/euler_recovery_profiled.json`):
-
-| Caso | Variante | Tiempo Total | Pasos | Eval. Res (Tiempo) | Eval. Jac (Tiempo) | Fact. LU (Tiempo) | Linear Solve | $S_u$ (m/s) | $T_{max}$ (K) | Nodos |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| **$H_2$ / 10 atm** | **PTC-SER Baseline** | 11.410 s | 1,518 | 15,608 (4.380 s) | 515 (1.556 s) | 2,785 (3.406 s) | 0.893 s | 1.34848 | 2428.94 | 241 |
-| | **Euler Implícito Completo** | **6.477 s** (-43.2%) | **73** (-95.2%) | **3,876** (2.039 s) | **238** (1.242 s) | **469** (1.522 s) | 0.799 s | 1.34848 | 2428.94 | 241 |
-| | **Conmutación Persistente** | **6.719 s** (-41.1%) | **76** (-95.0%) | **4,063** (2.111 s) | **256** (1.350 s) | **523** (1.665 s) | 0.832 s | 1.34848 | 2428.94 | 241 |
-| **$H_2$ / 1 atm** | **PTC-SER Baseline** | **2.070 s** | 105 | 905 (0.598 s) | 62 (0.370 s) | 211 (0.470 s) | 0.126 s | 2.10656 | 2372.52 | 207 |
-| | **Euler Implícito Completo** | 2.096 s | 51 | 851 (0.573 s) | 62 (0.374 s) | 129 (0.301 s) | 0.150 s | 2.10656 | 2372.52 | 207 |
-| | **Conmutación Persistente** | 2.079 s | 52 | 1,015 (0.669 s) | 68 (0.412 s) | 142 (0.331 s) | 0.166 s | 2.10656 | 2372.52 | 207 |
-| **$CH_4$ / 10 atm** | **PTC-SER Baseline** | **5.382 s** | 73 | 3,932 (1.478 s) | 180 (0.970 s) | 711 (1.464 s) | 0.443 s | 0.39515 | 2261.38 | 321 |
-| | **Euler Implícito Completo** | 6.021 s (+11.9%) | 31 | 4,683 (1.733 s) | 255 (1.349 s) | 515 (1.107 s) | 0.702 s | 0.39515 | 2261.38 | 321 |
-| | **Conmutación Persistente** | 5.859 s (+8.9%) | 29 | 4,566 (1.706 s) | 253 (1.332 s) | 510 (1.096 s) | 0.686 s | 0.39515 | 2261.38 | 321 |
-| **$CH_4$ / 1 atm** | **PTC-SER Baseline** | **2.413 s** | 29 | 1,456 (0.732 s) | 88 (0.420 s) | 349 (0.594 s) | 0.175 s | 0.37603 | 2230.06 | 254 |
-| | **Euler Implícito Completo** | 3.067 s (+27.1%) | 29 | 2,751 (1.038 s) | 153 (0.539 s) | 298 (0.541 s) | 0.400 s | 0.37603 | 2230.06 | 254 |
-| | **Conmutación Persistente** | 3.114 s (+29.0%) | 31 | 2,659 (1.033 s) | 157 (0.574 s) | 311 (0.551 s) | 0.378 s | 0.37603 | 2230.06 | 254 |
-
-### Aclaración de la Discrepancia en $S_u$ para $H_2$ a 10 atm
-
-La auditoría numérica y verificación de los archivos JSON del repositorio confirma que el valor físico real y bit-a-bit reproducible de la velocidad laminar de llama para $H_2$ a 10 atm con Soret activado es:
-$$S_u = 1.34848478 \text{ m/s}$$
-con $T_{max} = 2428.94$ K sobre una malla final convergida de 241 nodos. Todas las variantes evaluadas (PTC-SER, Full Backward Euler, Persistent Backward Euler) convergen exactamente al mismo valor ($|\Delta S_u| < 10^{-11}$ m/s). El valor "1.4512 m/s" mencionado en un borrador previo correspondía a una errata de transcripción manual ajena al código y a las ejecuciones del solver.
-
-### Correcciones de Auditoría en la Implementación (Commit `845d18d` y Subsiguientes)
-
-1. **Protección física en ANC**: Se corrigió el desempaquetado de `bound_step_limit(x_corr, step_extra, problem)`, que devuelve `(fbound, reason)`. Se valida `fbound >= alpha_min` y se incorpora un procedimiento de búsqueda lineal amortiguada (`damp_factor`) idéntico al de `newton_solve` antes de aceptar correcciones adicionales.
-2. **Defecto de linealización con máscara transitoria**: Se corrigió la fórmula del Jacobiano pseudo-transitorio:
-   $$J_G = J_F - \text{rdt}\operatorname{diag}(m)$$
-   reconstruyendo el producto estacionario como `predicted_change_steady = jac.J.matvec(step_vec) + rdt * (mask * step_vec)`, evitando contaminar las filas algebraicas ($u$ y condiciones de contorno donde $m=0$).
-3. **Eliminación de evaluaciones duplicadas de residual en PTC-SER**: Se reestructura el ciclo de paso temporal para calcular `steady_norm_after = _residual_inf(problem, x_ts)` una única vez por paso aceptado, eliminando 1,376 evaluaciones redundantes de residual en $H_2$/10 atm (de 16,984 a 15,608).
-
-**Conclusión final**: La conmutación persistente a Euler implícito resuelve el estancamiento numérico en la ignición de $H_2$ a alta presión ($H_2$/10 atm), reduciendo el tiempo de 11.41 s a 6.72 s (**1.70× speedup**) y Euler implícito completo a 6.48 s (**1.76× speedup**) de forma limpia sin alterar las tolerancias ni los criterios físicos de aceptación. La opción queda integrada en `SolveOptions(transient_solver_mode=...)`.
-
-
-
+La ?nica v?a matem?tica de alto impacto que queda abierta es un multigrid no
+lineal FAS real: restringir estado y residual, resolver la ecuaci?n FAS en una
+malla gruesa, prolongar la correcci?n y terminar con el corrector exacto. No
+confundirlo con repetir solves completos en mallas 8/12/24/48.
