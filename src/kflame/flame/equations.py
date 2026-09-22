@@ -316,6 +316,7 @@ def residual(
     omega = np.empty((n_sp, n_pts))
     hk_n = np.empty((n_sp, n_pts))
 
+    t_nodal = _profile_start(problem)
     try:
         if hasattr(backend, "eval_grid_thermo_kinetics_into"):
             rho_g, cp_g = backend.eval_grid_thermo_kinetics_into(T, Y, omega, hk_n)
@@ -349,11 +350,13 @@ def residual(
         problem.last_residual_error = str(exc)
         return _profile_return(problem, "residual_full", t_profile, np.full(x.size, 1.0e20))
 
+    _profile_record(problem, "residual_nodal_thermochemistry", t_nodal)
     # ------------------------------------------------------------------
     #  2. Flujos difusivos en caras (n_pts-1 caras)
     # ------------------------------------------------------------------
     flux = np.empty((n_sp, n_pts - 1))
 
+    t_faces = _profile_start(problem)
     try:
         eval_multi_face = getattr(backend, "eval_multicomponent_face_transport", None)
         frozen_multi = getattr(problem, "_frozen_multicomponent_transport", None)
@@ -429,14 +432,18 @@ def residual(
         problem.last_residual_error = str(exc)
         return _profile_return(problem, "residual_full", t_profile, np.full(x.size, 1.0e20))
 
+    _profile_record(problem, "residual_face_transport_and_flux", t_faces)
     # OPT-3: Cache nodal properties for the Jacobian cache builder.
     # build_local_jacobian_cache() evaluates the exact same thermo/kinetics at
     # the same state.  Storing these here avoids that redundant evaluation.
     # Only thermo/kinetics (the expensive part) is cached; face transport
     # varies across code paths and is re-evaluated by the Jacobian builder.
     problem._residual_props_cache = {
-        "x_checksum": float(x[0]) + float(x[-1]) + float(x[x.size // 2]),
+        "x_snapshot": x.copy(),
+        "backend": backend,
+        "pressure": float(problem.P),
         "n_pts": n_pts,
+        "n_sp": n_sp,
         "rho": rho,
         "cp_n": cp_n,
         "omega": omega,
@@ -674,12 +681,11 @@ def build_local_jacobian_cache(x: np.ndarray, problem) -> dict:
     _props_cache = getattr(problem, "_residual_props_cache", None)
     _cache_hit = (
         _props_cache is not None
+        and _props_cache.get("backend") is backend
+        and _props_cache.get("pressure") == float(problem.P)
         and int(_props_cache.get("n_pts", -1)) == n_pts
-        # Cheap checksum: first + last + middle values must match.
-        and abs(
-            _props_cache.get("x_checksum", float("nan"))
-            - (float(x[0]) + float(x[-1]) + float(x[x.size // 2]))
-        ) < 1.0e-14
+        and int(_props_cache.get("n_sp", -1)) == n_sp
+        and np.array_equal(_props_cache.get("x_snapshot", ()), x)
     )
     if _cache_hit:
         rho[:] = _props_cache["rho"]
@@ -2052,6 +2058,8 @@ def _banded_jacobian_batched_local(fun, x: np.ndarray, problem, eps: float = 1e-
             )
         except Exception as exc:
             problem.last_jacobian_precompute_error = str(exc)
+            if bool(getattr(problem, "analytic_chemistry", False)):
+                raise
 
     max_rows_per_col = min(n_total, 3 * nv)
     capacity = max(1, n_total * max_rows_per_col)
@@ -2167,6 +2175,8 @@ def _banded_jacobian_lapack_local(fun, x: np.ndarray, problem, eps: float = 1e-5
             )
         except Exception as exc:
             problem.last_jacobian_precompute_error = str(exc)
+            if bool(getattr(problem, "analytic_chemistry", False)):
+                raise
 
     for j in range(n_pts):
         base = j * nv
@@ -2264,6 +2274,13 @@ def _precompute_block_tridiag_center_thermo(
 
     T_all, Y_all = _center_perturbation_states(x_r, rel_perturb, abs_perturb, eps)
 
+    if bool(getattr(problem, "analytic_chemistry", False)):
+        from kflame.chemistry.analytic import hybrid_center_properties
+        result = hybrid_center_properties(backend, x_r, T_all, Y_all)
+        _profile_record(problem, "jacobian_analytic_chemistry", t_profile)
+        _profile_record(problem, "jacobian_precompute_thermochem", t_profile)
+        return result
+
     n_total = int(T_all.size)
     omega = np.empty((n_sp, n_total), dtype=float)
     hk = np.empty((n_sp, n_total), dtype=float)
@@ -2323,6 +2340,23 @@ def refresh_block_tridiag_jacobian_columns(
     requested = np.unique(requested)
     if requested.size == 0:
         return reference.copy()
+
+    if bool(getattr(problem, "analytic_spatial", False)):
+        from kflame.flame.analytic_jacobian import build_analytic_blocks
+        fresh = build_analytic_blocks(x, problem, column_nodes=requested)
+        refreshed = reference.copy()
+        for j in requested:
+            refreshed.diag[j] = fresh.diag[j]
+            if j > 0:
+                refreshed.upper[j-1] = fresh.upper[j-1]
+            if j < n_pts-1:
+                refreshed.lower[j] = fresh.lower[j]
+        _profile_record(problem, "jacobian_local_refresh", t_profile)
+        if getattr(problem, "_profile", None) is not None:
+            entry = problem._profile.setdefault(
+                "jacobian_local_refresh_blocks", {"time_s": 0.0, "count": 0})
+            entry["count"] += int(requested.size)
+        return refreshed
 
     refreshed = reference.copy()
     cache = build_local_jacobian_cache(x, problem)
@@ -2429,6 +2463,8 @@ def _block_tridiag_jacobian_local(fun, x: np.ndarray, problem, eps: float = 1e-5
             )
         except Exception as exc:
             problem.last_jacobian_precompute_error = str(exc)
+            if bool(getattr(problem, "analytic_chemistry", False)):
+                raise
             precomputed_thermo = None
 
     for j in range(n_pts):
@@ -2506,6 +2542,11 @@ def banded_jacobian(fun, x: np.ndarray, problem, eps: float = 1e-5):
     - "cantera_local" (reference path)
     """
     mode = str(getattr(problem, "jacobian_mode", "cantera_local")).strip().lower()
+    if bool(getattr(problem, "analytic_spatial", False)):
+        if mode not in ("block_tridiag", "block_tridiagonal", "block_thomas"):
+            raise ValueError("analytic_spatial requires block_tridiag")
+        from kflame.flame.analytic_jacobian import build_analytic_blocks
+        return build_analytic_blocks(x, problem)
     if mode in ("block_tridiag", "block_tridiagonal", "block_thomas"):
         return _block_tridiag_jacobian_local(fun, x, problem, eps=eps)
     if mode in ("banded_lapack", "lapack_banded", "native_banded"):

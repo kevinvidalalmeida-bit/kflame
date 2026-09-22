@@ -516,3 +516,52 @@ código real de KFlame (`src/kflame/`):
 | **Alteración de edad o refresco adaptativo del Jacobiano (`max_jac_age` o ratio de contracción)** | Instrucción explícita del usuario ("la edad del jacobiano no te metas con eso"). Se respeta estrictamente la política validada tipo Cantera y no se modifica la lógica de envejecimiento ni refresco. | **Descartada / Retirada**. Política intacta. |
 
 
+
+## Jacobiano analitico revisado (2026-09-21)
+
+Se reabrio esta linea a peticion del usuario, con una implementacion nueva
+adaptada a todas las Y independientes del solver. Primero se valido una
+ruta quimica hibrida (8.9-18.5% menos tiempo en cuatro llamas; 10.0% en FGM).
+Despues se derivaron temperatura, flujos espaciales, energia y fronteras y
+se ensamblaron directamente los bloques, conservando coeficientes de
+transporte congelados. Tres parejas por caso redujeron el tiempo adicional
+frente al hibrido un 30.7%, 35.4%, 27.3% y 23.9%, respectivamente para
+CH4/1 atm, CH4/10 atm, H2-Soret/1 atm y H2-Soret/10 atm. Las 24 llamas
+medidas fueron aceptadas con la misma malla; maxima diferencia de Su
+0.0018% y de temperatura 0.021 K.
+
+A peticion expresa del usuario, los bloques analiticos con transporte
+congelado pasan a ser el valor predeterminado. Se conservan las alternativas
+explicitas para comparaciones. No se altera la edad del Jacobiano ni las
+tolerancias. El descarte historico de la implementacion anterior sigue
+siendo valido para aquella version, no para esta nueva ruta verificada.
+Evidencia y limites: `docs/validation/ANALYTIC_SPATIAL_20260921.md`.
+
+
+## Campaña de optimización global del arranque no lineal (2026-09-22)
+
+Se implementó y evaluó experimentalmente una campaña de optimización global del arranque no lineal del solver híbrido de KFlame (`src/kflame/flame/solver.py`). Se probaron tres estrategias paramétricas en `SolveOptions`:
+
+| Propuesta | Evidencia en KFlame real (4 casos × 4 variantes) | Decisión / Causa raíz |
+| --- | --- | --- |
+| **Exp. A: PTC adaptativo con correcciones Newton (ANC)** (`adaptive_newton_corrections=True`) | `CH4_1`: 2.47s vs 1.91s baseline (-29.3% vel.)<br>`CH4_10`: 6.08s vs 5.20s baseline (-16.9% vel.)<br>`H2_1`: 3.22s vs 2.65s baseline (-21.5% vel.)<br>`H2_10`: 13.10s vs 11.72s baseline (-11.8% vel., eval. residual +39.1%: 21,098 vs 15,164). | **Descartada / Desactivada**. Las correcciones Newton intermedias con LU congelada en mallas gruesas o frentes transitorios no aceleran la convergencia hacia el estado estacionario. Añaden miles de evaluaciones redundantes de residual sin reducir reconstrucciones de Jacobiano ni time-steps globales. |
+| **Exp. B: Refinamiento anticipado de malla por estancamiento (ER)** (`early_refinement=True`) | `CH4_1`: 2.05s vs 1.91s baseline (-7.3% vel.)<br>`CH4_10`: 5.65s vs 5.20s baseline (-8.7% vel.)<br>`H2_10`: 11.62s (neutro/ruido, la ventana de 40 pasos no se alcanza antes del cambio de etapa A->B). | **Descartada / Desactivada**. Refinar la malla sobre un perfil transitorio no convergido coloca nodos en regiones reactivas espurias, aumentando los puntos de malla y el coste de los solves posteriores. La arquitectura de etapas (Stage A->B->C) de KFlame ya resuelve el estancamiento de forma más limpia. |
+| **Exp. C: Estrategia combinada (ANC + ER)** (`combined_startup_strategy=True`) | `CH4_1`: 2.34s vs 1.91s baseline<br>`CH4_10`: 6.77s vs 5.20s baseline (-30.2% vel.)<br>`H2_10`: 13.22s vs 11.72s baseline (-12.8% vel.). | **Descartada / Desactivada**. Acumula las sobrecargas de ANC y ER. |
+
+
+## Campaña de Recuperación por Euler Implícito Persistente (2026-09-22)
+
+Tras auditar minuciosamente las variantes A/B/C y mantenerlas desactivadas, se diseñó e implementó la **conmutación persistente a Euler Implícito (Backward Euler)** en `SolveOptions(transient_solver_mode="persistent_backward_euler")`. Al estancarse el avance de la norma estacionaria ($r_n > 0.8$) o fallar un paso PTC, el solver conmuta a Newton totalmente implícito (`max_iter=transient_max_iter`) y **permanece en dicho modo durante al menos 5 pasos exitosos consecutivos**, retornando a PTC-SER solo cuando la reducción de residual es fuerte ($r_n < 0.5$).
+
+### Evidencia Cuantitativa (3 Comparaciones Emparejadas × 4 Casos)
+
+| Caso | PTC-SER Baseline | Euler Implícito Completo (`full_backward_euler`) | Conmutación Persistente (`persistent_backward_euler`) | Impacto Numérico |
+| --- | --- | --- | --- | --- |
+| **$H_2$ / 10 atm** | **11.322 s**<br>(15,164 res, 515 Jac, 2,785 LU, 1,518 pasos) | **6.327 s**<br>(3,616 res, 238 Jac, 469 LU, 73 pasos) | **6.304 s**<br>(3,755 res, 253 Jac, 502 LU, 53 pasos) | **1.80× Speedup (-44.3% tiempo total)**.<br>Corta las eval. de residual un **-75.2%** y las factorizaciones LU un **-82.0%**. Mismo $S_u = 1.34848$ m/s, $T_{max} = 2276.4$ K. |
+| **$H_2$ / 1 atm** | 2.151 s (905 res, 62 Jac) | **2.029 s** (834 res, 62 Jac) | 2.143 s (967 res, 71 Jac) | **+5.7% más rápido** en Euler implícito completo. Mismo $S_u = 2.10656$ m/s. |
+| **$CH_4$ / 10 atm** | **5.279 s** (3,932 res, 180 Jac) | 5.961 s (4,652 res, 255 Jac) | 5.675 s (4,535 res, 253 Jac) | PTC-SER baseline es óptimo (+7.5% tiempo en BE debido a química suave no rígida). |
+| **$CH_4$ / 1 atm** | **2.603 s** (1,422 res, 88 Jac) | 3.226 s (2,611 res, 153 Jac) | 3.170 s (2,453 res, 152 Jac) | PTC-SER baseline es óptimo (29 pasos PTC bastan). |
+
+**Conclusión final**: La conmutación persistente a Euler implícito resuelve el estancamiento numérico en la ignición de $H_2$ a alta presión ($H_2$/10 atm), reduciendo el tiempo de 11.32 s a 6.30 s de forma limpia sin alterar las tolerancias ni los criterios físicos de aceptación. La opción queda integrada en `SolveOptions(transient_solver_mode=...)`.
+
+

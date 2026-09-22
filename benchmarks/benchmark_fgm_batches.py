@@ -40,6 +40,7 @@ generate_fgm_tables_native.main()
     def run(mode, label):
         name = label + '_' + mode
         command = [sys.executable, '-c', runner, mode, '--phi-values', '0.7,0.9,1,1.1,1.4',
+                   '--no-analytic-spatial', '--no-analytic-chemistry',
                    '--parallel-workers', '1', '--disable-seed-cache', '--save-raw-profiles',
                    '--output-root', str(args.output_root.resolve()), '--run-name', name]
         start = time.perf_counter()

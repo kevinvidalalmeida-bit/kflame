@@ -3,6 +3,12 @@
 Install the package in editable mode before running these scripts from the
 repository root. They are intentionally separate from the installed solver.
 
+- `benchmark_analytic_chemistry.py --output runs/analytic/summary.json --baseline analytic --candidate spatial --pairs 3`:
+  hybrid versus direct analytic blocks in four complete flames.
+- `benchmark_analytic_fgm.py --output runs/analytic-fgm --baseline analytic --candidate spatial --pairs 3`:
+  the same comparison across complete five-flame native FGM sweeps. Both
+  modes are selected explicitly, independently of production defaults.
+
 - `benchmark_fgm_batches.py --output-root tmp/fgm-batches --pairs 3`: complete
   five-flame FGM comparison of vectorized and legacy perturbation preparation.
 - `benchmark_thermal_reuse.py --output tmp/thermal.json --pairs 3`: native thermal
@@ -14,6 +20,15 @@ repository root. They are intentionally separate from the installed solver.
   pair/conductivity data caches versus recomputing the same native values.
 - `profile_native_stages.py --output tmp/stages.json`: inclusive and exclusive
   cProfile costs; instrumentation times are not production speed benchmarks.
+- `benchmark_residual_lu.py --candidate retry --cases CH4_1 H2_10 --pairs 3 --output tmp/retry.json`:
+  isolated residual carry, LU workspace, small-grid serial chemistry and
+  backward-Euler experiments against the current analytic default. Warmups
+  excluded; saves every acceptance outcome and field comparison.
+- `audit_cantera_startup.py --backend cantera --output tmp/cantera-startup.json`:
+  H2/10 atm startup logs, callbacks and solver statistics. Repeat with
+  `--backend native`; optional `--linear-seed`, `--backward-euler` and `--steps`
+  change only the diagnostic run. These instrumented runs are not paired
+  production speed benchmarks and never seed native solves with Cantera data.
 - `benchmark_native_vs_cantera.py`: matched KFLAME/Cantera FGM and individual
   cold-flame timing; specify the two Python executables to compare.
 

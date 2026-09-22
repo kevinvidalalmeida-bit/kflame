@@ -3,6 +3,8 @@
 `import kflame` exposes `solve_flame` and `generate_fgm`. The examples are
 ready-to-edit user input files. Both functions select the CPU-native solver.
 Jacobian aging, linear algebra, PTC and damping remain internal defaults.
+The default Jacobian now uses analytic thermal and spatial blocks with frozen
+transport coefficients; see the [validation report](validation/ANALYTIC_SPATIAL_20260921.md).
 
 The organization follows Cantera's separation of
 [mixture state, transport and free-flame refinement](https://cantera.org/3.2/examples/python/onedim/adiabatic_flame.html).

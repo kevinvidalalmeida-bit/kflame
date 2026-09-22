@@ -98,7 +98,10 @@ def main():
                 NativeSpeciesBackend.eval_jacobian_thermo_kinetics_into = NativeSpeciesBackend.eval_grid_thermo_kinetics_into
             try:
                 start = time.perf_counter()
-                result = native_solve(case, benchmark_options(False), bootstrap=multi, bootstrap_mesh_factor=2.)
+                options = benchmark_options(False)
+                # This historical probe compares two finite-difference kernels.
+                options.analytic_spatial = False
+                result = native_solve(case, options, bootstrap=multi, bootstrap_mesh_factor=2.)
                 wall = time.perf_counter() - start
             finally:
                 NativeSpeciesBackend.eval_jacobian_thermo_kinetics_into = original_method

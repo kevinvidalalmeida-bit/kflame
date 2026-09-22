@@ -81,12 +81,15 @@ imports and commands; see [migration](docs/migration.md).
 
 ## Performance and numerical scope
 
-The solver retains strict acceptance and mesh checks, block-tridiagonal finite
-differences, pivoted LU, damped Newton and PTC with backward-Euler rescue.
-Exact thermal-factor reuse, immutable molecular caches and vectorized
-perturbation preparation reduce repeated work without relaxing tolerances.
+The solver defaults to analytic block-tridiagonal Jacobians with frozen
+transport coefficients, including thermal derivatives and partial column
+refreshes during continuation. Strict acceptance and mesh checks, pivoted LU,
+damped Newton and PTC with backward-Euler rescue remain in place.
+Use `--no-analytic-spatial` for the finite-difference alternative, or add
+`--analytic-chemistry` for the hybrid chemical route.
+[Validation and timings](docs/validation/ANALYTIC_SPATIAL_20260921.md).
 
-A three-pair CH4/GRI30 five-flame FGM test measured a median reduction from
+A historical three-pair CH4/GRI30 five-flame FGM test measured a median reduction from
 18.44 to 15.89 seconds (13.8%) for the new perturbation preparation. Tables
 were bit-identical; one pair was slower, so this is not a universal speed claim.
 [Protocol and results](docs/validation/FGM_BATCH_VECTORIZATION_20260920.md).

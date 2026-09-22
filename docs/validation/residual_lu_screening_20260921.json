@@ -1,0 +1,266 @@
+{
+  "retry": {
+    "CH4_1": {
+      "median_wall_s": {
+        "baseline": 1.8826686999818776,
+        "retry": 1.881444400001783
+      },
+      "reduction_percent": 0.06503002785920309,
+      "all_accepted": true,
+      "all_identical": true,
+      "paired_wall_s": [
+        {
+          "baseline": 1.8802918000146747,
+          "retry": 1.8635041000088677
+        },
+        {
+          "baseline": 1.8826686999818776,
+          "retry": 1.9010316999920178
+        },
+        {
+          "baseline": 1.9121412999811582,
+          "retry": 1.881444400001783
+        }
+      ],
+      "residual_counts": {
+        "baseline": [
+          1401
+        ],
+        "retry": [
+          1338
+        ]
+      }
+    },
+    "H2_10": {
+      "median_wall_s": {
+        "baseline": 11.761465199990198,
+        "retry": 13.12007479998283
+      },
+      "reduction_percent": -11.55136351543824,
+      "all_accepted": true,
+      "all_identical": true,
+      "paired_wall_s": [
+        {
+          "baseline": 14.231318000005558,
+          "retry": 13.231157400005031
+        },
+        {
+          "baseline": 10.112229299993487,
+          "retry": 10.392677700001514
+        },
+        {
+          "baseline": 11.761465199990198,
+          "retry": 13.12007479998283
+        }
+      ],
+      "residual_counts": {
+        "baseline": [
+          15123,
+          41
+        ],
+        "retry": [
+          14729,
+          40
+        ]
+      }
+    }
+  },
+  "workspace_c": {
+    "CH4_1": {
+      "median_wall_s": {
+        "baseline": 1.9366151000140235,
+        "workspace_c": 2.021184600016568
+      },
+      "reduction_percent": -4.366871868443667,
+      "all_accepted": true,
+      "all_identical": true,
+      "paired_wall_s": [
+        {
+          "baseline": 1.9366151000140235,
+          "workspace_c": 1.926964400045108
+        },
+        {
+          "baseline": 1.9190118000260554,
+          "workspace_c": 2.021184600016568
+        },
+        {
+          "baseline": 1.9726362999645062,
+          "workspace_c": 2.309899299987592
+        }
+      ],
+      "residual_counts": {
+        "baseline": [
+          1401
+        ],
+        "workspace_c": [
+          1401
+        ]
+      }
+    },
+    "H2_10": {
+      "median_wall_s": {
+        "baseline": 12.886741199996322,
+        "workspace_c": 12.368217699986417
+      },
+      "reduction_percent": 4.023697628148637,
+      "all_accepted": true,
+      "all_identical": true,
+      "paired_wall_s": [
+        {
+          "baseline": 11.30182049999712,
+          "workspace_c": 10.918941300013103
+        },
+        {
+          "baseline": 12.886741199996322,
+          "workspace_c": 12.368217699986417
+        },
+        {
+          "baseline": 14.823848900035955,
+          "workspace_c": 14.567380599968601
+        }
+      ],
+      "residual_counts": {
+        "baseline": [
+          15123,
+          41
+        ],
+        "workspace_c": [
+          15123,
+          41
+        ]
+      }
+    }
+  },
+  "workspace_f": {
+    "CH4_1": {
+      "median_wall_s": {
+        "baseline": 2.0191329999943264,
+        "workspace_f": 2.1039299000403844
+      },
+      "reduction_percent": -4.199668870069306,
+      "all_accepted": true,
+      "all_identical": true,
+      "paired_wall_s": [
+        {
+          "baseline": 2.0191329999943264,
+          "workspace_f": 2.1039299000403844
+        },
+        {
+          "baseline": 2.028140899958089,
+          "workspace_f": 2.133897399995476
+        },
+        {
+          "baseline": 1.987145499966573,
+          "workspace_f": 1.993960199994035
+        }
+      ],
+      "residual_counts": {
+        "baseline": [
+          1401
+        ],
+        "workspace_f": [
+          1401
+        ]
+      }
+    },
+    "H2_10": {
+      "median_wall_s": {
+        "baseline": 13.56727649999084,
+        "workspace_f": 14.332245700003114
+      },
+      "reduction_percent": -5.638340163648836,
+      "all_accepted": true,
+      "all_identical": true,
+      "paired_wall_s": [
+        {
+          "baseline": 11.525027900002897,
+          "workspace_f": 13.20767039997736
+        },
+        {
+          "baseline": 13.56727649999084,
+          "workspace_f": 14.445936499978416
+        },
+        {
+          "baseline": 13.908083699992858,
+          "workspace_f": 14.332245700003114
+        }
+      ],
+      "residual_counts": {
+        "baseline": [
+          15123,
+          41
+        ],
+        "workspace_f": [
+          15123,
+          41
+        ]
+      }
+    }
+  },
+  "small_serial": {
+    "CH4_1": {
+      "median_wall_s": {
+        "baseline": 2.711781699967105,
+        "small_serial": 2.864663799991831
+      },
+      "reduction_percent": -5.637699377740502,
+      "all_accepted": true,
+      "all_identical": true,
+      "paired_wall_s": [
+        {
+          "baseline": 2.711781699967105,
+          "small_serial": 2.864663799991831
+        },
+        {
+          "baseline": 2.6199548000004143,
+          "small_serial": 3.0570993999717757
+        },
+        {
+          "baseline": 2.862995999981649,
+          "small_serial": 2.803238499967847
+        }
+      ],
+      "residual_counts": {
+        "baseline": [
+          1401
+        ],
+        "small_serial": [
+          1401
+        ]
+      }
+    },
+    "H2_10": {
+      "median_wall_s": {
+        "baseline": 12.411149999999907,
+        "small_serial": 13.472617999999784
+      },
+      "reduction_percent": -8.552535421777074,
+      "all_accepted": true,
+      "all_identical": true,
+      "paired_wall_s": [
+        {
+          "baseline": 14.180959700024687,
+          "small_serial": 13.356528999982402
+        },
+        {
+          "baseline": 11.265009100025054,
+          "small_serial": 14.230742799991276
+        },
+        {
+          "baseline": 12.411149999999907,
+          "small_serial": 13.472617999999784
+        }
+      ],
+      "residual_counts": {
+        "baseline": [
+          15123,
+          41
+        ],
+        "small_serial": [
+          15123,
+          41
+        ]
+      }
+    }
+  }
+}

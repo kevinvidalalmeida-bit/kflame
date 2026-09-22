@@ -380,6 +380,8 @@ def seed_cache_key(args: argparse.Namespace, resolved_mech: str) -> str:
         "multicomponent_bootstrap": bool(getattr(args, "multicomponent_bootstrap", False)),
         "bootstrap_mesh_factor": float(getattr(args, "bootstrap_mesh_factor", 2.0)),
         "nonlinear_pipeline": "newton-ptc-ser-be-signed-kinetics-small-products-kflame",
+        "analytic_spatial": bool(getattr(args, "analytic_spatial", True)),
+        "analytic_chemistry": bool(getattr(args, "analytic_chemistry", False)),
         "outlet_species_bc": str(args.outlet_species_bc),
         "upwind_factor": float(args.upwind_factor),
         "T_in": float(args.T_in),
@@ -470,6 +472,8 @@ def make_solve_options(args: argparse.Namespace) -> SolveOptions:
     opts.jac_threshold = float(args.jac_threshold)
     opts.jacobian_mode = str(args.jacobian_mode)
     opts.precompute_jacobian_thermo = bool(args.precompute_jacobian_thermo)
+    opts.analytic_chemistry = bool(args.analytic_chemistry)
+    opts.analytic_spatial = bool(args.analytic_spatial)
     opts.compiled_block_substitution = bool(args.compiled_block_substitution)
     opts.local_jacobian_refresh = bool(args.local_jacobian_refresh)
     opts.lag_multicomponent_transport = bool(args.lag_multicomponent_transport)
@@ -1081,6 +1085,12 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--precompute-jacobian-thermo", action=argparse.BooleanOptionalAction,
                    default=True,
                    help="Precalcula termoquimica perturbada de todo el Jacobiano block_tridiag.")
+    p.add_argument("--analytic-chemistry", action=argparse.BooleanOptionalAction,
+                   default=False,
+                   help="Jacobiano hibrido con derivadas quimicas nativas de especies; requiere precomputacion.")
+    p.add_argument("--analytic-spatial", action=argparse.BooleanOptionalAction,
+                   default=True,
+                   help="Ensambla bloques analiticos completos con transporte congelado; requiere block_tridiag.")
     p.add_argument(
         "--compiled-block-substitution",
         action=argparse.BooleanOptionalAction,
@@ -1648,6 +1658,8 @@ def main(argv=None) -> Path:
         "residual_guard_inf": float(args.residual_guard_inf),
         "upwind_factor": float(args.upwind_factor),
         "precompute_jacobian_thermo": bool(args.precompute_jacobian_thermo),
+        "analytic_chemistry": bool(args.analytic_chemistry),
+        "analytic_spatial": bool(args.analytic_spatial),
         "compiled_block_substitution": bool(args.compiled_block_substitution),
         "local_jacobian_refresh": {
             "enabled": bool(args.local_jacobian_refresh),

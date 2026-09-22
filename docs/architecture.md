@@ -25,8 +25,9 @@ anterior a la limpieza.
 5. Si la etapa con energía activa no progresa, se inmoviliza temporalmente la
    temperatura, se corrigen continuidad y especies y se reactiva la energía.
    Solo la solución reactivada puede pasar a dominio, malla y aceptación.
-6. El Jacobiano por diferencias finitas conserva un stencil de bloques
-   tridiagonal. Los sistemas se resuelven con LU directa SciPy/LAPACK y
+6. El Jacobiano analitico con transporte congelado ensambla directamente
+   los bloques tridiagonales de todas las columnas, incluidas temperatura
+   y fronteras. Los sistemas se resuelven con LU directa SciPy/LAPACK y
    sustituciones por bloques compiladas.
 7. Se expande el dominio cuando el borde no es asintótico y se adapta la malla
    mediante ratio, pendiente, curvatura y poda. El resultado exige estado
