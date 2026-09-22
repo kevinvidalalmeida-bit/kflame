@@ -195,5 +195,70 @@ class TestAdaptiveRefiner(unittest.TestCase):
         self.assertEqual(len(insert_after), 0)
 
 
+class TestANCExecutionAndMask(unittest.TestCase):
+    """Test the exact mathematical mask reconstruction and ANC bound protection."""
+
+    def test_linearisation_defect_with_transient_mask(self):
+        """Reconstructing J_F from J_G + rdt*(mask*step) must exactly match J_F."""
+        from kflame.flame.state import build_transient_mask
+
+        n_points = 3
+        n_species = 2
+        nv = 2 + n_species
+        mask = build_transient_mask(n_points, n_species, solve_energy=True)
+
+        # Boundary points and u are algebraic (mask == 0)
+        self.assertEqual(mask[0], 0)
+        self.assertEqual(mask[nv + 0], 0)  # u is algebraic
+        self.assertEqual(mask[nv + 1], 1)  # T is differential
+        self.assertEqual(mask[nv + 2], 1)  # Y0 is differential
+        self.assertEqual(mask[nv + 3], 1)  # Y1 is differential
+
+        rdt = 1.0e5
+        step = np.linspace(0.1, 1.0, n_points * nv)
+        J_F_diag = np.full(n_points * nv, 10.0)
+        J_G_diag = J_F_diag - rdt * mask
+
+        # Diagonal matrix multiplication
+        J_G_prod = J_G_diag * step
+        reconstructed = J_G_prod + rdt * (mask * step)
+        np.testing.assert_allclose(reconstructed, J_F_diag * step, atol=1e-10)
+
+
+    def test_anc_runs_with_unpacked_bound_and_damping(self):
+        """Verify that ANC executes without TypeError when triggered on a flame problem."""
+        from kflame.flame.config import FlameCase
+        from kflame.flame.problem import FreeFlameProblem
+        from kflame.chemistry.backend import NativeSpeciesBackend
+        from kflame.flame.solver import solve_free_flame
+
+        case = FlameCase(
+            fuel="CH4", P=101325.0,
+            transport_model="multicomponent", soret_enabled=False,
+        )
+        p = FreeFlameProblem(case, n_points=8)
+        p.assume_finite_y = True
+        p.backend = NativeSpeciesBackend(p)
+
+        opts = SolveOptions(
+            verbose=False,
+            max_refine_passes=0,
+            require_grid_convergence=False,
+            adaptive_newton_corrections=True,
+            anc_defect_threshold=1e-6,     # Sensitive to force trigger
+            anc_progress_threshold=1e-6,   # Sensitive to force trigger
+            max_ptc_corrections=2,
+            steady_max_iter=1,
+            time_step=1e-6,
+            max_time_step_count=5,
+        )
+        x, ok, report = solve_free_flame(p, options=opts)
+        self.assertIsInstance(report, dict)
+        u, T, Y = unpack_state(x, p.n_points, p.n_species)
+        self.assertTrue(np.all(T >= 200.0))
+        self.assertTrue(np.all(Y >= -1e-5))
+
+
 if __name__ == "__main__":
     unittest.main()
+

@@ -1636,16 +1636,19 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                 and np.isfinite(steady_norm_before)
             )
             if ptc_step_ok:
-                steady_norm_after_test = _residual_inf(problem, x_ts)
+                steady_norm_after = _residual_inf(problem, x_ts)
                 if (
-                    not np.isfinite(steady_norm_after_test)
-                    or steady_norm_after_test
+                    not np.isfinite(steady_norm_after)
+                    or steady_norm_after
                     > ser_residual_growth_limit * max(steady_norm_before, 1.0e-300)
                 ):
                     ptc_step_ok = False
+            else:
+                steady_norm_after = float("nan")
 
             step_ok = bool(ptc_step_ok if use_ptc else ok_ts)
-            steady_norm_after = _residual_inf(problem, x_ts) if (step_ok and np.all(np.isfinite(x_ts))) else float("nan")
+            if not use_ptc:
+                steady_norm_after = _residual_inf(problem, x_ts) if (step_ok and np.all(np.isfinite(x_ts))) else float("nan")
 
             # --- Exp. A: adaptive Newton corrections after accepted PTC ---
             anc_corrections_used = 0
@@ -1664,8 +1667,14 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                         and np.all(np.isfinite(step_vec))
                         and isinstance(jac.J, BlockTridiagJacobian)
                     ):
-                        # Corrected stationary Jacobian prediction: J_F*step = J_G*step + rdt*step
-                        predicted_change_steady = jac.J.matvec(step_vec) + rdt * step_vec
+                        # Transient mask: differential equations have 1, algebraic have 0
+                        mask = build_transient_mask(
+                            problem.n_points,
+                            problem.n_species,
+                            solve_energy=bool(problem.solve_energy),
+                        )
+                        # Exact stationary Jacobian prediction: J_F*step = J_G*step + rdt*(mask*step)
+                        predicted_change_steady = jac.J.matvec(step_vec) + rdt * (mask * step_vec)
                         defect_vec = f_new_steady - f_old_steady - predicted_change_steady
                         defect_norm = float(np.linalg.norm(defect_vec, ord=np.inf))
                         ref_norm = max(
@@ -1677,6 +1686,7 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                         if anc_defect_value > anc_defect_thr:
                             x_corr = x_ts.copy()
                             norm_corr = steady_norm_after
+                            alpha_min = float(getattr(opts, "alpha_min", 1e-10))
                             for _ic in range(anc_max_corr - 1):
                                 if deadline is not None and time.perf_counter() > deadline:
                                     break
@@ -1692,17 +1702,31 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                                 if not np.all(np.isfinite(step_extra)):
                                     break
 
-                                # Apply physical bound protection before evaluating residual
-                                fbound = bound_step_limit(x_corr, step_extra, problem)
-                                x_try = x_corr + fbound * step_extra
-
-                                f_try_steady = residual(x_try, problem)
-                                if not np.all(np.isfinite(f_try_steady)):
+                                # Unpack fbound factor and check alpha_min
+                                fbound, _fbound_reason = bound_step_limit(x_corr, step_extra, problem)
+                                if fbound < alpha_min:
                                     break
-                                norm_try = float(
-                                    np.linalg.norm(f_try_steady, ord=np.inf)
-                                )
-                                if norm_try < anc_reduction * norm_corr:
+                                alpha = min(float(fbound), 1.0)
+
+                                # Damped line search consistent with newton_solve
+                                damp_ok = False
+                                for _idamp in range(int(getattr(opts, "max_damp_iter", 7))):
+                                    if alpha < alpha_min:
+                                        break
+                                    x_try = x_corr + alpha * step_extra
+                                    f_try_steady = residual(x_try, problem)
+                                    if not np.all(np.isfinite(f_try_steady)):
+                                        alpha /= damp_factor
+                                        continue
+                                    norm_try = float(
+                                        np.linalg.norm(f_try_steady, ord=np.inf)
+                                    )
+                                    if norm_try < anc_reduction * norm_corr:
+                                        damp_ok = True
+                                        break
+                                    alpha /= damp_factor
+
+                                if damp_ok:
                                     x_corr = x_try
                                     norm_corr = norm_try
                                     anc_corrections_used += 1
@@ -1713,6 +1737,7 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                                 x_ts = x_corr
                                 steady_norm_after = norm_corr
                                 jac.age += anc_corrections_used
+
 
             # --- Update Persistent Backward Euler state machine ---
             if ts_mode == "persistent_backward_euler":

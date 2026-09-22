@@ -75,11 +75,28 @@ def extract_counts(solve_dict: dict):
     total_jac = 0
     total_lu = 0
     total_steps = 0
+    res_time = 0.0
+    jac_time = 0.0
+    lu_time = 0.0
+    solve_time = 0.0
     for st in stages:
         prof = st.get("profile", {})
-        total_res += prof.get("residual_full", {}).get("count", 0)
-        total_jac += prof.get("jacobian_build", {}).get("count", 0)
-        total_lu += prof.get("linear_factorize", {}).get("count", 0)
+        rf = prof.get("residual_full", {})
+        jb = prof.get("jacobian_build", {})
+        lf = prof.get("linear_factorize", {})
+        ls = prof.get("linear_solve", {})
+
+        total_res += rf.get("count", 0)
+        res_time += float(rf.get("time_s", 0.0))
+
+        total_jac += jb.get("count", 0)
+        jac_time += float(jb.get("time_s", 0.0))
+
+        total_lu += lf.get("count", 0)
+        lu_time += float(lf.get("time_s", 0.0))
+
+        solve_time += float(ls.get("time_s", 0.0))
+
         passes = st.get("passes", [])
         for p in passes:
             if isinstance(p, dict):
@@ -87,7 +104,16 @@ def extract_counts(solve_dict: dict):
                     if st_name in p:
                         st_info = p[st_name]
                         total_steps += st_info.get("steps", 0)
-    return total_res, total_jac, total_lu, total_steps
+    return {
+        "res_cnt": total_res,
+        "jac_cnt": total_jac,
+        "lu_cnt": total_lu,
+        "steps": total_steps,
+        "res_time_s": res_time,
+        "jac_time_s": jac_time,
+        "lu_time_s": lu_time,
+        "solve_time_s": solve_time,
+    }
 
 
 def run_campaign(cases_to_run=None, pairs=3, output_path="runs/nonlinear/euler_recovery_campaign.json"):
@@ -128,7 +154,7 @@ def run_campaign(cases_to_run=None, pairs=3, output_path="runs/nonlinear/euler_r
                 elapsed = time.perf_counter() - t0
 
                 variant_times[vname].append(elapsed)
-                res_cnt, jac_cnt, lu_cnt, step_cnt = extract_counts(res)
+                diag = extract_counts(res)
                 
                 run_data = {
                     "pair": pair_idx,
@@ -137,13 +163,17 @@ def run_campaign(cases_to_run=None, pairs=3, output_path="runs/nonlinear/euler_r
                     "Su": res.get("Su"),
                     "Tmax": float(np.max(res.get("T", [0]))),
                     "n_points": res.get("n_points"),
-                    "res_evals": res_cnt,
-                    "jac_evals": jac_cnt,
-                    "lu_facts": lu_cnt,
-                    "steps": step_cnt,
+                    "res_evals": diag["res_cnt"],
+                    "jac_evals": diag["jac_cnt"],
+                    "lu_facts": diag["lu_cnt"],
+                    "steps": diag["steps"],
+                    "res_time_s": diag["res_time_s"],
+                    "jac_time_s": diag["jac_time_s"],
+                    "lu_time_s": diag["lu_time_s"],
+                    "solve_time_s": diag["solve_time_s"],
                 }
                 variant_runs[vname].append(run_data)
-                print(f"   [{vname:<25}] {elapsed:.3f} s | Res: {res_cnt} | Jac: {jac_cnt} | LU: {lu_cnt} | Steps: {step_cnt} | Su: {res.get('Su'):.5f}")
+                print(f"   [{vname:<25}] {elapsed:.3f} s | Res: {diag['res_cnt']} ({diag['res_time_s']:.2f}s) | Jac: {diag['jac_cnt']} ({diag['jac_time_s']:.2f}s) | LU: {diag['lu_cnt']} ({diag['lu_time_s']:.2f}s) | Steps: {diag['steps']}")
 
         # Summary for case
         case_summary = {}
@@ -165,6 +195,10 @@ def run_campaign(cases_to_run=None, pairs=3, output_path="runs/nonlinear/euler_r
                 "jac_evals": last_run["jac_evals"],
                 "lu_facts": last_run["lu_facts"],
                 "steps": last_run["steps"],
+                "res_time_s": float(np.median([r["res_time_s"] for r in runs])),
+                "jac_time_s": float(np.median([r["jac_time_s"] for r in runs])),
+                "lu_time_s": float(np.median([r["lu_time_s"] for r in runs])),
+                "solve_time_s": float(np.median([r["solve_time_s"] for r in runs])),
                 "all_runs": runs,
             }
         campaign_results[case_name] = case_summary
@@ -177,12 +211,13 @@ def run_campaign(cases_to_run=None, pairs=3, output_path="runs/nonlinear/euler_r
     print(f"\nSaved campaign results to: {output_path}")
 
     # Print summary table
-    print("\n" + "="*85)
-    print(f"{'Case':<8} | {'Variant':<25} | {'Median (s)':<10} | {'Res Evals':<10} | {'Jac Evals':<10} | {'LU Fact':<10} | {'Su (m/s)':<10}")
-    print("="*85)
+    print("\n" + "="*115)
+    print(f"{'Case':<8} | {'Variant':<25} | {'Median (s)':<10} | {'Res Time (s)':<12} | {'Jac Time (s)':<12} | {'LU Time (s)':<12} | {'Steps':<6} | {'Su (m/s)':<10}")
+    print("="*115)
     for cname, cdata in campaign_results.items():
         for vname, vdata in cdata.items():
-            print(f"{cname:<8} | {vname:<25} | {vdata['median_time_s']:<10.3f} | {vdata['res_evals']:<10} | {vdata['jac_evals']:<10} | {vdata['lu_facts']:<10} | {vdata['Su']:<10.5f}")
+            print(f"{cname:<8} | {vname:<25} | {vdata['median_time_s']:<10.3f} | {vdata['res_time_s']:<12.3f} | {vdata['jac_time_s']:<12.3f} | {vdata['lu_time_s']:<12.3f} | {vdata['steps']:<6} | {vdata['Su']:<10.5f}")
+
 
 
 if __name__ == "__main__":

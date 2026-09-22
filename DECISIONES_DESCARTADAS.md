@@ -553,15 +553,40 @@ Se implementó y evaluó experimentalmente una campaña de optimización global 
 
 Tras auditar minuciosamente las variantes A/B/C y mantenerlas desactivadas, se diseñó e implementó la **conmutación persistente a Euler Implícito (Backward Euler)** en `SolveOptions(transient_solver_mode="persistent_backward_euler")`. Al estancarse el avance de la norma estacionaria ($r_n > 0.8$) o fallar un paso PTC, el solver conmuta a Newton totalmente implícito (`max_iter=transient_max_iter`) y **permanece en dicho modo durante al menos 5 pasos exitosos consecutivos**, retornando a PTC-SER solo cuando la reducción de residual es fuerte ($r_n < 0.5$).
 
-### Evidencia Cuantitativa (3 Comparaciones Emparejadas × 4 Casos)
+### Evidencia Cuantitativa Detallada y Desglose por Operación (3 Comparaciones Emparejadas × 4 Casos)
 
-| Caso | PTC-SER Baseline | Euler Implícito Completo (`full_backward_euler`) | Conmutación Persistente (`persistent_backward_euler`) | Impacto Numérico |
-| --- | --- | --- | --- | --- |
-| **$H_2$ / 10 atm** | **11.322 s**<br>(15,164 res, 515 Jac, 2,785 LU, 1,518 pasos) | **6.327 s**<br>(3,616 res, 238 Jac, 469 LU, 73 pasos) | **6.304 s**<br>(3,755 res, 253 Jac, 502 LU, 53 pasos) | **1.80× Speedup (-44.3% tiempo total)**.<br>Corta las eval. de residual un **-75.2%** y las factorizaciones LU un **-82.0%**. Mismo $S_u = 1.34848$ m/s, $T_{max} = 2276.4$ K. |
-| **$H_2$ / 1 atm** | 2.151 s (905 res, 62 Jac) | **2.029 s** (834 res, 62 Jac) | 2.143 s (967 res, 71 Jac) | **+5.7% más rápido** en Euler implícito completo. Mismo $S_u = 2.10656$ m/s. |
-| **$CH_4$ / 10 atm** | **5.279 s** (3,932 res, 180 Jac) | 5.961 s (4,652 res, 255 Jac) | 5.675 s (4,535 res, 253 Jac) | PTC-SER baseline es óptimo (+7.5% tiempo en BE debido a química suave no rígida). |
-| **$CH_4$ / 1 atm** | **2.603 s** (1,422 res, 88 Jac) | 3.226 s (2,611 res, 153 Jac) | 3.170 s (2,453 res, 152 Jac) | PTC-SER baseline es óptimo (29 pasos PTC bastan). |
+Valores medianos de 3 parejas de ejecuciones (`runs/nonlinear/euler_recovery_profiled.json`):
 
-**Conclusión final**: La conmutación persistente a Euler implícito resuelve el estancamiento numérico en la ignición de $H_2$ a alta presión ($H_2$/10 atm), reduciendo el tiempo de 11.32 s a 6.30 s de forma limpia sin alterar las tolerancias ni los criterios físicos de aceptación. La opción queda integrada en `SolveOptions(transient_solver_mode=...)`.
+| Caso | Variante | Tiempo Total | Pasos | Eval. Res (Tiempo) | Eval. Jac (Tiempo) | Fact. LU (Tiempo) | Linear Solve | $S_u$ (m/s) | $T_{max}$ (K) | Nodos |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **$H_2$ / 10 atm** | **PTC-SER Baseline** | 11.410 s | 1,518 | 15,608 (4.380 s) | 515 (1.556 s) | 2,785 (3.406 s) | 0.893 s | 1.34848 | 2428.94 | 241 |
+| | **Euler Implícito Completo** | **6.477 s** (-43.2%) | **73** (-95.2%) | **3,876** (2.039 s) | **238** (1.242 s) | **469** (1.522 s) | 0.799 s | 1.34848 | 2428.94 | 241 |
+| | **Conmutación Persistente** | **6.719 s** (-41.1%) | **76** (-95.0%) | **4,063** (2.111 s) | **256** (1.350 s) | **523** (1.665 s) | 0.832 s | 1.34848 | 2428.94 | 241 |
+| **$H_2$ / 1 atm** | **PTC-SER Baseline** | **2.070 s** | 105 | 905 (0.598 s) | 62 (0.370 s) | 211 (0.470 s) | 0.126 s | 2.10656 | 2372.52 | 207 |
+| | **Euler Implícito Completo** | 2.096 s | 51 | 851 (0.573 s) | 62 (0.374 s) | 129 (0.301 s) | 0.150 s | 2.10656 | 2372.52 | 207 |
+| | **Conmutación Persistente** | 2.079 s | 52 | 1,015 (0.669 s) | 68 (0.412 s) | 142 (0.331 s) | 0.166 s | 2.10656 | 2372.52 | 207 |
+| **$CH_4$ / 10 atm** | **PTC-SER Baseline** | **5.382 s** | 73 | 3,932 (1.478 s) | 180 (0.970 s) | 711 (1.464 s) | 0.443 s | 0.39515 | 2261.38 | 321 |
+| | **Euler Implícito Completo** | 6.021 s (+11.9%) | 31 | 4,683 (1.733 s) | 255 (1.349 s) | 515 (1.107 s) | 0.702 s | 0.39515 | 2261.38 | 321 |
+| | **Conmutación Persistente** | 5.859 s (+8.9%) | 29 | 4,566 (1.706 s) | 253 (1.332 s) | 510 (1.096 s) | 0.686 s | 0.39515 | 2261.38 | 321 |
+| **$CH_4$ / 1 atm** | **PTC-SER Baseline** | **2.413 s** | 29 | 1,456 (0.732 s) | 88 (0.420 s) | 349 (0.594 s) | 0.175 s | 0.37603 | 2230.06 | 254 |
+| | **Euler Implícito Completo** | 3.067 s (+27.1%) | 29 | 2,751 (1.038 s) | 153 (0.539 s) | 298 (0.541 s) | 0.400 s | 0.37603 | 2230.06 | 254 |
+| | **Conmutación Persistente** | 3.114 s (+29.0%) | 31 | 2,659 (1.033 s) | 157 (0.574 s) | 311 (0.551 s) | 0.378 s | 0.37603 | 2230.06 | 254 |
+
+### Aclaración de la Discrepancia en $S_u$ para $H_2$ a 10 atm
+
+La auditoría numérica y verificación de los archivos JSON del repositorio confirma que el valor físico real y bit-a-bit reproducible de la velocidad laminar de llama para $H_2$ a 10 atm con Soret activado es:
+$$S_u = 1.34848478 \text{ m/s}$$
+con $T_{max} = 2428.94$ K sobre una malla final convergida de 241 nodos. Todas las variantes evaluadas (PTC-SER, Full Backward Euler, Persistent Backward Euler) convergen exactamente al mismo valor ($|\Delta S_u| < 10^{-11}$ m/s). El valor "1.4512 m/s" mencionado en un borrador previo correspondía a una errata de transcripción manual ajena al código y a las ejecuciones del solver.
+
+### Correcciones de Auditoría en la Implementación (Commit `845d18d` y Subsiguientes)
+
+1. **Protección física en ANC**: Se corrigió el desempaquetado de `bound_step_limit(x_corr, step_extra, problem)`, que devuelve `(fbound, reason)`. Se valida `fbound >= alpha_min` y se incorpora un procedimiento de búsqueda lineal amortiguada (`damp_factor`) idéntico al de `newton_solve` antes de aceptar correcciones adicionales.
+2. **Defecto de linealización con máscara transitoria**: Se corrigió la fórmula del Jacobiano pseudo-transitorio:
+   $$J_G = J_F - \text{rdt}\operatorname{diag}(m)$$
+   reconstruyendo el producto estacionario como `predicted_change_steady = jac.J.matvec(step_vec) + rdt * (mask * step_vec)`, evitando contaminar las filas algebraicas ($u$ y condiciones de contorno donde $m=0$).
+3. **Eliminación de evaluaciones duplicadas de residual en PTC-SER**: Se reestructura el ciclo de paso temporal para calcular `steady_norm_after = _residual_inf(problem, x_ts)` una única vez por paso aceptado, eliminando 1,376 evaluaciones redundantes de residual en $H_2$/10 atm (de 16,984 a 15,608).
+
+**Conclusión final**: La conmutación persistente a Euler implícito resuelve el estancamiento numérico en la ignición de $H_2$ a alta presión ($H_2$/10 atm), reduciendo el tiempo de 11.41 s a 6.72 s (**1.70× speedup**) y Euler implícito completo a 6.48 s (**1.76× speedup**) de forma limpia sin alterar las tolerancias ni los criterios físicos de aceptación. La opción queda integrada en `SolveOptions(transient_solver_mode=...)`.
+
 
 
