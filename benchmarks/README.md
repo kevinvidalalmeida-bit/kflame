@@ -1,0 +1,28 @@
+# Performance experiments
+
+Install the package in editable mode before running these scripts from the
+repository root. They are separate from the installed solver.
+
+- `benchmark_analytic_chemistry.py --output runs/analytic/summary.json --baseline analytic --candidate spatial --pairs 3`:
+  hybrid versus direct analytic blocks in four complete flames.
+- `benchmark_analytic_fgm.py --output runs/analytic-fgm --baseline analytic --candidate spatial --pairs 3`:
+  the same comparison across complete five-flame native FGM sweeps.
+- `benchmark_fgm_batches.py --output-root tmp/fgm-batches --pairs 3`:
+  complete FGM comparison of vectorized and legacy perturbation preparation.
+- `benchmark_thermal_reuse.py --output tmp/thermal.json --pairs 3`:
+  native thermal reuse versus the general evaluator.
+- `benchmark_molecular_fit_cache.py --output tmp/molecular.json --pairs 3`:
+  multicomponent molecular-fit cache versus recomputing native values.
+- `benchmark_transport_data_cache.py --output tmp/transport.json --pairs 3`:
+  pair/conductivity data caches versus recomputing the same native values.
+- `profile_native_stages.py --output tmp/stages.json`:
+  inclusive and exclusive cProfile costs; instrumentation is not a production
+  timing benchmark.
+- `audit_cantera_startup.py --backend cantera --output tmp/cantera-startup.json`:
+  diagnostic H2/10 startup logs and callbacks. Repeat with `--backend native`.
+- `benchmark_native_vs_cantera.py`:
+  matched KFLAME/Cantera FGM and individual cold-flame timing.
+
+Use a new output folder, fixed thread settings and no concurrent heavy jobs.
+Include failures and distinguish cold solves from cached regenerations.
+Historical experiments live in `docs/validation/`; raw outputs stay ignored.

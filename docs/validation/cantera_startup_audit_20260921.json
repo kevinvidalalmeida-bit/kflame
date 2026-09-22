@@ -1,0 +1,360 @@
+{
+  "native_default": {
+    "diagnostic_wall_s": 12.899153000034858,
+    "accepted": true,
+    "Su": 1.34848478319417,
+    "n_points": 241,
+    "width": 0.06,
+    "stages": [
+      {
+        "residual_calls": 15123,
+        "jacobians": 506
+      },
+      {
+        "residual_calls": 41,
+        "jacobians": 9
+      }
+    ],
+    "first_phases": [
+      {
+        "label": "Stage A: energia ON",
+        "n_points": 9,
+        "ok": false,
+        "interrupted": null,
+        "residual_calls": 2946,
+        "transient_successes": 500
+      },
+      {
+        "label": "Stage B: energia OFF",
+        "n_points": 9,
+        "ok": true,
+        "interrupted": null,
+        "residual_calls": 320,
+        "transient_successes": 60
+      },
+      {
+        "label": "Stage C: energia RE-ON",
+        "n_points": 9,
+        "ok": false,
+        "interrupted": null,
+        "residual_calls": 5113,
+        "transient_successes": 500
+      },
+      {
+        "label": "Stage A: energia ON",
+        "n_points": 9,
+        "ok": false,
+        "interrupted": null,
+        "residual_calls": 4028,
+        "transient_successes": 500
+      },
+      {
+        "label": "Stage B: energia OFF",
+        "n_points": 9,
+        "ok": true,
+        "interrupted": null,
+        "residual_calls": 187,
+        "transient_successes": 20
+      },
+      {
+        "label": "Stage C: energia RE-ON",
+        "n_points": 9,
+        "ok": null,
+        "interrupted": "DomainTooNarrowError",
+        "residual_calls": 47,
+        "transient_successes": null
+      },
+      {
+        "label": "Stage A: energia ON",
+        "n_points": 17,
+        "ok": true,
+        "interrupted": null,
+        "residual_calls": 796,
+        "transient_successes": 80
+      }
+    ]
+  },
+  "native_linear_seed": {
+    "diagnostic_wall_s": 12.614303099981043,
+    "accepted": true,
+    "Su": 1.3398709310734942,
+    "n_points": 238,
+    "width": 0.06,
+    "stages": [
+      {
+        "residual_calls": 14841,
+        "jacobians": 520
+      },
+      {
+        "residual_calls": 42,
+        "jacobians": 9
+      }
+    ],
+    "first_phases": [
+      {
+        "label": "Stage A: energia ON",
+        "n_points": 9,
+        "ok": false,
+        "interrupted": null,
+        "residual_calls": 3570,
+        "transient_successes": 500
+      },
+      {
+        "label": "Stage B: energia OFF",
+        "n_points": 9,
+        "ok": true,
+        "interrupted": null,
+        "residual_calls": 325,
+        "transient_successes": 60
+      },
+      {
+        "label": "Stage C: energia RE-ON",
+        "n_points": 9,
+        "ok": false,
+        "interrupted": null,
+        "residual_calls": 4716,
+        "transient_successes": 500
+      },
+      {
+        "label": "Stage A: energia ON",
+        "n_points": 9,
+        "ok": false,
+        "interrupted": null,
+        "residual_calls": 3940,
+        "transient_successes": 500
+      },
+      {
+        "label": "Stage B: energia OFF",
+        "n_points": 9,
+        "ok": true,
+        "interrupted": null,
+        "residual_calls": 210,
+        "transient_successes": 20
+      },
+      {
+        "label": "Stage C: energia RE-ON",
+        "n_points": 9,
+        "ok": null,
+        "interrupted": "DomainTooNarrowError",
+        "residual_calls": 75,
+        "transient_successes": null
+      },
+      {
+        "label": "Stage A: energia ON",
+        "n_points": 17,
+        "ok": true,
+        "interrupted": null,
+        "residual_calls": 478,
+        "transient_successes": 60
+      }
+    ]
+  },
+  "native_be20": {
+    "diagnostic_wall_s": 9.754967100045178,
+    "accepted": true,
+    "Su": 1.3484847831927915,
+    "n_points": 241,
+    "width": 0.06,
+    "stages": [
+      {
+        "residual_calls": 3575,
+        "jacobians": 229
+      },
+      {
+        "residual_calls": 41,
+        "jacobians": 9
+      }
+    ],
+    "first_phases": [
+      {
+        "label": "Stage A: energia ON",
+        "n_points": 9,
+        "ok": null,
+        "interrupted": "DomainTooNarrowError",
+        "residual_calls": 1028,
+        "transient_successes": null
+      },
+      {
+        "label": "Stage A: energia ON",
+        "n_points": 17,
+        "ok": true,
+        "interrupted": null,
+        "residual_calls": 885,
+        "transient_successes": 60
+      },
+      {
+        "label": "Refine Stage: energia ON",
+        "n_points": 17,
+        "ok": true,
+        "interrupted": null,
+        "residual_calls": 2,
+        "transient_successes": 0
+      },
+      {
+        "label": "Post-refine pass 0",
+        "n_points": 22,
+        "ok": true,
+        "interrupted": null,
+        "residual_calls": 282,
+        "transient_successes": 20
+      },
+      {
+        "label": "Post-refine pass 1",
+        "n_points": 30,
+        "ok": true,
+        "interrupted": null,
+        "residual_calls": 270,
+        "transient_successes": 20
+      },
+      {
+        "label": "Post-refine pass 2",
+        "n_points": 38,
+        "ok": true,
+        "interrupted": null,
+        "residual_calls": 248,
+        "transient_successes": 20
+      },
+      {
+        "label": "Post-refine pass 3",
+        "n_points": 46,
+        "ok": true,
+        "interrupted": null,
+        "residual_calls": 308,
+        "transient_successes": 20
+      }
+    ]
+  },
+  "cantera": {
+    "version": "3.2.0",
+    "solved": true,
+    "wall_s": 39.096863400016446,
+    "Su": 1.3328750490100307,
+    "n_points": 243,
+    "width": 0.06,
+    "stats": {
+      "eval_count_stats": [
+        1507,
+        1681,
+        553,
+        278,
+        329,
+        174,
+        224,
+        224,
+        28,
+        11,
+        14,
+        8,
+        8,
+        6,
+        4,
+        10,
+        6,
+        2
+      ],
+      "eval_time_stats": [
+        0.23500000000000018,
+        0.5490000000000004,
+        0.22200000000000017,
+        0.20600000000000016,
+        0.33200000000000024,
+        0.21900000000000017,
+        0.3040000000000002,
+        0.3130000000000002,
+        0.05300000000000003,
+        0.018000000000000002,
+        0.02600000000000001,
+        0.022,
+        0.021,
+        0.023,
+        0.013999999999999999,
+        0.9619999999999999,
+        0.592,
+        0.201
+      ],
+      "jacobian_count_stats": [
+        47,
+        70,
+        24,
+        17,
+        24,
+        12,
+        20,
+        14,
+        2,
+        2,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "jacobian_time_stats": [
+        1.0070000000000006,
+        3.448000000000002,
+        1.4700000000000002,
+        1.7670000000000003,
+        3.8409999999999993,
+        2.414,
+        4.601,
+        3.24,
+        0.512,
+        0.567,
+        0.328,
+        0.388,
+        0.462,
+        0.541,
+        0.631,
+        1.034,
+        1.062,
+        1.079
+      ],
+      "grid_size_stats": [
+        11,
+        19,
+        26,
+        38,
+        53,
+        64,
+        76,
+        87,
+        98,
+        109,
+        126,
+        149,
+        176,
+        205,
+        236,
+        236,
+        244,
+        245
+      ],
+      "time_step_stats": [
+        60,
+        0,
+        20,
+        10,
+        10,
+        10,
+        10,
+        10,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "max_time_step_count": 500,
+    "successful_transient_callbacks": 180,
+    "first_grid_successful_transient_callbacks": 60
+  }
+}

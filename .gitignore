@@ -1,0 +1,47 @@
+# Local research, outputs and maintenance snapshots (never publish).
+/.local/
+/tmp/
+/runs/
+
+# Python, Numba and build artifacts.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+/build/
+/dist/
+.coverage
+htmlcov/
+
+# Virtual environments.
+.venv/
+.venv_cantera_review/
+venv/
+
+# Editors and operating systems.
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Legacy output paths retained as a safety net for old commands.
+fgm_runs/
+comparison_runs/
+FGM/resultados/
+resultados/
+
+# LaTeX build intermediates; manuscript sources are local under .local/.
+*.aux
+*.fdb_latexmk
+*.fls
+*.lof
+*.log
+*.lot
+*.out
+*.synctex.gz
+*.toc
+*.bbl
+*.blg
+
+
