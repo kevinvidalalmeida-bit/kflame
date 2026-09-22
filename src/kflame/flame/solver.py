@@ -1415,6 +1415,13 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
 
     attempt = 0
 
+    # --- Transient solver mode state (persists across attempt cycles) ---
+    ts_mode = str(getattr(opts, "transient_solver_mode", "ptc_ser")).strip().lower()
+    in_be_persistent = False
+    be_persistent_successes = 0
+    min_be_steps = int(getattr(opts, "persistent_be_steps", 5))
+    stall_thr = float(getattr(opts, "persistent_be_stall_threshold", 0.8))
+
     if opts.verbose:
         print(f"\n{'-'*60}\n{label or 'Newton hibrido'}\n{'-'*60}")
 
@@ -1560,13 +1567,6 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
         er_norm_history: list[float] = []  # Sliding window of steady norms
         er_refinements_done = 0
 
-        # --- Transient solver mode state ---
-        ts_mode = str(getattr(opts, "transient_solver_mode", "ptc_ser")).strip().lower()
-        in_be_persistent = False
-        be_persistent_successes = 0
-        min_be_steps = int(getattr(opts, "persistent_be_steps", 5))
-        stall_thr = float(getattr(opts, "persistent_be_stall_threshold", 0.8))
-
         while n_done < nsteps:
             if deadline is not None and time.perf_counter() > deadline:
                 history.append({
@@ -1621,25 +1621,31 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
             jac_evals_after = int(jac.n_evals) if jac is not None else jac_evals_before
             last_record = hist_ts[-1] if hist_ts else {}
             last_status = last_record.get("status")
+
+            # Universal steady norm before step: normF at iter 0 is ||F_steady(x_old)||
             steady_norm_before = (
-                float(last_record.get("normF", float("nan")))
-                if use_ptc
-                else float("nan")
+                float(hist_ts[0].get("normF", float("nan")))
+                if hist_ts and "normF" in hist_ts[0] and np.isfinite(hist_ts[0].get("normF", float("nan")))
+                else _residual_inf(problem, x_old)
             )
+
             ptc_step_ok = bool(
                 use_ptc
                 and last_status in ("step", "ok")
                 and np.all(np.isfinite(x_ts))
                 and np.isfinite(steady_norm_before)
             )
-            steady_norm_after = _residual_inf(problem, x_ts) if ptc_step_ok else float("nan")
             if ptc_step_ok:
+                steady_norm_after_test = _residual_inf(problem, x_ts)
                 if (
-                    not np.isfinite(steady_norm_after)
-                    or steady_norm_after
+                    not np.isfinite(steady_norm_after_test)
+                    or steady_norm_after_test
                     > ser_residual_growth_limit * max(steady_norm_before, 1.0e-300)
                 ):
                     ptc_step_ok = False
+
+            step_ok = bool(ptc_step_ok if use_ptc else ok_ts)
+            steady_norm_after = _residual_inf(problem, x_ts) if (step_ok and np.all(np.isfinite(x_ts))) else float("nan")
 
             # --- Exp. A: adaptive Newton corrections after accepted PTC ---
             anc_corrections_used = 0
@@ -1658,8 +1664,9 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                         and np.all(np.isfinite(step_vec))
                         and isinstance(jac.J, BlockTridiagJacobian)
                     ):
-                        predicted_change = jac.J.matvec(step_vec)
-                        defect_vec = f_new_steady - f_old_steady - predicted_change
+                        # Corrected stationary Jacobian prediction: J_F*step = J_G*step + rdt*step
+                        predicted_change_steady = jac.J.matvec(step_vec) + rdt * step_vec
+                        defect_vec = f_new_steady - f_old_steady - predicted_change_steady
                         defect_norm = float(np.linalg.norm(defect_vec, ord=np.inf))
                         ref_norm = max(
                             float(np.linalg.norm(f_old_steady, ord=np.inf)),
@@ -1669,7 +1676,6 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
 
                         if anc_defect_value > anc_defect_thr:
                             x_corr = x_ts.copy()
-                            f_corr = f_new_steady.copy()
                             norm_corr = steady_norm_after
                             for _ic in range(anc_max_corr - 1):
                                 if deadline is not None and time.perf_counter() > deadline:
@@ -1685,7 +1691,11 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                                     break
                                 if not np.all(np.isfinite(step_extra)):
                                     break
-                                x_try = x_corr + step_extra
+
+                                # Apply physical bound protection before evaluating residual
+                                fbound = bound_step_limit(x_corr, step_extra, problem)
+                                x_try = x_corr + fbound * step_extra
+
                                 f_try_steady = residual(x_try, problem)
                                 if not np.all(np.isfinite(f_try_steady)):
                                     break
@@ -1703,8 +1713,6 @@ def _hybrid_newton(problem, x0: np.ndarray, opts: SolveOptions,
                                 x_ts = x_corr
                                 steady_norm_after = norm_corr
                                 jac.age += anc_corrections_used
-
-            step_ok = bool(ptc_step_ok if use_ptc else ok_ts)
 
             # --- Update Persistent Backward Euler state machine ---
             if ts_mode == "persistent_backward_euler":
